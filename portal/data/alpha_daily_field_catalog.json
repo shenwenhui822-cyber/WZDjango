@@ -1,0 +1,32 @@
+{
+  "schema": "alpha_daily",
+  "description": "Alpha 产品日报：与 Excel 表头一致（25 列）",
+  "product_type_enum": "见 portal/data/enums.py 中 ProductType",
+  "fields": [
+    {"cn": "报表日期", "en": "report_date", "type": "string", "note": "无此列时由导入文件名推断"},
+    {"cn": "产品名称", "en": "product_name", "type": "string"},
+    {"cn": "当日盈亏比例", "en": "daily_pnl_ratio", "type": "ratio"},
+    {"cn": "周度盈亏比例", "en": "weekly_pnl_ratio", "type": "ratio"},
+    {"cn": "月度盈亏比例", "en": "monthly_pnl_ratio", "type": "ratio"},
+    {"cn": "年度盈亏比例", "en": "yearly_pnl_ratio", "type": "ratio"},
+    {"cn": "当日超额比例", "en": "daily_excess_return_ratio", "type": "ratio"},
+    {"cn": "周度超额比例", "en": "weekly_excess_return_ratio", "type": "ratio"},
+    {"cn": "月度超额比例", "en": "monthly_excess_return_ratio", "type": "ratio"},
+    {"cn": "年度超额比例", "en": "yearly_excess_return_ratio", "type": "ratio"},
+    {"cn": "当前净值", "en": "current_nav", "type": "float"},
+    {"cn": "当前超额净值", "en": "current_excess_nav", "type": "float"},
+    {"cn": "当前净值回撤", "en": "current_nav_drawdown", "type": "ratio"},
+    {"cn": "最大净值回撤", "en": "max_nav_drawdown", "type": "ratio"},
+    {"cn": "当前超额净值回撤", "en": "current_excess_nav_drawdown", "type": "ratio"},
+    {"cn": "最大超额净值回撤", "en": "max_excess_nav_drawdown", "type": "ratio"},
+    {"cn": "多空暴露比例", "en": "long_short_exposure_ratio", "type": "ratio"},
+    {"cn": "换手率", "en": "turnover_rate", "type": "ratio"},
+    {"cn": "交易滑点", "en": "trading_slippage", "type": "float", "note": "与「交易滑点(bps)」同义"},
+    {"cn": "资产总额", "en": "total_assets", "type": "float"},
+    {"cn": "总盈亏金额", "en": "total_pnl_amount", "type": "float"},
+    {"cn": "多头持仓市值", "en": "long_position_mkt_value", "type": "float"},
+    {"cn": "空头持仓市值", "en": "short_position_mkt_value", "type": "float"},
+    {"cn": "多头账户现金", "en": "long_account_cash", "type": "float"},
+    {"cn": "产品类型", "en": "product_type", "type": "string"}
+  ]
+}

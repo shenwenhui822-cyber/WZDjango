@@ -1,0 +1,38 @@
+在 **`G:\github\WZDjango`** 下按顺序执行即可：
+
+### 1. 进入目录并安装依赖（首次或换环境时）
+```powershell
+cd G:\github\WZDjango
+pip install -r requirements.txt
+```
+
+### 2. 数据库迁移（首次）
+```powershell
+python manage.py migrate
+```
+
+### 3. 创建登录账号（若还没有用户）
+```powershell
+python manage.py createsuperuser
+```
+按提示输入用户名和密码。
+
+### 4. 启动开发服务器
+```powershell
+python manage.py runserver
+```
+
+默认地址：**http://127.0.0.1:8000/**  
+- 未登录：打开首页会看到登录页  
+- 登录后：访问 **http://127.0.0.1:8000/home/** 进入门户  
+
+### 可选：指定端口
+```powershell
+python manage.py runserver 0.0.0.0:8080
+```
+
+### 可选：把 Alphadata 里的 xlsx 导入 MongoDB
+先保证本机 **MongoDB** 在 `localhost:27017` 已启动，再执行：
+```powershell
+python manage.py import_alphadata_xlsx
+```

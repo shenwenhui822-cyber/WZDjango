@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}门户 - WZ Alpha{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4">门户</h1>
+<p class="text-muted mb-4">请选择要访问的功能：</p>
+<div class="list-group shadow-sm">
+    <a href="{% url 'portal:alpha_daily' %}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+        <span>1. Alpha 产品日报</span>
+        <span class="badge bg-success rounded-pill">MongoDB</span>
+    </a>
+</div>
+{% endblock %}
