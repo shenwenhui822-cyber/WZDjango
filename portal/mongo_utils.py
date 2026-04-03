@@ -1,4 +1,4 @@
-"""MongoDB 连接（业务数据：testdb.appdb）。"""
+"""MongoDB 连接（业务数据：appdb.swhtestdb）。"""
 from __future__ import annotations
 
 from typing import Any

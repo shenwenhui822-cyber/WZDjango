@@ -49,7 +49,7 @@ def home(request):
 
 @login_required(login_url="/")
 def alpha_daily(request):
-    """Alpha 产品日报：从 MongoDB（testdb.appdb）查询 _schema=alpha_daily 并表格展示。"""
+    """Alpha 产品日报：从 MongoDB（appdb.swhtestdb）查询 _schema=alpha_daily 并表格展示。"""
 
     try:
         limit = int(request.GET.get("limit") or 100)

@@ -1,5 +1,5 @@
 """
-将 Alphadata 目录下所有 .xlsx 导入 MongoDB：testdb.appdb
+将 Alphadata 目录下所有 .xlsx 导入 MongoDB：appdb.swhtestdb
 
 用法：
   python manage.py import_alphadata_xlsx
@@ -73,7 +73,7 @@ def _sheet_to_records_auto(
 
 
 class Command(BaseCommand):
-    help = "导入 Alphadata 下全部 xlsx 到 MongoDB（testdb.appdb）"
+    help = "导入 Alphadata 下全部 xlsx 到 MongoDB（appdb.swhtestdb）"
 
     def add_arguments(self, parser):
         parser.add_argument(

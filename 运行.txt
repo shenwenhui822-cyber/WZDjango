@@ -17,14 +17,14 @@ python manage.py createsuperuser
 ```
 按提示输入用户名和密码。
 
-### 4. 启动开发服务器
+### 4. 启动开发服务器（外部可访问）
 ```powershell
-python manage.py runserver
+python manage.py runserver 0.0.0.0:7443
 ```
 
-默认地址：**http://127.0.0.1:8000/**  
+默认地址：**http://127.0.0.1:7443/**  
 - 未登录：打开首页会看到登录页  
-- 登录后：访问 **http://127.0.0.1:8000/home/** 进入门户  
+- 登录后：访问 **http://127.0.0.1:7443/home/** 进入门户  
 
 ### 可选：指定端口
 ```powershell

@@ -12,7 +12,7 @@ DEBUG = True
 # Alpha 日报页：为 True 时，勾选「调试信息」或附加 ?debug=1 可查看 Mongo 查询与耗时（生产环境请设为 False）
 ALPHA_DAILY_PAGE_DEBUG = DEBUG
 
-ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
+ALLOWED_HOSTS = ["*", "localhost", "127.0.0.1"]
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -21,10 +21,12 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "corsheaders",
     "portal",
 ]
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -83,9 +85,16 @@ LOGIN_URL = "/"
 LOGIN_REDIRECT_URL = "/home/"
 LOGOUT_REDIRECT_URL = "/"
 
-# MongoDB：localhost:27017，数据库 testdb，集合 appdb（业务数据）
-MONGODB_URI = "mongodb://127.0.0.1:27017/"
-MONGODB_DB_NAME = "testdb"
-MONGODB_COLLECTION_NAME = "appdb"
+# 跨域与 CSRF（便于前端通过 http://<host>:7443 访问）
+CORS_ALLOW_ALL_ORIGINS = True
+CSRF_TRUSTED_ORIGINS = [
+    "http://127.0.0.1:7443",
+    "http://localhost:7443",
+]
+
+# MongoDB：192.168.110.199 — 库 appdb，集合 swhtestdb（与 Compass 树形结构一致）
+MONGODB_URI = "mongodb://readwriter:readwrite_wonderwz@192.168.110.199:27017/"
+MONGODB_DB_NAME = "appdb"
+MONGODB_COLLECTION_NAME = "swhtestdb"
 # Alphadata 目录（xlsx 源文件）
 ALPHADATA_DIR = BASE_DIR / "Alphadata"
