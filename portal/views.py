@@ -27,7 +27,7 @@ from portal.trade_calendar import (
 def index(request):
     """未登录：展示登录页；已登录：进入首页 /home/。"""
     if request.user.is_authenticated:
-        return redirect("portal:home")
+        return redirect("portal:nav_curve")
 
     if request.method == "POST":
         username = (request.POST.get("username") or "").strip()
@@ -35,9 +35,9 @@ def index(request):
         user = authenticate(request, username=username, password=password)
         if user is not None:
             login(request, user)
-            next_url = request.GET.get("next") or "/home/"
+            next_url = request.GET.get("next") or "/nav/curve/"
             if not next_url.startswith("/"):
-                next_url = "/home/"
+                next_url = "/nav/curve/"
             return redirect(next_url)
         return render(
             request,
@@ -52,7 +52,7 @@ def index(request):
 @login_required(login_url="/")
 def home(request):
     """登录成功后的首页：功能入口列表。"""
-    return render(request, "portal/home.html")
+    return redirect("portal:nav_curve")
 
 
 @login_required(login_url="/")
@@ -257,11 +257,13 @@ def _parse_date_range_for_nav(request) -> tuple[str | None, str | None]:
 
 @login_required(login_url="/")
 def nav_curve(request):
-    """单产品净值曲线：最近 5/10/15 个交易日，或自定义起止日期。"""
+    """多产品净值曲线：支持多选产品，最近交易日或自定义日期。"""
     products = distinct_product_names()
-    product_name = (request.GET.get("product_name") or "").strip()
-    if not product_name and products:
-        product_name = products[0]
+    selected_products = [
+        p.strip() for p in request.GET.getlist("product_name") if p.strip()
+    ]
+    if not selected_products and products:
+        selected_products = [products[0]]
 
     time_mode = _parse_nav_time_mode(request)
     only_td = _parse_only_trading_days(request)
@@ -275,13 +277,18 @@ def nav_curve(request):
     date_to_ctx = ""
 
     error_msg = None
-    points: list = []
+    product_series: dict[str, list[dict]] = {}
     if not products:
         error_msg = "库中暂无产品数据，请先导入 Alpha 日报。"
-    elif not product_name:
-        error_msg = "请选择产品名称。"
+    elif not selected_products:
+        error_msg = "请选择至少一个产品。"
     else:
         try:
+            picked = [p for p in selected_products if p in products]
+            if not picked:
+                raise ValueError("所选产品无效，请重新选择。")
+            if len(picked) > 10:
+                raise ValueError("一次最多选择 10 个产品。")
             if time_mode == "custom":
                 date_from, date_to = _parse_date_range_for_nav(request)
                 date_from_ctx = date_from or ""
@@ -289,21 +296,23 @@ def nav_curve(request):
                 if not date_from and not date_to:
                     error_msg = "自定义模式下请至少填写开始日期或结束日期。"
                 else:
-                    points = fetch_nav_curve_series(
-                        product_name=product_name,
-                        date_from=date_from,
-                        date_to=date_to,
-                        only_trading_days=only_td,
-                        recent_trading_days=None,
-                    )
+                    for pn in picked:
+                        product_series[pn] = fetch_nav_curve_series(
+                            product_name=pn,
+                            date_from=date_from,
+                            date_to=date_to,
+                            only_trading_days=only_td,
+                            recent_trading_days=None,
+                        )
             else:
-                points = fetch_nav_curve_series(
-                    product_name=product_name,
-                    date_from=None,
-                    date_to=None,
-                    only_trading_days=only_td,
-                    recent_trading_days=recent_n,
-                )
+                for pn in picked:
+                    product_series[pn] = fetch_nav_curve_series(
+                        product_name=pn,
+                        date_from=None,
+                        date_to=None,
+                        only_trading_days=only_td,
+                        recent_trading_days=recent_n,
+                    )
         except ValueError as exc:
             error_msg = str(exc)
             if time_mode == "custom":
@@ -312,10 +321,30 @@ def nav_curve(request):
         except Exception as exc:
             error_msg = str(exc)
 
+    labels = sorted(
+        {
+            p["report_date"]
+            for series in product_series.values()
+            for p in series
+            if p.get("report_date")
+        }
+    )
+    datasets: list[dict] = []
+    point_count = 0
+    for pn, series in product_series.items():
+        nav_map = {p["report_date"]: p["current_nav"] for p in series}
+        point_count += len(series)
+        datasets.append(
+            {
+                "label": pn,
+                "data": [nav_map.get(day) for day in labels],
+            }
+        )
+
     chart_json = json.dumps(
         {
-            "labels": [p["report_date"] for p in points],
-            "values": [p["current_nav"] for p in points],
+            "labels": labels,
+            "datasets": datasets,
         },
         ensure_ascii=False,
     )
@@ -323,16 +352,28 @@ def nav_curve(request):
     context = {
         "error_msg": error_msg,
         "products": products,
-        "product_name": product_name or "",
+        "selected_products": selected_products,
         "time_mode": time_mode,
         "recent": recent_raw,
         "date_from": date_from_ctx,
         "date_to": date_to_ctx,
         "only_trading_days": only_td,
-        "point_count": len(points),
+        "point_count": point_count,
         "chart_json": chart_json,
     }
     return render(request, "portal/nav_curve.html", context)
+
+
+@login_required(login_url="/")
+def raw_nav(request):
+    """原始净值占位页：等待接入产品原始净值数据。"""
+    return render(request, "portal/raw_nav.html")
+
+
+@login_required(login_url="/")
+def t0_nav(request):
+    """T0 增强测算占位页：等待接入测算数据。"""
+    return render(request, "portal/t0_nav.html")
 
 
 @csrf_exempt
