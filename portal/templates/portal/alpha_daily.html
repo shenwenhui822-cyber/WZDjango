@@ -12,16 +12,34 @@
 {% block content %}
 <nav aria-label="breadcrumb">
     <ol class="breadcrumb">
-        <li class="breadcrumb-item"><a href="{% url 'portal:home' %}">门户</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'portal:home' %}">首页</a></li>
         <li class="breadcrumb-item active" aria-current="page">Alpha 产品日报</li>
     </ol>
 </nav>
 
 <h1 class="h4 mb-3">Alpha 产品日报</h1>
 
+{% if messages %}
+    {% for message in messages %}
+    <div class="alert alert-{{ message.tags|default:'info' }} py-2 mb-2">{{ message }}</div>
+    {% endfor %}
+{% endif %}
+
 {% if error_msg %}
 <div class="alert alert-danger">{{ error_msg }}</div>
 {% endif %}
+
+<form class="row g-2 align-items-end mb-3" method="post" action="{% url 'portal:alpha_daily_import' %}" enctype="multipart/form-data">
+    {% csrf_token %}
+    <div class="col-12 col-lg-auto">
+        <label class="form-label small mb-0">导入 xlsx</label>
+        <input type="file" name="xlsx_file" accept=".xlsx" class="form-control form-control-sm" style="min-width: 18rem;">
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0 d-none d-md-block">&nbsp;</label>
+        <button type="submit" class="btn btn-success btn-sm">上传并导入</button>
+    </div>
+</form>
 
 <form class="row g-2 align-items-end mb-3" method="get" action="" id="alphaDailyForm">
     <div class="col-12 col-lg-auto">
@@ -89,7 +107,7 @@
 </div>
 {% endif %}
 
-<p class="mt-3"><a href="{% url 'portal:home' %}" class="btn btn-outline-primary">返回门户</a></p>
+<p class="mt-3"><a href="{% url 'portal:home' %}" class="btn btn-outline-primary">返回首页</a></p>
 {% endblock %}
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>

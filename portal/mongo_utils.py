@@ -1,4 +1,4 @@
-"""MongoDB 连接（业务数据：appdb.swhtestdb）。"""
+"""MongoDB 连接（Alpha 日报：alpha_product.alpha_sim_nav）。"""
 from __future__ import annotations
 
 from typing import Any
@@ -16,6 +16,13 @@ def get_app_collection() -> Collection:
     client = get_mongo_client()
     db = client[settings.MONGODB_DB_NAME]
     return db[settings.MONGODB_COLLECTION_NAME]
+
+
+def get_trade_date_collection() -> Collection:
+    """交易日历集合：alpha_product.trade_calendar。"""
+    client = get_mongo_client()
+    db = client[settings.MONGODB_TRADE_CALENDAR_DB]
+    return db[settings.MONGODB_TRADE_CALENDAR_COLLECTION]
 
 
 def bson_safe_value(v: Any) -> Any:

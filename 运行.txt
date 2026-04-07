@@ -5,7 +5,8 @@
 cd G:\github\WZDjango
 pip install -r requirements.txt
 ```
-
+查看端口
+ss -tulnp
 ### 2. 数据库迁移（首次）
 ```powershell
 python manage.py migrate
@@ -24,7 +25,7 @@ python manage.py runserver 0.0.0.0:7443
 
 默认地址：**http://127.0.0.1:7443/**  
 - 未登录：打开首页会看到登录页  
-- 登录后：访问 **http://127.0.0.1:7443/home/** 进入门户  
+- 登录后：访问 **http://127.0.0.1:7443/home/** 进入首页  
 
 ### 可选：指定端口
 ```powershell
@@ -36,3 +37,34 @@ python manage.py runserver 0.0.0.0:8080
 ```powershell
 python manage.py import_alphadata_xlsx
 ```
+
+### API（curl 调用）
+查询数据：
+```powershell
+curl "http://127.0.0.1:7443/api/alpha/daily/?date_from=2026-01-01&date_to=2026-01-31&limit=100"
+```
+
+上传导入：
+```powershell
+curl -X POST -F "file=@G:/github/WZDjango/Alphadata/Alpha产品表现汇总_20220921.xlsx" "http://127.0.0.1:7443/api/alpha/import/"
+```
+
+### 导入交易日 CSV → MongoDB（alpha_product.trade_calendar）
+默认读取项目内 `trade_dates_all/trade_dates_all.csv`：
+```powershell
+python manage.py import_trade_dates_csv
+```
+清空后全量导入：
+```powershell
+python manage.py import_trade_dates_csv --clear
+```
+
+### 净值曲线 API
+`product_name` 必填。最近 N 个交易日：`recent=5|10|15`（默认 5）；或区间：`date_from` / `date_to`（与 `recent` 二选一，优先 `recent`）。
+```powershell
+curl "http://127.0.0.1:7443/api/nav/curve/?product_name=产品名称&recent=5&only_trading_days=1"
+```
+```powershell
+curl "http://127.0.0.1:7443/api/nav/curve/?product_name=产品名称&date_from=2024-01-01&date_to=2024-12-31&only_trading_days=1"
+```
+浏览器页面：**http://127.0.0.1:7443/nav/curve/**（需登录）

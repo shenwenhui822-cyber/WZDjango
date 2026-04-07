@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}净值曲线 - WZ Alpha{% endblock %}
+{% block extra_css %}
+<style>
+    .chart-wrap { max-width: 100%; height: 420px; }
+</style>
+{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'portal:home' %}">首页</a></li>
+        <li class="breadcrumb-item active" aria-current="page">净值曲线</li>
+    </ol>
+</nav>
+
+<h1 class="h4 mb-3">净值曲线</h1>
+
+{% if error_msg %}
+<div class="alert alert-danger">{{ error_msg }}</div>
+{% endif %}
+
+<form class="row g-3 align-items-end mb-3" method="get" action="">
+    <div class="col-12 col-md-auto">
+        <label class="form-label small mb-0">产品名称</label>
+        <select name="product_name" class="form-select form-select-sm" required style="min-width: 16rem;">
+            {% for p in products %}
+            <option value="{{ p }}" {% if p == product_name %}selected{% endif %}>{{ p }}</option>
+            {% empty %}
+            <option value="">（无产品）</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-12">
+        <label class="form-label small mb-1 d-block">时间范围</label>
+        <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
+            <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input" type="radio" name="time_mode" id="tmr" value="recent"
+                       {% if time_mode == "recent" %}checked{% endif %}>
+                <label class="form-check-label small" for="tmr">最近交易日</label>
+            </div>
+            <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input" type="radio" name="time_mode" id="tmc" value="custom"
+                       {% if time_mode == "custom" %}checked{% endif %}>
+                <label class="form-check-label small" for="tmc">自定义日期</label>
+            </div>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <label class="small text-muted mb-0" for="df">开始</label>
+                <input type="date" name="date_from" id="df" value="{{ date_from }}"
+                       class="form-control form-control-sm" style="width: 11rem;">
+                <label class="small text-muted mb-0" for="dt">结束</label>
+                <input type="date" name="date_to" id="dt" value="{{ date_to }}"
+                       class="form-control form-control-sm" style="width: 11rem;">
+            </div>
+        </div>
+        <label class="form-label small mb-1 d-block">最近交易日数量</label>
+        <div class="btn-group btn-group-sm" role="group" aria-label="最近交易日">
+            <input type="radio" class="btn-check" name="recent" id="r5" value="5" {% if recent == "5" %}checked{% endif %}>
+            <label class="btn btn-outline-primary" for="r5">最近 5 个交易日</label>
+            <input type="radio" class="btn-check" name="recent" id="r10" value="10" {% if recent == "10" %}checked{% endif %}>
+            <label class="btn btn-outline-primary" for="r10">最近 10 个交易日</label>
+            <input type="radio" class="btn-check" name="recent" id="r15" value="15" {% if recent == "15" %}checked{% endif %}>
+            <label class="btn btn-outline-primary" for="r15">最近 15 个交易日</label>
+        </div>
+    </div>
+    <div class="col-auto">
+        <div class="form-check mt-2">
+            <input type="hidden" name="only_trading_days" value="0">
+            <input class="form-check-input" type="checkbox" name="only_trading_days" value="1" id="otd"
+                   {% if only_trading_days %}checked{% endif %}>
+            <label class="form-check-label small" for="otd">仅交易日</label>
+        </div>
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-primary btn-sm">查询</button>
+    </div>
+    <div class="col-auto text-muted small">
+        点数：<strong>{{ point_count }}</strong>
+    </div>
+</form>
+
+<div class="chart-wrap border rounded p-2 bg-white mb-3">
+    <canvas id="navChart"></canvas>
+</div>
+
+<p><a href="{% url 'portal:home' %}" class="btn btn-outline-primary btn-sm">返回首页</a></p>
+{% endblock %}
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script id="nav-data" type="application/json">{{ chart_json|safe }}</script>
+<script>
+(function () {
+    var el = document.getElementById('nav-data');
+    if (!el) return;
+    var cfg = JSON.parse(el.textContent || '{}');
+    var labels = cfg.labels || [];
+    var values = cfg.values || [];
+    var ctx = document.getElementById('navChart');
+    if (!ctx) return;
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: '净值',
+                data: values,
+                borderColor: 'rgb(13, 110, 253)',
+                backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                tension: 0.15,
+                fill: true,
+                pointRadius: 2,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { ticks: { maxRotation: 45, minRotation: 0 } },
+                y: { title: { display: true, text: '净值' } }
+            },
+            plugins: { legend: { display: true } }
+        }
+    });
+})();
+</script>
+{% endblock %}

@@ -92,9 +92,16 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:7443",
 ]
 
-# MongoDB：192.168.110.199 — 库 appdb，集合 swhtestdb（与 Compass 树形结构一致）
-MONGODB_URI = "mongodb://readwriter:readwrite_wonderwz@192.168.110.199:27017/"
-MONGODB_DB_NAME = "appdb"
-MONGODB_COLLECTION_NAME = "swhtestdb"
+# MongoDB：命名约定为小写 + 下划线
+# Alpha 日报落库：库 alpha_product，集合 alpha_sim_nav（与同事约定一致）
+MONGODB_URI = "mongodb://127.0.0.1:27017/"
+# MONGODB_URI = "mongodb://readwriter:readwrite_wonderwz@192.168.110.199:27017/"
+MONGODB_DB_NAME = "alpha_product"
+MONGODB_COLLECTION_NAME = "alpha_sim_nav"
 # Alphadata 目录（xlsx 源文件）
 ALPHADATA_DIR = BASE_DIR / "Alphadata"
+
+# 交易日历：与 Alpha 同库，独立集合（字段仍为 trade_date）
+MONGODB_TRADE_CALENDAR_DB = "alpha_product"
+MONGODB_TRADE_CALENDAR_COLLECTION = "trade_calendar"
+TRADE_DATES_CSV = BASE_DIR / "trade_dates_all" / "trade_dates_all.csv"

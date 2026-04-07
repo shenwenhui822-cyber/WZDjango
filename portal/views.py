@@ -5,19 +5,27 @@ from datetime import datetime
 from django.conf import settings
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
+from django.contrib import messages
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import redirect, render
 
 from portal.data.alpha_daily_schema import ALPHA_DAILY_COLUMNS
 from portal.formatters import row_to_display_cells
+from portal.import_service import import_excel_fileobj
 from portal.mongo_queries import (
     ALPHA_DAILY_SORT,
     build_alpha_daily_query,
     fetch_alpha_daily_documents,
 )
+from portal.trade_calendar import (
+    distinct_product_names,
+    fetch_nav_curve_series,
+)
 
 
 def index(request):
-    """未登录：展示登录页；已登录：进入门户 /home/。"""
+    """未登录：展示登录页；已登录：进入首页 /home/。"""
     if request.user.is_authenticated:
         return redirect("portal:home")
 
@@ -43,13 +51,13 @@ def index(request):
 
 @login_required(login_url="/")
 def home(request):
-    """登录成功后的门户页：功能入口列表。"""
+    """登录成功后的首页：功能入口列表。"""
     return render(request, "portal/home.html")
 
 
 @login_required(login_url="/")
 def alpha_daily(request):
-    """Alpha 产品日报：从 MongoDB（appdb.swhtestdb）查询 _schema=alpha_daily 并表格展示。"""
+    """Alpha 产品日报：从 MongoDB（alpha_product.alpha_sim_nav）查询 _schema=alpha_daily 并表格展示。"""
 
     try:
         limit = int(request.GET.get("limit") or 100)
@@ -122,6 +130,268 @@ def alpha_daily(request):
         "debug_info_text": debug_info_text,
     }
     return render(request, "portal/alpha_daily.html", context)
+
+
+@login_required(login_url="/")
+def alpha_daily_import(request):
+    """网页上传 xlsx 并写入 MongoDB。"""
+    if request.method != "POST":
+        return redirect("portal:alpha_daily")
+    up = request.FILES.get("xlsx_file")
+    if up is None:
+        messages.error(request, "请选择 xlsx 文件后再导入。")
+        return redirect("portal:alpha_daily")
+    try:
+        stats = import_excel_fileobj(up, up.name)
+    except Exception as exc:
+        messages.error(request, f"导入失败：{exc}")
+        return redirect("portal:alpha_daily")
+    messages.success(
+        request,
+        f"导入完成：{stats['file']}，写入 {stats['inserted']} 条。",
+    )
+    return redirect("portal:alpha_daily")
+
+
+def _parse_common_query_params(request):
+    try:
+        limit = int(request.GET.get("limit") or 100)
+    except ValueError:
+        raise ValueError("limit 必须为整数")
+    limit = max(1, min(limit, 10000))
+    date_from = (request.GET.get("date_from") or "").strip() or None
+    date_to = (request.GET.get("date_to") or "").strip() or None
+    if date_from:
+        datetime.strptime(date_from, "%Y-%m-%d")
+    if date_to:
+        datetime.strptime(date_to, "%Y-%m-%d")
+    return limit, date_from, date_to
+
+
+@csrf_exempt
+def api_alpha_daily(request):
+    """GET: 查询 alpha_daily 数据，返回 JSON。"""
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "仅支持 GET"}, status=405)
+    try:
+        limit, date_from, date_to = _parse_common_query_params(request)
+        rows = fetch_alpha_daily_documents(
+            limit=limit,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    except Exception as exc:
+        return JsonResponse({"ok": False, "error": f"查询失败: {exc}"}, status=500)
+    return JsonResponse(
+        {
+            "ok": True,
+            "count": len(rows),
+            "limit": limit,
+            "query": build_alpha_daily_query(date_from, date_to),
+            "sort": ALPHA_DAILY_SORT,
+            "data": rows,
+        },
+        json_dumps_params={"ensure_ascii": False},
+    )
+
+
+@csrf_exempt
+def api_alpha_import(request):
+    """POST: 上传单个 xlsx 文件并导入 MongoDB。"""
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "仅支持 POST"}, status=405)
+    up = request.FILES.get("file") or request.FILES.get("xlsx_file")
+    if up is None:
+        return JsonResponse(
+            {"ok": False, "error": "缺少文件字段 file（或 xlsx_file）"},
+            status=400,
+        )
+    try:
+        stats = import_excel_fileobj(up, up.name)
+    except Exception as exc:
+        return JsonResponse({"ok": False, "error": f"导入失败: {exc}"}, status=500)
+    return JsonResponse(
+        {"ok": True, **stats},
+        json_dumps_params={"ensure_ascii": False},
+    )
+
+
+def _parse_only_trading_days(request) -> bool:
+    if "only_trading_days" not in request.GET:
+        return True
+    v = (request.GET.get("only_trading_days") or "0").strip().lower()
+    return v in ("1", "true", "yes", "on")
+
+
+def _parse_recent_trading_days(request) -> tuple[int | None, str]:
+    """返回 (recent_n 或 None, 原始字符串用于表单回显)。"""
+    raw = (request.GET.get("recent") or "").strip()
+    if raw in ("5", "10", "15"):
+        return int(raw), raw
+    return None, raw
+
+
+def _parse_nav_time_mode(request) -> str:
+    raw = (request.GET.get("time_mode") or "").strip().lower()
+    if raw == "custom":
+        return "custom"
+    return "recent"
+
+
+def _parse_date_range_for_nav(request) -> tuple[str | None, str | None]:
+    date_from = (request.GET.get("date_from") or "").strip() or None
+    date_to = (request.GET.get("date_to") or "").strip() or None
+    try:
+        if date_from:
+            datetime.strptime(date_from, "%Y-%m-%d")
+        if date_to:
+            datetime.strptime(date_to, "%Y-%m-%d")
+    except ValueError:
+        raise ValueError("日期须为 YYYY-MM-DD。") from None
+    if date_from and date_to and date_from > date_to:
+        raise ValueError("开始日期不能晚于结束日期。")
+    return date_from, date_to
+
+
+@login_required(login_url="/")
+def nav_curve(request):
+    """单产品净值曲线：最近 5/10/15 个交易日，或自定义起止日期。"""
+    products = distinct_product_names()
+    product_name = (request.GET.get("product_name") or "").strip()
+    if not product_name and products:
+        product_name = products[0]
+
+    time_mode = _parse_nav_time_mode(request)
+    only_td = _parse_only_trading_days(request)
+
+    recent_n, recent_raw = _parse_recent_trading_days(request)
+    if recent_n is None:
+        recent_n = 5
+        recent_raw = "5"
+
+    date_from_ctx = ""
+    date_to_ctx = ""
+
+    error_msg = None
+    points: list = []
+    if not products:
+        error_msg = "库中暂无产品数据，请先导入 Alpha 日报。"
+    elif not product_name:
+        error_msg = "请选择产品名称。"
+    else:
+        try:
+            if time_mode == "custom":
+                date_from, date_to = _parse_date_range_for_nav(request)
+                date_from_ctx = date_from or ""
+                date_to_ctx = date_to or ""
+                if not date_from and not date_to:
+                    error_msg = "自定义模式下请至少填写开始日期或结束日期。"
+                else:
+                    points = fetch_nav_curve_series(
+                        product_name=product_name,
+                        date_from=date_from,
+                        date_to=date_to,
+                        only_trading_days=only_td,
+                        recent_trading_days=None,
+                    )
+            else:
+                points = fetch_nav_curve_series(
+                    product_name=product_name,
+                    date_from=None,
+                    date_to=None,
+                    only_trading_days=only_td,
+                    recent_trading_days=recent_n,
+                )
+        except ValueError as exc:
+            error_msg = str(exc)
+            if time_mode == "custom":
+                date_from_ctx = (request.GET.get("date_from") or "").strip()
+                date_to_ctx = (request.GET.get("date_to") or "").strip()
+        except Exception as exc:
+            error_msg = str(exc)
+
+    chart_json = json.dumps(
+        {
+            "labels": [p["report_date"] for p in points],
+            "values": [p["current_nav"] for p in points],
+        },
+        ensure_ascii=False,
+    )
+
+    context = {
+        "error_msg": error_msg,
+        "products": products,
+        "product_name": product_name or "",
+        "time_mode": time_mode,
+        "recent": recent_raw,
+        "date_from": date_from_ctx,
+        "date_to": date_to_ctx,
+        "only_trading_days": only_td,
+        "point_count": len(points),
+        "chart_json": chart_json,
+    }
+    return render(request, "portal/nav_curve.html", context)
+
+
+@csrf_exempt
+def api_nav_curve(request):
+    """GET: 净值曲线 JSON。recent=5|10|15 为最近 N 个交易日；若未传 recent 且未传日期区间则默认 recent=5。"""
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "仅支持 GET"}, status=405)
+    product_name = (request.GET.get("product_name") or "").strip()
+    if not product_name:
+        return JsonResponse({"ok": False, "error": "缺少 product_name"}, status=400)
+
+    date_from = (request.GET.get("date_from") or "").strip() or None
+    date_to = (request.GET.get("date_to") or "").strip() or None
+    only_td = _parse_only_trading_days(request)
+    recent_raw = (request.GET.get("recent") or "").strip()
+
+    use_recent: int | None
+    if recent_raw in ("5", "10", "15"):
+        use_recent = int(recent_raw)
+    elif date_from or date_to:
+        use_recent = None
+    else:
+        use_recent = 5
+
+    try:
+        if use_recent is not None:
+            points = fetch_nav_curve_series(
+                product_name=product_name,
+                date_from=None,
+                date_to=None,
+                only_trading_days=only_td,
+                recent_trading_days=use_recent,
+            )
+        else:
+            if date_from:
+                datetime.strptime(date_from, "%Y-%m-%d")
+            if date_to:
+                datetime.strptime(date_to, "%Y-%m-%d")
+            points = fetch_nav_curve_series(
+                product_name=product_name,
+                date_from=date_from,
+                date_to=date_to,
+                only_trading_days=only_td,
+                recent_trading_days=None,
+            )
+    except ValueError:
+        return JsonResponse({"ok": False, "error": "日期须为 YYYY-MM-DD"}, status=400)
+    except Exception as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=500)
+    return JsonResponse(
+        {
+            "ok": True,
+            "count": len(points),
+            "recent": use_recent,
+            "only_trading_days": only_td,
+            "series": points,
+        },
+        json_dumps_params={"ensure_ascii": False},
+    )
 
 
 def logout_view(request):
