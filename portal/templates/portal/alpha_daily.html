@@ -7,6 +7,9 @@
     .alpha-table-wrap table { font-size: 0.8rem; white-space: nowrap; }
     .alpha-table-wrap th { position: sticky; top: 0; background: #e7f1ff; z-index: 1; }
     #report_date_range { min-width: 14rem; max-width: 22rem; background-color: #fff; }
+    .alpha-col-pick { font-size: 0.8rem; }
+    .alpha-col-pick .form-check { min-height: 1.15rem; }
+    .btn-alpha-col-modal { white-space: nowrap; }
 </style>
 {% endblock %}
 {% block content %}
@@ -52,24 +55,60 @@
         <label class="form-label small mb-0">条数上限</label>
         <input type="number" name="limit" class="form-control form-control-sm" value="{{ limit }}" min="1" max="10000" style="width: 6rem;">
     </div>
-    {% if alpha_daily_debug_enabled %}
-    <div class="col-auto align-self-end">
-        <div class="form-check mb-0">
-            <input class="form-check-input" type="checkbox" name="debug" value="1" id="alphaDailyDebug"
-                   {% if show_debug %}checked{% endif %}>
-            <label class="form-check-label small" for="alphaDailyDebug">调试信息</label>
+
+    <div class="col-12">
+        <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3 pt-1">
+            <button type="button" class="btn btn-outline-secondary btn-sm btn-alpha-col-modal" data-bs-toggle="modal" data-bs-target="#alphaColModal">
+                选择显示列
+            </button>
+            <span class="text-muted small" id="alphaColSummary" title="当前勾选列数"></span>
+            {% if alpha_daily_debug_enabled %}
+            <div class="form-check mb-0">
+                <input class="form-check-input" type="checkbox" name="debug" value="1" id="alphaDailyDebug"
+                       {% if show_debug %}checked{% endif %}>
+                <label class="form-check-label small" for="alphaDailyDebug">调试信息</label>
+            </div>
+            {% endif %}
+            <div class="d-flex flex-wrap gap-1 align-items-center">
+                <button type="submit" class="btn btn-primary btn-sm">查询</button>
+                <a href="{% url 'portal:alpha_daily' %}" class="btn btn-outline-secondary btn-sm">重置</a>
+            </div>
+            <span class="text-muted small ms-md-auto">当前展示 <strong>{{ raw_count }}</strong> 条</span>
         </div>
     </div>
-    {% endif %}
-    <div class="col-auto">
-        <label class="form-label small mb-0 d-none d-md-block">&nbsp;</label>
-        <div class="d-flex flex-wrap gap-1 align-items-center">
-            <button type="submit" class="btn btn-primary btn-sm">查询</button>
-            <a href="{% url 'portal:alpha_daily' %}" class="btn btn-outline-secondary btn-sm">重置</a>
+
+    <div class="modal fade" id="alphaColModal" tabindex="-1" aria-labelledby="alphaColModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6" id="alphaColModalLabel">显示列（与 Excel 字段一致）</h5>
+                    <button type="button" class="btn-close" id="alphaColModalCloseX" aria-label="关闭"></button>
+                </div>
+                <div class="modal-body alpha-col-pick pt-2">
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="alphaColSelectAll">全选</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="alphaColClearAll">全部取消</button>
+                        <span class="text-muted small ms-auto" id="alphaColSummaryModal"></span>
+                    </div>
+                    <p class="small text-muted mb-2 mb-md-3">点「<strong>确定</strong>」保留本次勾选；点「<strong>取消</strong>」或右上角关闭将恢复原勾选。若不勾选任何列就点页面「查询」，将按<strong>全部列</strong>展示。</p>
+                    <div class="row g-1 row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-xl-5">
+                        {% for col in column_catalog %}
+                        <div class="col">
+                            <div class="form-check mb-1">
+                                <input class="form-check-input alpha-col-checkbox" type="checkbox" name="col" value="{{ col.en }}" id="col_pick_{{ forloop.counter }}"
+                                       {% if col.checked %}checked{% endif %}>
+                                <label class="form-check-label" for="col_pick_{{ forloop.counter }}">{{ col.cn }}</label>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-primary btn-sm" id="alphaColConfirmBtn">确定</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="alphaColCancelBtn">取消</button>
+                </div>
+            </div>
         </div>
-    </div>
-    <div class="col-auto ms-lg-auto text-muted small align-self-end pb-1">
-        当前展示 <strong>{{ raw_count }}</strong> 条
     </div>
 </form>
 
@@ -166,6 +205,92 @@
             syncHiddenFromSelection(selectedDates, instance);
         }
     });
+})();
+
+(function () {
+    var boxes = document.querySelectorAll(".alpha-col-checkbox");
+    var total = boxes.length;
+    var sumEl = document.getElementById("alphaColSummary");
+    var sumModalEl = document.getElementById("alphaColSummaryModal");
+    var modalEl = document.getElementById("alphaColModal");
+    var alphaColSnapshot = [];
+    var alphaColConfirmed = false;
+
+    function countChecked() {
+        var n = 0;
+        boxes.forEach(function (cb) { if (cb.checked) n += 1; });
+        return n;
+    }
+
+    function refreshSummary() {
+        var n = countChecked();
+        var t = "已选 " + n + " / " + total + " 列";
+        if (sumEl) sumEl.textContent = t;
+        if (sumModalEl) sumModalEl.textContent = t;
+    }
+
+    function restoreColSnapshot() {
+        if (!alphaColSnapshot.length || boxes.length !== alphaColSnapshot.length) return;
+        boxes.forEach(function (cb, i) {
+            cb.checked = alphaColSnapshot[i];
+        });
+    }
+
+    function getModalInstance() {
+        if (!modalEl || typeof bootstrap === "undefined") return null;
+        return bootstrap.Modal.getOrCreateInstance(modalEl);
+    }
+
+    function bindAll() {
+        var sel = document.getElementById("alphaColSelectAll");
+        var clr = document.getElementById("alphaColClearAll");
+        var confirmBtn = document.getElementById("alphaColConfirmBtn");
+        var cancelBtn = document.getElementById("alphaColCancelBtn");
+        var closeX = document.getElementById("alphaColModalCloseX");
+
+        if (sel) sel.addEventListener("click", function () {
+            boxes.forEach(function (cb) { cb.checked = true; });
+            refreshSummary();
+        });
+        if (clr) clr.addEventListener("click", function () {
+            boxes.forEach(function (cb) { cb.checked = false; });
+            refreshSummary();
+        });
+        boxes.forEach(function (cb) {
+            cb.addEventListener("change", refreshSummary);
+        });
+
+        if (modalEl) {
+            modalEl.addEventListener("show.bs.modal", function () {
+                alphaColSnapshot = Array.from(boxes).map(function (cb) { return cb.checked; });
+                alphaColConfirmed = false;
+                refreshSummary();
+            });
+            modalEl.addEventListener("hidden.bs.modal", function () {
+                if (!alphaColConfirmed) {
+                    restoreColSnapshot();
+                }
+                refreshSummary();
+                alphaColConfirmed = false;
+            });
+        }
+
+        function hideModal() {
+            var m = getModalInstance();
+            if (m) m.hide();
+        }
+
+        if (confirmBtn) confirmBtn.addEventListener("click", function () {
+            alphaColConfirmed = true;
+            hideModal();
+        });
+        if (cancelBtn) cancelBtn.addEventListener("click", hideModal);
+        if (closeX) closeX.addEventListener("click", hideModal);
+
+        refreshSummary();
+    }
+
+    if (boxes.length) bindAll();
 })();
 </script>
 {% endblock %}

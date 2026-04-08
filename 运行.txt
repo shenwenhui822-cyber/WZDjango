@@ -1,4 +1,4 @@
-在 **`G:\github\WZDjango`** 下按顺序执行即可：
+在 **`\WZDjango`** 下按顺序执行即可：
 
 ### 1. 进入目录并安装依赖（首次或换环境时）
 ```powershell
@@ -68,3 +68,22 @@ curl "http://127.0.0.1:7443/api/nav/curve/?product_name=产品名称&recent=5&on
 curl "http://127.0.0.1:7443/api/nav/curve/?product_name=产品名称&date_from=2024-01-01&date_to=2024-12-31&only_trading_days=1"
 ```
 浏览器页面：**http://127.0.0.1:7443/nav/curve/**（需登录）
+
+### Alpha 日报邮件自动导入（交易日 17:30）
+先保证 `trade_calendar` 已导入。配置在项目根目录 **`.env`**：
+- IMAP 收件：`ALPHA_MAIL_USER` / `ALPHA_MAIL_PASS` / `ALPHA_IMAP_SERVER` / `ALPHA_IMAP_PORT`
+- 结果通知（发到 shenwenhui@wonderwiz.cn、15525171170@163.com）：`ALPHA_NOTIFY_*`、`ALPHA_NOTIFY_TO`
+- Mongo：`MONGODB_URI`
+```powershell
+python manage.py auto_import_alpha_mail
+```
+Windows 计划任务每日 17:30：程序 `python`，参数 `manage.py auto_import_alpha_mail`，起始于 `G:\github\WZDjango`。详见 `scheduler/README.md`。
+按今天日期（并走交易日判断）
+python manage.py auto_import_alpha_mail
+忽略交易日判断强制执行
+python manage.py auto_import_alpha_mail --force
+指定某天主题并强制执行
+python manage.py auto_import_alpha_mail --force --subject-date 20260407
+
+### 自动启动定时器（随 Django runserver 启动）
+默认已开启：启动 Django 即自动后台进入定时循环（无需手动执行额外命令），按每天 `17:30` 触发。

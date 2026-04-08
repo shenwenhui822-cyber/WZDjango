@@ -24,6 +24,20 @@ from portal.trade_calendar import (
 )
 
 
+def _alpha_daily_visible_field_keys(request) -> list[str]:
+    """
+    从 GET 解析要展示的列（英文字段名，与 ALPHA_DAILY_COLUMNS 一致）。
+    未传 col 时默认展示全部；顺序固定为 schema 定义顺序。
+    """
+    allowed_order = [en for _cn, en in ALPHA_DAILY_COLUMNS]
+    allowed_set = frozenset(allowed_order)
+    raw = [x.strip() for x in request.GET.getlist("col") if x.strip()]
+    if not raw:
+        return allowed_order
+    picked = [en for en in allowed_order if en in allowed_set and en in set(raw)]
+    return picked if picked else allowed_order
+
+
 def index(request):
     """未登录：展示登录页；已登录：进入首页 /home/。"""
     if request.user.is_authenticated:
@@ -93,13 +107,17 @@ def alpha_daily(request):
         except Exception as exc:
             error_msg = f"读取 MongoDB 失败：{exc}"
 
-    # 表格列：中文表头 + 英文字段顺序（与导入一致）
-    field_keys = [en for _cn, en in ALPHA_DAILY_COLUMNS]
-    headers_zh = [cn for cn, _en in ALPHA_DAILY_COLUMNS]
+    visible_field_keys = _alpha_daily_visible_field_keys(request)
+    cn_by_en = {en: cn for cn, en in ALPHA_DAILY_COLUMNS}
+    headers_zh = [cn_by_en[en] for en in visible_field_keys]
+    column_catalog = [
+        {"cn": cn, "en": en, "checked": en in set(visible_field_keys)}
+        for cn, en in ALPHA_DAILY_COLUMNS
+    ]
 
     table_rows: list[list[str]] = []
     for doc in rows:
-        table_rows.append(row_to_display_cells(doc, field_keys))
+        table_rows.append(row_to_display_cells(doc, visible_field_keys))
 
     debug_info_text: str | None = None
     if show_debug and error_msg is None and elapsed_ms is not None:
@@ -118,7 +136,7 @@ def alpha_daily(request):
 
     context = {
         "headers_zh": headers_zh,
-        "field_keys": field_keys,
+        "column_catalog": column_catalog,
         "table_rows": table_rows,
         "raw_count": len(rows),
         "date_from": date_from,

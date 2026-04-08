@@ -1,9 +1,13 @@
 """
 Django settings for WZDjango (Alpha data portal).
 """
+import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 
 SECRET_KEY = "django-insecure-change-me-in-production-wzdjango"
 
@@ -95,7 +99,7 @@ CSRF_TRUSTED_ORIGINS = [
 # MongoDB：命名约定为小写 + 下划线
 # Alpha 日报落库：库 alpha_product，集合 alpha_sim_nav（与同事约定一致）
 # MONGODB_URI = "mongodb://127.0.0.1:27017/"
-MONGODB_URI = "mongodb://admin:admin_wonderwz@192.168.110.199:27017/"
+MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://admin:admin_wonderwz@192.168.110.199:27017/")
 MONGODB_DB_NAME = "alpha_product"
 MONGODB_COLLECTION_NAME = "alpha_sim_nav"
 # Alphadata 目录（xlsx 源文件）
