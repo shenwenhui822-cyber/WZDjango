@@ -14,6 +14,20 @@ PORT=${1:-7443}                  # 默认端口 7443（可通过命令行参数�
 MONGO_HOST=${2:-"localhost"}      # 默认 MongoDB 地址 localhost
 MONGO_PORT=${3:-"27017"}          # 默认 MongoDB 端口 27017
 LOG_FILE="django_server.log"      # 日志文件路径
+PY_CMD="python3"                  # 默认 Python 命令（激活 venv 后会改为 python）
+
+# --- 激活虚拟环境 ---
+activate_venv() {
+    if [ -f "venv/bin/activate" ]; then
+        # shellcheck disable=SC1091
+        source "venv/bin/activate"
+        PY_CMD="python"
+        echo "[INFO] 已激活虚拟环境: venv/bin/activate"
+        return 0
+    fi
+    echo "[WARN] 未找到 venv/bin/activate，继续使用系统 Python: $PY_CMD"
+    return 0
+}
 
 # --- 若目标端口已被占用则终止占用进程（便于重新启动） ---
 ensure_port_free() {
@@ -74,7 +88,7 @@ check_mongodb() {
 # --- 导入 MongoDB 数据（可选） ---
 import_data() {
     echo "[INFO] 正在导入 Alphadata 数据到 MongoDB..."
-    python3 manage.py import_alphadata_xlsx >> "$LOG_FILE" 2>&1
+    "$PY_CMD" manage.py import_alphadata_xlsx >> "$LOG_FILE" 2>&1
     if [ $? -eq 0 ]; then
         echo "[SUCCESS] 数据导入成功！"
     else
@@ -86,7 +100,7 @@ import_data() {
 # --- 启动 Django 服务器 ---
 start_server() {
     echo "[INFO] 启动 Django 开发服务器 (Port: $PORT)..."
-    python3 manage.py runserver 0.0.0.0:"$PORT" >> "$LOG_FILE" 2>&1 &
+    "$PY_CMD" manage.py runserver 0.0.0.0:"$PORT" >> "$LOG_FILE" 2>&1 &
     if [ $? -eq 0 ]; then
         echo "[SUCCESS] Django 服务器已启动！"
         echo "[INFO] 访问地址: http://<服务器IP>:$PORT/"
@@ -104,6 +118,7 @@ main() {
         echo "[ERROR] 当前目录不是 Django 项目根目录！请切换到正确目录。"
         exit 1
     fi
+    activate_venv
 
     # 可选：导入 MongoDB 数据
     read -p "[QUESTION] 是否导入 MongoDB 数据？(y/n) " -n 1 -r
