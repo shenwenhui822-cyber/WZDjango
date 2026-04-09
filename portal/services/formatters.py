@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from typing import Any
 
-# 按百分比展示的英文字段（库内存为小数比例）
 _RATIO_KEYS = frozenset(
     {
         "daily_pnl_ratio",
@@ -61,7 +60,6 @@ def format_alpha_cell(en_key: str, val: Any) -> str:
     return str(val)
 
 
-def row_to_display_cells(
-    doc: dict, field_keys: list[str]
-) -> list[str]:
+def row_to_display_cells(doc: dict, field_keys: list[str]) -> list[str]:
     return [format_alpha_cell(k, doc.get(k)) for k in field_keys]
+

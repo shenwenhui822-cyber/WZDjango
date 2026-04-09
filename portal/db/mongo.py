@@ -1,4 +1,4 @@
-"""MongoDB 连接（Alpha 日报：alpha_product.alpha_sim_nav）。"""
+"""MongoDB 连接与 BSON 兼容转换。"""
 from __future__ import annotations
 
 from typing import Any
@@ -51,3 +51,4 @@ def bson_safe_value(v: Any) -> Any:
         except Exception:
             return str(v)
     return v
+

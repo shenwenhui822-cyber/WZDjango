@@ -12,8 +12,8 @@ from pathlib import Path
 from django.conf import settings
 from django.core.management.base import BaseCommand
 
-from portal.import_service import import_excel_fileobj
-from portal.mongo_utils import get_app_collection
+from portal.db.mongo import get_app_collection
+from portal.services.import_service import import_excel_fileobj
 
 
 class Command(BaseCommand):

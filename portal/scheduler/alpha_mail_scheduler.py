@@ -49,7 +49,6 @@ def start_scheduler_background() -> None:
     if _scheduler_started:
         return
 
-    # 固定调度参数（不再读取环境变量）
     target = "17:30"
     poll_seconds = 30
     force = False

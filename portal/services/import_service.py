@@ -12,11 +12,10 @@ from portal.data.alpha_daily_schema import (
     is_alpha_daily_sheet,
     sheet_df_to_alpha_daily_records,
 )
-from portal.mongo_utils import bson_safe_value, get_app_collection
+from portal.db.mongo import bson_safe_value, get_app_collection
 
 
 def _report_date_key(v: Any) -> str | None:
-    """与库内 report_date（字符串或 datetime）统一为 YYYY-MM-DD 便于比对。"""
     if v is None:
         return None
     if hasattr(v, "strftime"):
@@ -39,7 +38,6 @@ def _alpha_daily_pair(rec: dict[str, Any]) -> tuple[str, str] | None:
 def _check_alpha_daily_duplicates(
     coll: Any, batch: list[dict[str, Any]], sheet_name: str
 ) -> None:
-    """同一批次内、以及与库中已有文档：报表日期 + 产品名称不可重复。"""
     pairs: list[tuple[str, str]] = []
     for rec in batch:
         p = _alpha_daily_pair(rec)
@@ -127,7 +125,6 @@ def _sheet_to_records_auto(
 
 
 def import_excel_fileobj(fileobj: Any, source_filename: str) -> dict[str, Any]:
-    """导入单个 xlsx 文件对象到 MongoDB，返回统计信息。"""
     xl = pd.ExcelFile(fileobj, engine="openpyxl")
     coll = get_app_collection()
 
@@ -153,8 +150,5 @@ def import_excel_fileobj(fileobj: Any, source_filename: str) -> dict[str, Any]:
         total_docs += n
         sheet_stats.append({"sheet": sheet_name, "inserted": n, "schema": schema_tag})
 
-    return {
-        "file": source_filename,
-        "inserted": total_docs,
-        "sheets": sheet_stats,
-    }
+    return {"file": source_filename, "inserted": total_docs, "sheets": sheet_stats}
+

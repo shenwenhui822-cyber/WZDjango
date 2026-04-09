@@ -9,16 +9,12 @@ from django.conf import settings
 from pymongo import UpdateOne
 
 from portal.data.alpha_daily_schema import ALPHA_DAILY_SCHEMA
-from portal.mongo_utils import get_app_collection, get_trade_date_collection
+from portal.db.mongo import get_app_collection, get_trade_date_collection
 
 
 def import_trade_dates_csv(
     csv_path: Path | None = None, *, clear: bool = False
 ) -> dict[str, Any]:
-    """
-    将 trade_dates_all.csv 写入 MongoDB alpha_product.trade_calendar。
-    文档字段：trade_date (YYYY-MM-DD)、source。
-    """
     path = csv_path or settings.TRADE_DATES_CSV
     if not path.is_file():
         raise FileNotFoundError(f"未找到文件: {path}")
@@ -50,7 +46,6 @@ def import_trade_dates_csv(
         return {"inserted": 0, "upserted": 0, "file": str(path), "total_rows": 0}
 
     res = coll.bulk_write(ops, ordered=False)
-    # 创建索引（幂等）
     try:
         coll.create_index("trade_date", unique=True)
     except Exception:
@@ -99,13 +94,6 @@ def fetch_nav_curve_series(
     only_trading_days: bool,
     recent_trading_days: int | None = None,
 ) -> list[dict[str, Any]]:
-    """
-    单产品：report_date + current_nav。
-    only_trading_days=True 且日历非空时，仅保留落在 trade_calendar 中的日期。
-
-    recent_trading_days 为 5/10/15 时：取该产品在日历内（若启用）的报表日中，**最近 N 个交易日**各一点（按日期升序）。
-    此时忽略 date_from / date_to。
-    """
     pn = (product_name or "").strip()
     if not pn:
         raise ValueError("请选择产品名称")
@@ -129,7 +117,7 @@ def fetch_nav_curve_series(
             if tset:
                 dates = [x for x in dates if x in tset]
         if len(dates) > recent_trading_days:
-            dates = dates[-recent_trading_days :]
+            dates = dates[-recent_trading_days:]
         if not dates:
             return []
         q1 = {
@@ -144,10 +132,7 @@ def fetch_nav_curve_series(
             ).sort("report_date", 1)
         )
     else:
-        q: dict[str, Any] = {
-            "_schema": ALPHA_DAILY_SCHEMA,
-            "product_name": pn,
-        }
+        q: dict[str, Any] = {"_schema": ALPHA_DAILY_SCHEMA, "product_name": pn}
         rd: dict[str, Any] = {}
         if date_from:
             rd["$gte"] = date_from
@@ -162,8 +147,6 @@ def fetch_nav_curve_series(
                 {"_id": 0, "report_date": 1, "product_name": 1, "current_nav": 1},
             ).sort("report_date", 1)
         )
-
-        tset: frozenset[str] | None = None
         if only_trading_days:
             tset = trading_date_iso_set()
             if tset:
@@ -185,3 +168,4 @@ def fetch_nav_curve_series(
             }
         )
     return out
+

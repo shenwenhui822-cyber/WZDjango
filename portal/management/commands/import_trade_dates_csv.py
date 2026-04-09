@@ -6,7 +6,7 @@ from pathlib import Path
 from django.conf import settings
 from django.core.management.base import BaseCommand
 
-from portal.trade_calendar import import_trade_dates_csv
+from portal.services.trade_calendar_service import import_trade_dates_csv
 
 
 class Command(BaseCommand):

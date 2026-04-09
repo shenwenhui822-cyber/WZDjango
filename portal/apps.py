@@ -18,6 +18,6 @@ class PortalConfig(AppConfig):
         # 仅在 runserver 场景自动启动，避免 migrate/check 等命令被常驻线程污染
         if "runserver" not in sys.argv:
             return
-        from portal.scheduler_runtime import start_scheduler_background
+        from portal.scheduler.alpha_mail_scheduler import start_scheduler_background
 
         start_scheduler_background()

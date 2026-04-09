@@ -18,3 +18,4 @@ def resolve_imap_credentials() -> tuple[str, str, str, int]:
         "未配置邮箱：请在项目根目录 `.env` 中设置 ALPHA_MAIL_USER、ALPHA_MAIL_PASS，"
         "或设置同名环境变量。"
     )
+

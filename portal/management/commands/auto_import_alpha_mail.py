@@ -5,7 +5,7 @@
     python manage.py auto_import_alpha_mail
 
 邮件：按主题精确匹配，多封同主题时取 Date 最新一封；仅处理 .xlsx 附件。
-邮箱：见 portal.mail_imap_config（.env / 环境变量）。
+邮箱：见 portal.config.mail_imap（.env / 环境变量）。
 """
 from __future__ import annotations
 
@@ -25,9 +25,9 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from portal.import_service import import_excel_fileobj
-from portal.mail_imap_config import resolve_imap_credentials
-from portal.mongo_utils import get_trade_date_collection
+from portal.config.mail_imap import resolve_imap_credentials
+from portal.db.mongo import get_trade_date_collection
+from portal.services.import_service import import_excel_fileobj
 
 
 def _decode_mime_header(value: str) -> str:

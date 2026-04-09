@@ -5,14 +5,16 @@ from datetime import datetime
 from typing import Any
 
 from portal.data.alpha_daily_schema import ALPHA_DAILY_SCHEMA
-from portal.mongo_utils import get_app_collection
+from portal.db.mongo import get_app_collection
 
 
 def _parse_iso_day(s: str) -> datetime:
     return datetime.strptime(s.strip(), "%Y-%m-%d")
 
 
-def _report_date_range_clause(date_from: str | None, date_to: str | None) -> dict[str, Any] | None:
+def _report_date_range_clause(
+    date_from: str | None, date_to: str | None
+) -> dict[str, Any] | None:
     """
     报表日期范围（含端点）。
     兼容 report_date 存 YYYY-MM-DD 字符串或 BSON datetime。
@@ -30,7 +32,6 @@ def _report_date_range_clause(date_from: str | None, date_to: str | None) -> dic
 
     branches: list[dict[str, Any]] = []
 
-    # 字符串字段（ISO 日序可比较）
     scond: dict[str, Any] = {}
     if df:
         scond["$gte"] = df
@@ -39,7 +40,6 @@ def _report_date_range_clause(date_from: str | None, date_to: str | None) -> dic
     if scond:
         branches.append({"report_date": scond})
 
-    # datetime 字段：起为当日 0 点，止为当日 23:59:59.999999
     dcond: dict[str, Any] = {}
     if df:
         dcond["$gte"] = _parse_iso_day(df)
@@ -87,21 +87,15 @@ def fetch_alpha_daily_documents(
     date_from: str | None = None,
     date_to: str | None = None,
 ) -> list[dict[str, Any]]:
-    """
-    查询 Alpha 产品日报文档（_schema == alpha_daily）。
-    按报表日期降序、产品名称升序。
-    date_from / date_to：YYYY-MM-DD，可选；均空则不限日期。
-    """
     coll = get_app_collection()
     query = build_alpha_daily_query(date_from, date_to)
 
     cursor = (
-        coll.find(query)
-        .sort(ALPHA_DAILY_SORT)
-        .limit(max(1, min(limit, 10000)))
+        coll.find(query).sort(ALPHA_DAILY_SORT).limit(max(1, min(limit, 10000)))
     )
     rows: list[dict[str, Any]] = []
     for doc in cursor:
         doc.pop("_id", None)
         rows.append(doc)
     return rows
+
