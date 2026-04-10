@@ -106,7 +106,6 @@ def _fund_nav_doc_from_row(
     doc: dict[str, Any] = {
         "_schema": FUND_NAV_REAL_SCHEMA,
         "product_key": fund["product_key"],
-        "report_date": nav_iso,
         "nav_date": nav_iso,
         "asset_code": code,
         "asset_name": str(row[col_map["asset_name"]]).strip(),
@@ -186,7 +185,7 @@ def import_fund_nav_excel_all_rows(
     fund: FundNavProduct,
     source_subject: str,
 ) -> dict[str, Any]:
-    """多行历史净值表：逐行 upsert，同一 product_key 下 (report_date, nav_date) 唯一。"""
+    """多行历史净值表：逐行 upsert，同一 product_key 下 nav_date 唯一。"""
     df = _read_fund_nav_dataframe(file_bytes, filename)
     if df.empty:
         raise ValueError("Excel 无数据行")
@@ -253,17 +252,16 @@ def upsert_fund_nav_doc(
         {
             "_schema": FUND_NAV_REAL_SCHEMA,
             "product_key": doc["product_key"],
-            "report_date": doc["report_date"],
             "nav_date": doc["nav_date"],
         },
-        {"$set": payload, "$unset": {"source_file": ""}},
+        {"$set": payload, "$unset": {"source_file": "", "report_date": ""}},
         upsert=True,
     )
     try:
         coll.create_index(
-            [("product_key", 1), ("report_date", 1), ("nav_date", 1)],
+            [("product_key", 1), ("nav_date", 1)],
             unique=True,
-            name="uniq_fund_nav_product_report_nav_date",
+            name="uniq_fund_nav_product_nav_date",
         )
     except Exception:
         pass
