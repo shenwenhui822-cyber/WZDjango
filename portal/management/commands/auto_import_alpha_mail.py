@@ -14,10 +14,8 @@ import imaplib
 import os
 import re
 from datetime import timedelta
-from email.header import decode_header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.utils import parsedate_to_datetime
 from pathlib import Path
 from smtplib import SMTPException, SMTP_SSL
 
@@ -27,54 +25,12 @@ from django.utils import timezone
 
 from portal.config.mail_imap import resolve_imap_credentials
 from portal.db.mongo import get_trade_date_collection
+from portal.services.imap_common import (
+    decode_mime_header,
+    find_latest_mail_id_by_exact_subject,
+    normalize_attachment_filename,
+)
 from portal.services.import_service import import_excel_fileobj
-
-
-def _decode_mime_header(value: str) -> str:
-    if not value:
-        return ""
-    out = ""
-    for text, enc in decode_header(value):
-        if isinstance(text, bytes):
-            try:
-                out += text.decode(enc or "utf-8")
-            except Exception:
-                out += text.decode("gbk", errors="ignore")
-        else:
-            out += text
-    return out
-
-
-def _normalize_filename(name: str) -> str:
-    clean = (name or "").strip().replace("\r", "").replace("\n", "")
-    return clean or "attachment.bin"
-
-
-def _select_latest_match(mailbox: imaplib.IMAP4_SSL, ids: list[bytes]) -> str | None:
-    """多封同主题时取邮件 Date 最新的一封。"""
-    latest_id: str | None = None
-    latest_dt = None
-    for raw_id in ids:
-        mail_id = raw_id.decode()
-        status, msg_data = mailbox.fetch(mail_id, "(BODY[HEADER.FIELDS (DATE)])")
-        if status != "OK" or not msg_data or not msg_data[0]:
-            continue
-        msg = email.message_from_bytes(msg_data[0][1])
-        raw_date = msg.get("Date", "")
-        try:
-            dt = parsedate_to_datetime(raw_date)
-        except Exception:
-            dt = None
-
-        if latest_id is None:
-            latest_id = mail_id
-            latest_dt = dt
-            continue
-
-        if dt is not None and (latest_dt is None or dt > latest_dt):
-            latest_id = mail_id
-            latest_dt = dt
-    return latest_id
 
 
 class Command(BaseCommand):
@@ -139,7 +95,7 @@ class Command(BaseCommand):
                 if status != "OK":
                     raise RuntimeError("无法打开 INBOX")
 
-                mail_id = self._find_target_mail_id(mailbox, target_subject)
+                mail_id = find_latest_mail_id_by_exact_subject(mailbox, target_subject)
                 if not mail_id:
                     report["status"] = "NO_MAIL"
                     report["message"] = "未找到目标邮件。"
@@ -197,26 +153,6 @@ class Command(BaseCommand):
         day = local_date.strftime("%Y-%m-%d")
         return coll.find_one({"trade_date": day}, {"_id": 1}) is not None
 
-    def _find_target_mail_id(
-        self, mailbox: imaplib.IMAP4_SSL, target_subject: str
-    ) -> str | None:
-        status, data = mailbox.search(None, "ALL")
-        if status != "OK":
-            return None
-        matched: list[bytes] = []
-        for raw_id in data[0].split():
-            mail_id = raw_id.decode()
-            status, msg_data = mailbox.fetch(mail_id, "(BODY[HEADER.FIELDS (SUBJECT)])")
-            if status != "OK" or not msg_data or not msg_data[0]:
-                continue
-            msg = email.message_from_bytes(msg_data[0][1])
-            subject = _decode_mime_header(msg.get("Subject", "")).strip()
-            if subject == target_subject:
-                matched.append(raw_id)
-        if not matched:
-            return None
-        return _select_latest_match(mailbox, matched)
-
     def _save_xlsx_attachments(
         self,
         mailbox: imaplib.IMAP4_SSL,
@@ -239,8 +175,8 @@ class Command(BaseCommand):
             if "attachment" not in disp.lower():
                 continue
             filename_raw = part.get_filename()
-            filename = _normalize_filename(
-                _decode_mime_header(filename_raw) if filename_raw else ""
+            filename = normalize_attachment_filename(
+                decode_mime_header(filename_raw) if filename_raw else ""
             )
             if not filename.lower().endswith(".xlsx"):
                 continue

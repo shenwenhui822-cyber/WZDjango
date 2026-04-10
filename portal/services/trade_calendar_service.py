@@ -69,6 +69,15 @@ def trading_date_iso_set() -> frozenset[str]:
     )
 
 
+def is_trade_date_iso(iso: str) -> bool:
+    """判断 YYYY-MM-DD 是否在 MongoDB trade_calendar 中。"""
+    day = (iso or "").strip()[:10]
+    if len(day) != 10:
+        return False
+    coll = get_trade_date_collection()
+    return coll.find_one({"trade_date": day}, {"_id": 1}) is not None
+
+
 def distinct_product_names() -> list[str]:
     coll = get_app_collection()
     names = coll.distinct(

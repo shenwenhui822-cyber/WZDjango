@@ -87,3 +87,18 @@ python manage.py auto_import_alpha_mail --force --subject-date 20260407
 
 ### 自动启动定时器（随 Django runserver 启动）
 默认已开启：启动 Django 即自动后台进入定时循环（无需手动执行额外命令），按每天 `17:30` 触发。
+
+
+  python manage.py auto_import_fund_nav_mail
+  python manage.py auto_import_fund_nav_mail --force
+  python manage.py auto_import_fund_nav_mail --nav-date 2026-04-02
+
+### 本地下载目录多行净值表（xls/xlsx）导入 fund_nav_real
+默认读取项目根目录 `downloaded_attachments_boshiyihao`：
+```powershell
+python manage.py import_fund_nav_local
+```
+指定目录：
+```powershell
+python manage.py import_fund_nav_local --dir G:\github\WZDjango\downloaded_attachments_boshiyihao
+```

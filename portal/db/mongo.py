@@ -18,10 +18,17 @@ def get_app_collection() -> Collection:
     return db[settings.MONGODB_COLLECTION_NAME]
 
 
-def get_trade_date_collection() -> Collection:
-    """交易日历集合：alpha_product.trade_calendar。"""
+def get_fund_nav_collection() -> Collection:
+    """真实净值集合：alpha_product.fund_nav_real。"""
     client = get_mongo_client()
-    db = client[settings.MONGODB_TRADE_CALENDAR_DB]
+    db = client[settings.MONGODB_DB_NAME]
+    return db[getattr(settings, "MONGODB_FUND_NAV_COLLECTION", "fund_nav_real")]
+
+
+def get_trade_date_collection() -> Collection:
+    """交易日历集合：{MONGODB_DB_NAME}.trade_calendar。"""
+    client = get_mongo_client()
+    db = client[settings.MONGODB_DB_NAME]
     return db[settings.MONGODB_TRADE_CALENDAR_COLLECTION]
 
 
