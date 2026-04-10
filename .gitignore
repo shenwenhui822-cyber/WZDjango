@@ -4,6 +4,7 @@ db.sqlite3
 .venv/
 venv/
 *.log
+*.env
 .env
 # 忽略 Alphadata 目录下的所有 .xlsx 文件
 /Alphadata/
