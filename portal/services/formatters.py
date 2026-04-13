@@ -63,3 +63,36 @@ def format_alpha_cell(en_key: str, val: Any) -> str:
 def row_to_display_cells(doc: dict, field_keys: list[str]) -> list[str]:
     return [format_alpha_cell(k, doc.get(k)) for k in field_keys]
 
+
+_FUND_NAV_FLOAT_KEYS = frozenset(
+    {
+        "unit_nav",
+        "cumulative_unit_nav",
+        "net_asset_value",
+        "total_shares",
+        "total_asset_value",
+    }
+)
+
+
+def format_fund_nav_cell(en_key: str, val: Any) -> str:
+    if val is None:
+        return "—"
+    if en_key == "nav_date":
+        if hasattr(val, "strftime"):
+            return val.strftime("%Y-%m-%d")
+        return str(val)[:10]
+    if en_key in _FUND_NAV_FLOAT_KEYS:
+        try:
+            x = float(val)
+            return f"{x:,.4f}"
+        except (TypeError, ValueError):
+            return str(val)
+    if en_key in ("asset_code", "asset_name"):
+        return str(val)
+    return str(val)
+
+
+def row_to_fund_nav_display_cells(doc: dict, field_keys: list[str]) -> list[str]:
+    return [format_fund_nav_cell(k, doc.get(k)) for k in field_keys]
+

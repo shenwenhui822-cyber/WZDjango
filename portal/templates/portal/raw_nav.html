@@ -1,8 +1,295 @@
 {% extends "base.html" %}
-{% block title %}原始净值 - WZ Alpha{% endblock %}
+{% block title %}基金净值 - WZ Alpha{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
+<style>
+    .fund-nav-table-wrap { overflow-x: auto; max-height: 75vh; }
+    .fund-nav-table-wrap table { font-size: 0.8rem; white-space: nowrap; }
+    .fund-nav-table-wrap th { position: sticky; top: 0; background: #e7f1ff; z-index: 1; }
+    #nav_date_range { min-width: 14rem; max-width: 22rem; background-color: #fff; }
+    .fund-nav-col-pick { font-size: 0.8rem; }
+    .fund-nav-col-pick .form-check { min-height: 1.15rem; }
+    .btn-fund-nav-col-modal { white-space: nowrap; }
+</style>
+{% endblock %}
 {% block content %}
-<h1 class="h4 mb-3">原始净值</h1>
-<div class="alert alert-info mb-0">
-    原始净值模块已预留。
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'portal:home' %}">首页</a></li>
+        <li class="breadcrumb-item active" aria-current="page">基金净值</li>
+    </ol>
+</nav>
+
+<h1 class="h4 mb-3">基金净值</h1>
+
+{% if error_msg %}
+<div class="alert alert-danger">{{ error_msg }}</div>
+{% endif %}
+
+{% if fund_nav_empty_product_pick %}
+<div class="alert alert-warning py-2 mb-2">请至少勾选一个产品后再查询。</div>
+{% endif %}
+
+<form class="row g-2 align-items-end mb-3" method="get" action="" id="fundNavForm">
+    <input type="hidden" name="nav_q" value="1">
+    <div class="col-12 col-lg-auto">
+        <label class="form-label small mb-0" for="nav_date_range">净值日</label>
+        <input type="text" id="nav_date_range" class="form-control form-control-sm" placeholder="选择日期或区间" autocomplete="off" readonly>
+        <input type="hidden" name="date_from" id="id_nav_date_from" value="{{ date_from }}">
+        <input type="hidden" name="date_to" id="id_nav_date_to" value="{{ date_to }}">
+    </div>
+    <div class="col-auto">
+        <label class="form-label small mb-0">条数上限</label>
+        <input type="number" name="limit" class="form-control form-control-sm" value="{{ limit }}" min="1" max="10000" style="width: 6rem;">
+    </div>
+    <div class="col-12">
+        <span class="form-label small mb-0 d-block">产品（可多选）</span>
+        <div class="d-flex flex-wrap gap-2 pt-1">
+            {% for fund in fund_nav_products %}
+            <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input" type="checkbox" name="product_key" value="{{ fund.product_key }}"
+                       id="fund_pk_{{ fund.product_key }}"
+                       {% if fund_nav_selection is None %}checked{% elif fund.product_key in fund_nav_selection %}checked{% endif %}>
+                <label class="form-check-label small" for="fund_pk_{{ fund.product_key }}">{{ fund.name_prefix }}</label>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="col-12">
+        <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3 pt-1">
+            <button type="button" class="btn btn-outline-secondary btn-sm btn-fund-nav-col-modal" data-bs-toggle="modal" data-bs-target="#fundNavColModal">
+                选择显示列
+            </button>
+            <span class="text-muted small" id="fundNavColSummary" title="当前勾选列数"></span>
+            {% if fund_nav_debug_enabled %}
+            <div class="form-check mb-0">
+                <input class="form-check-input" type="checkbox" name="debug" value="1" id="fundNavDebug"
+                       {% if show_debug %}checked{% endif %}>
+                <label class="form-check-label small" for="fundNavDebug">调试信息</label>
+            </div>
+            {% endif %}
+            <div class="d-flex flex-wrap gap-1 align-items-center">
+                <button type="submit" class="btn btn-primary btn-sm">查询</button>
+                <a href="{% url 'portal:raw_nav' %}" class="btn btn-outline-secondary btn-sm">重置</a>
+            </div>
+            <span class="text-muted small ms-md-auto">当前展示 <strong>{{ raw_count }}</strong> 条</span>
+        </div>
+    </div>
+
+    <div class="modal fade" id="fundNavColModal" tabindex="-1" aria-labelledby="fundNavColModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6" id="fundNavColModalLabel">显示列</h5>
+                    <button type="button" class="btn-close" id="fundNavColModalCloseX" aria-label="关闭"></button>
+                </div>
+                <div class="modal-body fund-nav-col-pick pt-2">
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="fundNavColSelectAll">全选</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="fundNavColClearAll">全部取消</button>
+                        <span class="text-muted small ms-auto" id="fundNavColSummaryModal"></span>
+                    </div>
+                    <p class="small text-muted mb-2 mb-md-3">点「<strong>确定</strong>」保留本次勾选；点「<strong>取消</strong>」或右上角关闭将恢复原勾选。若不勾选任何列就点页面「查询」，将按<strong>全部列</strong>展示。</p>
+                    <div class="row g-1 row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-xl-5">
+                        {% for col in column_catalog %}
+                        <div class="col">
+                            <div class="form-check mb-1">
+                                <input class="form-check-input fund-nav-col-checkbox" type="checkbox" name="col" value="{{ col.en }}" id="fund_col_pick_{{ forloop.counter }}"
+                                       {% if col.checked %}checked{% endif %}>
+                                <label class="form-check-label" for="fund_col_pick_{{ forloop.counter }}">{{ col.cn }}</label>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-primary btn-sm" id="fundNavColConfirmBtn">确定</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="fundNavColCancelBtn">取消</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+
+{% if debug_info_text %}
+<div class="alert alert-secondary py-2 mb-3">
+    <div class="small text-muted mb-1">调试（仅 <code>FUND_NAV_PAGE_DEBUG=True</code> 时可用）</div>
+    <pre class="small mb-0 bg-white border rounded p-2 text-break" style="max-height: 16rem; overflow: auto;">{{ debug_info_text }}</pre>
 </div>
+{% endif %}
+
+{% if not error_msg and not fund_nav_empty_product_pick and raw_count == 0 %}
+<div class="alert alert-warning">暂无数据。</div>
+{% endif %}
+
+{% if table_rows %}
+<div class="fund-nav-table-wrap border rounded shadow-sm">
+    <table class="table table-sm table-bordered table-hover mb-0">
+        <thead>
+            <tr>
+                {% for h in headers_zh %}
+                <th>{{ h }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in table_rows %}
+            <tr>
+                {% for cell in row %}
+                <td>{{ cell }}</td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<p class="mt-3"><a href="{% url 'portal:home' %}" class="btn btn-outline-primary">返回首页</a></p>
+{% endblock %}
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/zh.js"></script>
+<script>
+(function () {
+    var fromEl = document.getElementById("id_nav_date_from");
+    var toEl = document.getElementById("id_nav_date_to");
+    var displayEl = document.getElementById("nav_date_range");
+    if (!displayEl || !fromEl || !toEl) return;
+
+    if (typeof flatpickr !== "undefined" && flatpickr.l10ns && flatpickr.l10ns.zh) {
+        flatpickr.localize(flatpickr.l10ns.zh);
+    }
+
+    function syncHiddenFromSelection(selectedDates, instance) {
+        if (!selectedDates || selectedDates.length === 0) {
+            fromEl.value = "";
+            toEl.value = "";
+            return;
+        }
+        if (selectedDates.length === 1) {
+            var d = instance.formatDate(selectedDates[0], "Y-m-d");
+            fromEl.value = d;
+            toEl.value = d;
+            return;
+        }
+        var d0 = instance.formatDate(selectedDates[0], "Y-m-d");
+        var d1 = instance.formatDate(selectedDates[1], "Y-m-d");
+        if (d0 > d1) {
+            var t = d0;
+            d0 = d1;
+            d1 = t;
+        }
+        fromEl.value = d0;
+        toEl.value = d1;
+    }
+
+    var initialFrom = (fromEl.value || "").trim();
+    var initialTo = (toEl.value || "").trim();
+    var defaultDates = [];
+    if (initialFrom && initialTo) {
+        defaultDates = initialFrom === initialTo ? [initialFrom] : [initialFrom, initialTo];
+    } else if (initialFrom) {
+        defaultDates = [initialFrom];
+    } else if (initialTo) {
+        defaultDates = [initialTo];
+    }
+
+    flatpickr(displayEl, {
+        mode: "range",
+        dateFormat: "Y-m-d",
+        allowInput: false,
+        defaultDate: defaultDates.length ? defaultDates : undefined,
+        onClose: function (selectedDates, dateStr, instance) {
+            syncHiddenFromSelection(selectedDates, instance);
+        }
+    });
+})();
+
+(function () {
+    var boxes = document.querySelectorAll(".fund-nav-col-checkbox");
+    var total = boxes.length;
+    var sumEl = document.getElementById("fundNavColSummary");
+    var sumModalEl = document.getElementById("fundNavColSummaryModal");
+    var modalEl = document.getElementById("fundNavColModal");
+    var snapshot = [];
+    var confirmed = false;
+
+    function countChecked() {
+        var n = 0;
+        boxes.forEach(function (cb) { if (cb.checked) n += 1; });
+        return n;
+    }
+
+    function refreshSummary() {
+        var n = countChecked();
+        var t = "已选 " + n + " / " + total + " 列";
+        if (sumEl) sumEl.textContent = t;
+        if (sumModalEl) sumModalEl.textContent = t;
+    }
+
+    function restoreSnapshot() {
+        if (!snapshot.length || boxes.length !== snapshot.length) return;
+        boxes.forEach(function (cb, i) {
+            cb.checked = snapshot[i];
+        });
+    }
+
+    function getModalInstance() {
+        if (!modalEl || typeof bootstrap === "undefined") return null;
+        return bootstrap.Modal.getOrCreateInstance(modalEl);
+    }
+
+    function bindAll() {
+        var sel = document.getElementById("fundNavColSelectAll");
+        var clr = document.getElementById("fundNavColClearAll");
+        var confirmBtn = document.getElementById("fundNavColConfirmBtn");
+        var cancelBtn = document.getElementById("fundNavColCancelBtn");
+        var closeX = document.getElementById("fundNavColModalCloseX");
+
+        if (sel) sel.addEventListener("click", function () {
+            boxes.forEach(function (cb) { cb.checked = true; });
+            refreshSummary();
+        });
+        if (clr) clr.addEventListener("click", function () {
+            boxes.forEach(function (cb) { cb.checked = false; });
+            refreshSummary();
+        });
+        boxes.forEach(function (cb) {
+            cb.addEventListener("change", refreshSummary);
+        });
+
+        if (modalEl) {
+            modalEl.addEventListener("show.bs.modal", function () {
+                snapshot = Array.from(boxes).map(function (cb) { return cb.checked; });
+                confirmed = false;
+                refreshSummary();
+            });
+            modalEl.addEventListener("hidden.bs.modal", function () {
+                if (!confirmed) {
+                    restoreSnapshot();
+                }
+                refreshSummary();
+                confirmed = false;
+            });
+        }
+
+        function hideModal() {
+            var m = getModalInstance();
+            if (m) m.hide();
+        }
+
+        if (confirmBtn) confirmBtn.addEventListener("click", function () {
+            confirmed = true;
+            hideModal();
+        });
+        if (cancelBtn) cancelBtn.addEventListener("click", hideModal);
+        if (closeX) closeX.addEventListener("click", hideModal);
+
+        refreshSummary();
+    }
+
+    if (boxes.length) bindAll();
+})();
+</script>
 {% endblock %}

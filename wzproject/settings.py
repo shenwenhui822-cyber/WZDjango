@@ -15,6 +15,8 @@ DEBUG = True
 
 # Alpha 日报页：为 True 时，勾选「调试信息」或附加 ?debug=1 可查看 Mongo 查询与耗时（生产环境请设为 False）
 ALPHA_DAILY_PAGE_DEBUG = DEBUG
+# 基金净值页：为 True 时可在页面勾选「调试信息」查看 Mongo 查询片段等（生产建议 False）
+FUND_NAV_PAGE_DEBUG = DEBUG
 
 ALLOWED_HOSTS = ["*", "localhost", "127.0.0.1"]
 

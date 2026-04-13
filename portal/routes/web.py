@@ -17,7 +17,6 @@ web_urlpatterns = [
     ),
     path("nav/curve/", nav_curve_views.nav_curve, name="nav_curve"),
     path("nav/raw/", nav_curve_views.raw_nav, name="raw_nav"),
-    path("nav/t0/", nav_curve_views.t0_nav, name="t0_nav"),
     path("logout/", auth_views.logout_view, name="logout"),
 ]
 

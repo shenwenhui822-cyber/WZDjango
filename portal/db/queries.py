@@ -4,7 +4,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from portal.data.alpha_daily_schema import ALPHA_DAILY_SCHEMA
+from portal.data.alpha_daily_schema import (
+    ALPHA_DAILY_SCHEMA,
+    alpha_daily_mongo_exclude_excluded_product_names,
+)
 from portal.db.mongo import get_app_collection
 
 
@@ -62,6 +65,7 @@ def build_alpha_daily_query(
 ) -> dict[str, Any]:
     """构建 Alpha 日报 MongoDB 查询条件（不含 limit/sort）。"""
     query: dict[str, Any] = {"_schema": ALPHA_DAILY_SCHEMA}
+    query.update(alpha_daily_mongo_exclude_excluded_product_names())
 
     rd = _report_date_range_clause(date_from, date_to)
     if rd is not None:

@@ -9,7 +9,10 @@ import pandas as pd
 from django.conf import settings
 from pymongo import UpdateOne
 
-from portal.data.alpha_daily_schema import ALPHA_DAILY_SCHEMA
+from portal.data.alpha_daily_schema import (
+    ALPHA_DAILY_SCHEMA,
+    is_alpha_daily_product_name_excluded,
+)
 from portal.db.mongo import get_app_collection, get_trade_date_collection
 
 
@@ -101,7 +104,11 @@ def distinct_product_names() -> list[str]:
     names = coll.distinct(
         "product_name", {"_schema": ALPHA_DAILY_SCHEMA, "product_name": {"$ne": None}}
     )
-    return sorted(str(x) for x in names if x)
+    return sorted(
+        n
+        for n in (str(x) for x in names if x)
+        if not is_alpha_daily_product_name_excluded(n)
+    )
 
 
 def _iso_day(v: Any) -> str | None:
@@ -124,6 +131,8 @@ def fetch_nav_curve_series(
     pn = (product_name or "").strip()
     if not pn:
         raise ValueError("请选择产品名称")
+    if is_alpha_daily_product_name_excluded(pn):
+        raise ValueError("该产品不在展示范围内")
 
     coll = get_app_collection()
 

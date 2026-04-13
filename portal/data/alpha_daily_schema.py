@@ -6,7 +6,7 @@ Alpha 产品日报：中文表头 -> 英文字段、按类型解析。
 from __future__ import annotations
 
 import re
-from typing import Callable
+from typing import Any, Callable
 
 import pandas as pd
 
@@ -76,6 +76,25 @@ FIELD_PARSERS: dict[str, Callable[..., object]] = {
 }
 
 ALPHA_DAILY_SCHEMA = "alpha_daily"
+
+# 导入不入库、列表/API/净值曲线不展示的产品名称前缀（与门户业务约定一致）
+ALPHA_DAILY_EXCLUDED_PRODUCT_NAME_PREFIX = "吾执"
+
+
+def is_alpha_daily_product_name_excluded(product_name: object) -> bool:
+    """是否属于门户隐藏产品（名称以排除前缀开头）。"""
+    if product_name is None:
+        return False
+    s = str(product_name).strip()
+    if not s:
+        return False
+    return s.startswith(ALPHA_DAILY_EXCLUDED_PRODUCT_NAME_PREFIX)
+
+
+def alpha_daily_mongo_exclude_excluded_product_names() -> dict[str, Any]:
+    """Mongo 查询片段：排除 product_name 以 ``ALPHA_DAILY_EXCLUDED_PRODUCT_NAME_PREFIX`` 开头的文档。"""
+    esc = re.escape(ALPHA_DAILY_EXCLUDED_PRODUCT_NAME_PREFIX)
+    return {"$nor": [{"product_name": {"$regex": f"^{esc}"}}]}
 
 
 def normalize_header_cn(s: str) -> str:

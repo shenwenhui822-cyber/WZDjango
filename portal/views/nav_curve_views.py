@@ -1,13 +1,23 @@
 """净值曲线相关页面与接口视图（Nav Curve Views）。"""
 
 import json
+import time
 from datetime import datetime
 
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 
+from portal.data.alpha_daily_schema import is_alpha_daily_product_name_excluded
+from portal.data.fund_nav_real_config import FUND_NAV_PORTAL_COLUMNS, FUND_NAV_PRODUCTS
+from portal.db.fund_nav_queries import (
+    build_fund_nav_mongo_query,
+    fetch_fund_nav_portal_documents,
+    fund_nav_product_keys_from_request,
+)
+from portal.services.formatters import row_to_fund_nav_display_cells
 from portal.services.trade_calendar_service import (
     distinct_product_names,
     fetch_nav_curve_series,
@@ -33,6 +43,16 @@ def _parse_nav_time_mode(request) -> str:
     if raw == "custom":
         return "custom"
     return "recent"
+
+
+def _fund_nav_visible_field_keys(request) -> list[str]:
+    allowed_order = [en for _cn, en in FUND_NAV_PORTAL_COLUMNS]
+    allowed_set = frozenset(allowed_order)
+    raw = [x.strip() for x in request.GET.getlist("col") if x.strip()]
+    if not raw:
+        return allowed_order
+    picked = [en for en in allowed_order if en in allowed_set and en in set(raw)]
+    return picked if picked else allowed_order
 
 
 def _parse_date_range_for_nav(request) -> tuple[str | None, str | None]:
@@ -148,14 +168,99 @@ def nav_curve(request):
 
 @login_required(login_url="/")
 def raw_nav(request):
-    """原始净值页视图。"""
-    return render(request, "portal/raw_nav.html")
+    """基金净值页：展示 fund_nav_real 下 WZ_BSYH_MASTER / WZ_BSYH_B 净值表数据。"""
+    try:
+        limit = int(request.GET.get("limit") or 200)
+    except ValueError:
+        limit = 200
+    limit = max(1, min(limit, 10000))
 
+    date_from = (request.GET.get("date_from") or "").strip()
+    date_to = (request.GET.get("date_to") or "").strip()
 
-@login_required(login_url="/")
-def t0_nav(request):
-    """T0 净值页视图。"""
-    return render(request, "portal/t0_nav.html")
+    fund_nav_debug_enabled = getattr(settings, "FUND_NAV_PAGE_DEBUG", False)
+    show_debug = fund_nav_debug_enabled and request.GET.get("debug") == "1"
+
+    form_submitted = (request.GET.get("nav_q") or "").strip() == "1"
+    product_keys = fund_nav_product_keys_from_request(request.GET, form_submitted=form_submitted)
+
+    if product_keys is None:
+        fund_nav_selection = None
+    else:
+        fund_nav_selection = frozenset(product_keys)
+
+    fund_nav_empty_product_pick = (
+        form_submitted and product_keys is not None and len(product_keys) == 0
+    )
+
+    error_msg = None
+    rows: list[dict] = []
+    elapsed_ms: float | None = None
+    try:
+        if date_from:
+            datetime.strptime(date_from, "%Y-%m-%d")
+        if date_to:
+            datetime.strptime(date_to, "%Y-%m-%d")
+    except ValueError:
+        error_msg = "日期格式须为 YYYY-MM-DD（请使用下方日期选择器）。"
+    else:
+        try:
+            t0 = time.perf_counter()
+            rows = fetch_fund_nav_portal_documents(
+                limit=limit,
+                date_from=date_from or None,
+                date_to=date_to or None,
+                product_keys=product_keys,
+            )
+            elapsed_ms = (time.perf_counter() - t0) * 1000.0
+        except Exception as exc:
+            error_msg = f"读取 MongoDB 失败：{exc}"
+
+    visible_field_keys = _fund_nav_visible_field_keys(request)
+    cn_by_en = {en: cn for cn, en in FUND_NAV_PORTAL_COLUMNS}
+    headers_zh = [cn_by_en[en] for en in visible_field_keys]
+    column_catalog = [
+        {"cn": cn, "en": en, "checked": en in set(visible_field_keys)}
+        for cn, en in FUND_NAV_PORTAL_COLUMNS
+    ]
+
+    table_rows: list[list[str]] = []
+    for doc in rows:
+        table_rows.append(row_to_fund_nav_display_cells(doc, visible_field_keys))
+
+    debug_info_text: str | None = None
+    if show_debug and error_msg is None and elapsed_ms is not None:
+        dbg = {
+            "mongo_query_per_collection": build_fund_nav_mongo_query(
+                date_from or None, date_to or None
+            ),
+            "product_keys": product_keys,
+            "limit": limit,
+            "elapsed_ms": round(elapsed_ms, 3),
+            "row_count": len(rows),
+        }
+        debug_info_text = json.dumps(dbg, ensure_ascii=False, indent=2, default=str)
+
+    context = {
+        "headers_zh": headers_zh,
+        "column_catalog": column_catalog,
+        "table_rows": table_rows,
+        "raw_count": len(rows),
+        "date_from": date_from,
+        "date_to": date_to,
+        "limit": limit,
+        "error_msg": error_msg,
+        "fund_nav_products": FUND_NAV_PRODUCTS,
+        "fund_nav_selection": fund_nav_selection,
+        "fund_nav_empty_product_pick": fund_nav_empty_product_pick,
+        "fund_nav_debug_enabled": fund_nav_debug_enabled,
+        "show_debug": show_debug,
+        "debug_info_text": debug_info_text,
+        "fund_nav_mongo_db": settings.MONGODB_FUND_NAV_REAL_DB,
+        "fund_nav_coll_master": settings.NAV_REAL_WZ_BSYH_MASTER,
+        "fund_nav_coll_b": settings.NAV_REAL_WZ_BSYH_B,
+    }
+    return render(request, "portal/raw_nav.html", context)
 
 
 @csrf_exempt
@@ -166,6 +271,8 @@ def api_nav_curve(request):
     product_name = (request.GET.get("product_name") or "").strip()
     if not product_name:
         return JsonResponse({"ok": False, "error": "缺少 product_name"}, status=400)
+    if is_alpha_daily_product_name_excluded(product_name):
+        return JsonResponse({"ok": False, "error": "该产品不在展示范围内"}, status=400)
 
     date_from = (request.GET.get("date_from") or "").strip() or None
     date_to = (request.GET.get("date_to") or "").strip() or None

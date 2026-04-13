@@ -9,6 +9,7 @@ import pandas as pd
 from portal.data import value_parsers as vp
 from portal.data.alpha_daily_schema import (
     ALPHA_DAILY_SCHEMA,
+    is_alpha_daily_product_name_excluded,
     is_alpha_daily_sheet,
     sheet_df_to_alpha_daily_records,
 )
@@ -143,12 +144,34 @@ def import_excel_fileobj(fileobj: Any, source_filename: str) -> dict[str, Any]:
                 {"sheet": sheet_name, "inserted": 0, "schema": schema_tag, "skipped": True}
             )
             continue
+        skipped_excluded = 0
         if schema_tag == "alpha_daily":
+            n_before = len(batch)
+            batch = [
+                r
+                for r in batch
+                if not is_alpha_daily_product_name_excluded(r.get("product_name"))
+            ]
+            skipped_excluded = n_before - len(batch)
+            if not batch:
+                sheet_stats.append(
+                    {
+                        "sheet": sheet_name,
+                        "inserted": 0,
+                        "schema": schema_tag,
+                        "skipped": True,
+                        "skipped_excluded_name_prefix": skipped_excluded,
+                    }
+                )
+                continue
             _check_alpha_daily_duplicates(coll, batch, sheet_name)
         coll.insert_many(batch, ordered=False)
         n = len(batch)
         total_docs += n
-        sheet_stats.append({"sheet": sheet_name, "inserted": n, "schema": schema_tag})
+        row: dict[str, Any] = {"sheet": sheet_name, "inserted": n, "schema": schema_tag}
+        if skipped_excluded:
+            row["skipped_excluded_name_prefix"] = skipped_excluded
+        sheet_stats.append(row)
 
     return {"file": source_filename, "inserted": total_docs, "sheets": sheet_stats}
 

@@ -42,6 +42,19 @@ def fund_by_asset_code(code: str) -> FundNavProduct | None:
     return None
 
 
+# 基金净值门户表格列：与 portal.services.fund_nav_real_service._HEADER_KEYS 中英字段一致（仅展示表内列）
+FUND_NAV_PORTAL_COLUMNS: list[tuple[str, str]] = [
+    ("日期", "nav_date"),
+    ("资产代码", "asset_code"),
+    ("资产名称", "asset_name"),
+    ("资产份额净值(元)", "unit_nav"),
+    ("资产份额累计净值(元)", "cumulative_unit_nav"),
+    ("资产净值(元)", "net_asset_value"),
+    ("总份额", "total_shares"),
+    ("资产总值(元)", "total_asset_value"),
+]
+
+
 def fund_from_filename(filename: str) -> FundNavProduct | None:
     """根据附件/本地文件名粗判产品（BJP80B 优先于 SBJP80 子串匹配）。"""
     name = filename or ""
