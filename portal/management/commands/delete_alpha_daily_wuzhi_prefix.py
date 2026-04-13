@@ -41,9 +41,14 @@ class Command(BaseCommand):
     )
 
     def add_arguments(self, parser):
+        defaults = [
+            str(x).strip()
+            for x in ALPHA_DAILY_EXCLUDED_PRODUCT_NAME_PREFIX
+            if str(x).strip()
+        ]
         parser.add_argument(
             "--prefix",
-            default=ALPHA_DAILY_EXCLUDED_PRODUCT_NAME_PREFIX,
+            default=(defaults[0] if defaults else "吾执"),
             help="产品名称前缀，默认与门户排除前缀一致",
         )
         parser.add_argument(

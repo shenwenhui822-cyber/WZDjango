@@ -77,8 +77,8 @@ FIELD_PARSERS: dict[str, Callable[..., object]] = {
 
 ALPHA_DAILY_SCHEMA = "alpha_daily"
 
-# 导入不入库、列表/API/净值曲线不展示的产品名称前缀（与门户业务约定一致）
-ALPHA_DAILY_EXCLUDED_PRODUCT_NAME_PREFIX = "吾执"
+# 导入可入库、但列表/API/净值曲线不展示的产品名称前缀（可配置多个）
+ALPHA_DAILY_EXCLUDED_PRODUCT_NAME_PREFIX = ["吾执", "双创选股多策略一号","多元量选一号-东吴","尊选多策略一号","江海远山-","稳健量选一号", "量化精选一号-","量化精选二号-光大","量化选股多策略","银河DMA"]
 
 
 def is_alpha_daily_product_name_excluded(product_name: object) -> bool:
@@ -88,13 +88,29 @@ def is_alpha_daily_product_name_excluded(product_name: object) -> bool:
     s = str(product_name).strip()
     if not s:
         return False
-    return s.startswith(ALPHA_DAILY_EXCLUDED_PRODUCT_NAME_PREFIX)
+    prefixes = [
+        str(x).strip()
+        for x in ALPHA_DAILY_EXCLUDED_PRODUCT_NAME_PREFIX
+        if str(x).strip()
+    ]
+    return any(s.startswith(p) for p in prefixes)
 
 
 def alpha_daily_mongo_exclude_excluded_product_names() -> dict[str, Any]:
     """Mongo 查询片段：排除 product_name 以 ``ALPHA_DAILY_EXCLUDED_PRODUCT_NAME_PREFIX`` 开头的文档。"""
-    esc = re.escape(ALPHA_DAILY_EXCLUDED_PRODUCT_NAME_PREFIX)
-    return {"$nor": [{"product_name": {"$regex": f"^{esc}"}}]}
+    prefixes = [
+        str(x).strip()
+        for x in ALPHA_DAILY_EXCLUDED_PRODUCT_NAME_PREFIX
+        if str(x).strip()
+    ]
+    if not prefixes:
+        return {}
+    return {
+        "$nor": [
+            {"product_name": {"$regex": f"^{re.escape(p)}"}}
+            for p in prefixes
+        ]
+    }
 
 
 def normalize_header_cn(s: str) -> str:
