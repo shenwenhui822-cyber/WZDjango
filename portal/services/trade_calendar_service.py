@@ -1,6 +1,7 @@
 """交易日历 CSV 导入与净值曲线数据查询。"""
 from __future__ import annotations
 
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -76,6 +77,23 @@ def is_trade_date_iso(iso: str) -> bool:
         return False
     coll = get_trade_date_collection()
     return coll.find_one({"trade_date": day}, {"_id": 1}) is not None
+
+
+def prev_trading_day_iso_before(ref_iso: str, *, max_days: int = 400) -> str | None:
+    """
+    严格早于 ref_iso（通常为「运行日」当日）的最近一个交易日 YYYY-MM-DD。
+    从 ref 的前一日起逐日往前，直到命中 trade_calendar 或超出 max_days。
+    """
+    day = (ref_iso or "").strip()[:10]
+    if len(day) != 10:
+        return None
+    ref = date.fromisoformat(day)
+    d = ref - timedelta(days=1)
+    for _ in range(max_days):
+        if is_trade_date_iso(d.isoformat()):
+            return d.isoformat()
+        d -= timedelta(days=1)
+    return None
 
 
 def distinct_product_names() -> list[str]:

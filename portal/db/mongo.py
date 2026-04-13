@@ -18,11 +18,23 @@ def get_app_collection() -> Collection:
     return db[settings.MONGODB_COLLECTION_NAME]
 
 
-def get_fund_nav_collection() -> Collection:
-    """真实净值集合：alpha_product.fund_nav_real。"""
+def _allowed_fund_nav_product_keys() -> frozenset[str]:
+    return frozenset(
+        {
+            settings.NAV_REAL_WZ_BSYH_MASTER,
+            settings.NAV_REAL_WZ_BSYH_B,
+        }
+    )
+
+
+def get_fund_nav_collection(product_key: str) -> Collection:
+    """真实净值：库 MONGODB_FUND_NAV_REAL_DB，集合名 = NAV_REAL_* 产品编码。"""
+    key = (product_key or "").strip()
+    if key not in _allowed_fund_nav_product_keys():
+        raise ValueError(f"未知净值产品编码: {product_key!r}")
     client = get_mongo_client()
-    db = client[settings.MONGODB_DB_NAME]
-    return db[getattr(settings, "MONGODB_FUND_NAV_COLLECTION", "fund_nav_real")]
+    db = client[settings.MONGODB_FUND_NAV_REAL_DB]
+    return db[key]
 
 
 def get_trade_date_collection() -> Collection:

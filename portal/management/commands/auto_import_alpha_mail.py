@@ -1,7 +1,7 @@
 """
 交易日自动拉取 alpha 日报邮件（主题 alpha产品日报表YYYYMMDD）中的 xlsx 并导入 MongoDB。
 
-设计为每日 17:30 由系统计划任务执行：
+设计为每日 17:30 由系统计划任务执行（仅运行日为交易日时拉取并导入；非交易日不执行、不发结果邮件）：
     python manage.py auto_import_alpha_mail
 
 邮件：按主题精确匹配，多封同主题时取 Date 最新一封；仅处理 .xlsx 附件。
@@ -34,13 +34,16 @@ from portal.services.import_service import import_excel_fileobj
 
 
 class Command(BaseCommand):
-    help = "交易日自动抓取 alpha 日报邮件 xlsx 并导入 MongoDB（建议每日 17:30 计划任务执行）"
+    help = (
+        "仅运行日为交易日时执行：抓取 alpha 日报邮件 xlsx 并导入 MongoDB；"
+        "非交易日不执行且不发送结果邮件（建议每日 17:30 计划任务）"
+    )
 
     def add_arguments(self, parser):
         parser.add_argument(
             "--force",
             action="store_true",
-            help="忽略交易日判断，强制执行。",
+            help="忽略「运行日须为交易日」判断，仍执行并发送结果邮件。",
         )
         parser.add_argument(
             "--subject-date",
@@ -61,6 +64,7 @@ class Command(BaseCommand):
             "imported": [],
             "message": "",
             "error": "",
+            "notify": True,
         }
         base_url = getattr(settings, "PORTAL_RUN_ADDRESS", "")
         if base_url:
@@ -76,7 +80,11 @@ class Command(BaseCommand):
             report["is_trading_day"] = self._is_trading_day(local_date)
             if not options["force"] and not report["is_trading_day"]:
                 report["status"] = "SKIPPED"
-                report["message"] = f"{local_date.isoformat()} 非交易日（trade_calendar），跳过执行。"
+                report["notify"] = False
+                report["message"] = (
+                    f"{local_date.isoformat()} 非交易日（trade_calendar），不执行、不发送结果邮件。"
+                    " 使用 --force 可强制执行。"
+                )
                 self.stdout.write(report["message"])
                 return
 
@@ -146,7 +154,8 @@ class Command(BaseCommand):
             self.stderr.write(self.style.ERROR(f"执行失败: {exc}"))
             raise
         finally:
-            self._send_result_email(report, started_at, timezone.now(), base_url)
+            if report.get("notify", True):
+                self._send_result_email(report, started_at, timezone.now(), base_url)
 
     def _is_trading_day(self, local_date) -> bool:
         coll = get_trade_date_collection()

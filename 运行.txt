@@ -83,7 +83,7 @@ python manage.py auto_import_alpha_mail
 忽略交易日判断强制执行
 python manage.py auto_import_alpha_mail --force
 指定某天主题并强制执行
-python manage.py auto_import_alpha_mail --force --subject-date 20260407
+python3 manage.py auto_import_alpha_mail --force --subject-date 20260409
 
 ### 自动启动定时器（随 Django runserver 启动）
 默认已开启：启动 Django 即自动后台进入定时循环（无需手动执行额外命令），按每天 `17:30` 触发。

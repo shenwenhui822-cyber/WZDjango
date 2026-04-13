@@ -102,8 +102,10 @@ CSRF_TRUSTED_ORIGINS = [
 MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://127.0.0.1:27017/")
 MONGODB_DB_NAME = "alpha_product"
 MONGODB_COLLECTION_NAME = "alpha_sim_nav"
-# 博士一号真实净值（邮件 xlsx 落库）
-MONGODB_FUND_NAV_COLLECTION = "fund_nav_real"
+# 博士一号真实净值：独立库 fund_nav_real；集合名 = 下方逻辑产品编码
+MONGODB_FUND_NAV_REAL_DB = "fund_nav_real"
+NAV_REAL_WZ_BSYH_MASTER = "WZ_BSYH_MASTER"
+NAV_REAL_WZ_BSYH_B = "WZ_BSYH_B"
 # Alphadata 目录（xlsx 源文件）
 ALPHADATA_DIR = BASE_DIR / "Alphadata"
 

@@ -1,8 +1,8 @@
 """
-将本地目录中的博士一号净值 Excel（多行历史表）导入 MongoDB：alpha_product.fund_nav_real。
+将本地目录中的博士一号净值 Excel（多行历史表）导入 MongoDB：fund_nav_real.WZ_BSYH_MASTER / fund_nav_real.WZ_BSYH_B。
 
 默认目录：项目根下 downloaded_attachments_boshiyihao
-同一 product_key 下 (report_date, nav_date) 组合唯一（重复导入为覆盖更新）。
+同一集合（按产品分库）内 nav_date 唯一，重复导入为覆盖更新。
 
 用法：
   python manage.py import_fund_nav_local
@@ -35,7 +35,7 @@ def _list_target_files(directory: Path) -> list[Path]:
 
 
 class Command(BaseCommand):
-    help = "导入本地下载目录中的博士一号净值表（多行）到 fund_nav_real"
+    help = "导入本地下载目录中的博士一号净值表（多行）到 fund_nav_real 下各产品集合"
 
     def add_arguments(self, parser):
         parser.add_argument(

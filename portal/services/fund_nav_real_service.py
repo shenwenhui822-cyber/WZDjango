@@ -1,4 +1,4 @@
-"""博士一号真实净值 Excel（xlsx / xls）解析并写入 fund_nav_real。"""
+"""博士一号真实净值 Excel（xlsx / xls）解析并写入 fund_nav_real.{WZ_BSYH_MASTER|WZ_BSYH_B}。"""
 from __future__ import annotations
 
 import os
@@ -9,7 +9,7 @@ from typing import Any
 import pandas as pd
 from django.utils import timezone
 
-from portal.data.fund_nav_real_config import FUND_NAV_REAL_SCHEMA, FundNavProduct
+from portal.data.fund_nav_real_config import FundNavProduct
 from portal.db.mongo import bson_safe_value, get_fund_nav_collection
 
 
@@ -104,8 +104,6 @@ def _fund_nav_doc_from_row(
         raise ValueError(f"资产代码 {code} 与期望 {fund['asset_code']} 不一致")
 
     doc: dict[str, Any] = {
-        "_schema": FUND_NAV_REAL_SCHEMA,
-        "product_key": fund["product_key"],
         "nav_date": nav_iso,
         "asset_code": code,
         "asset_name": str(row[col_map["asset_name"]]).strip(),
@@ -185,7 +183,7 @@ def import_fund_nav_excel_all_rows(
     fund: FundNavProduct,
     source_subject: str,
 ) -> dict[str, Any]:
-    """多行历史净值表：逐行 upsert，同一 product_key 下 nav_date 唯一。"""
+    """多行历史净值表：逐行 upsert；集合已按产品区分，同一集合内 nav_date 唯一。"""
     df = _read_fund_nav_dataframe(file_bytes, filename)
     if df.empty:
         raise ValueError("Excel 无数据行")
@@ -206,7 +204,7 @@ def import_fund_nav_excel_all_rows(
             if doc is None:
                 skipped += 1
                 continue
-            upsert_fund_nav_doc(doc, source_subject=source_subject)
+            upsert_fund_nav_doc(doc, fund=fund, source_subject=source_subject)
             upserted += 1
         except Exception as exc:
             errors.append(f"第{i + 2}行: {exc}")
@@ -236,9 +234,10 @@ def parse_fund_nav_xlsx(
 def upsert_fund_nav_doc(
     doc: dict[str, Any],
     *,
+    fund: FundNavProduct,
     source_subject: str,
 ) -> None:
-    coll = get_fund_nav_collection()
+    coll = get_fund_nav_collection(fund["product_key"])
     now = timezone.now()
     if isinstance(now, datetime) and timezone.is_naive(now):
         now = timezone.make_aware(now, timezone.get_current_timezone())
@@ -249,19 +248,23 @@ def upsert_fund_nav_doc(
         "updated_at": now,
     }
     coll.update_one(
+        {"nav_date": doc["nav_date"]},
         {
-            "_schema": FUND_NAV_REAL_SCHEMA,
-            "product_key": doc["product_key"],
-            "nav_date": doc["nav_date"],
+            "$set": payload,
+            "$unset": {
+                "source_file": "",
+                "report_date": "",
+                "product_key": "",
+                "_schema": "",
+            },
         },
-        {"$set": payload, "$unset": {"source_file": "", "report_date": ""}},
         upsert=True,
     )
     try:
         coll.create_index(
-            [("product_key", 1), ("nav_date", 1)],
+            [("nav_date", 1)],
             unique=True,
-            name="uniq_fund_nav_product_nav_date",
+            name="uniq_fund_nav_nav_date",
         )
     except Exception:
         pass

@@ -1,10 +1,9 @@
-"""博士一号真实净值：产品与邮件主题约定（同库 alpha_product / fund_nav_real）。"""
+"""博士一号真实净值：产品与邮件主题约定；落库库名见 settings.MONGODB_FUND_NAV_REAL_DB，集合名见 settings.NAV_REAL_*。"""
 from __future__ import annotations
 
 from typing import TypedDict
 
-
-FUND_NAV_REAL_SCHEMA = "fund_nav_real"
+from django.conf import settings
 
 
 class FundNavProduct(TypedDict):
@@ -14,14 +13,15 @@ class FundNavProduct(TypedDict):
 
 
 # 与净值表文件名/邮件主题一致：{name_prefix}_{asset_code}_基金每日净值表YYYY-MM-DD
+# product_key 与 wzproject/settings.py 中 NAV_REAL_* 保持一致
 FUND_NAV_PRODUCTS: list[FundNavProduct] = [
     {
-        "product_key": "WZ_BSYH_MASTER",
+        "product_key": settings.NAV_REAL_WZ_BSYH_MASTER,
         "name_prefix": "吾执博士一号私募证券投资基金",
         "asset_code": "SBJP80",
     },
     {
-        "product_key": "WZ_BSYH_B",
+        "product_key": settings.NAV_REAL_WZ_BSYH_B,
         "name_prefix": "吾执博士一号私募证券投资基金B类",
         "asset_code": "BJP80B",
     },

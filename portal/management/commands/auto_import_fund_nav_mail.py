@@ -1,9 +1,10 @@
 """
-T+1 早晨拉取「博士一号」真实净值邮件中的 Excel 附件（.xlsx / .xls），写入 MongoDB：alpha_product.fund_nav_real。
+T+1 早晨拉取「博士一号」真实净值邮件中的 Excel 附件（.xlsx / .xls），写入 MongoDB：fund_nav_real.WZ_BSYH_MASTER / fund_nav_real.WZ_BSYH_B。
 
 业务约定：净值表在估值日 T 的 T+1 日约 6:30 到达；本任务在运行日 9:30 执行（见 alpha_mail_scheduler）。
-落库前判断「前一日」（运行日 -1 天）是否为交易日（trade_calendar）；仅当为交易日时才处理，
-且表格内「日期」应等于该交易日。
+仅当「运行日」为交易日时才执行；非交易日直接退出且不发送结果邮件。
+目标净值日 nav_date：默认为「运行日」之前最近一个交易日（遇连续非交易日则继续往前查找）；
+手工指定 --nav-date 时仍以该日为表格校验日；表格内「日期」须与 nav_date 一致。
 
 用法：
   python manage.py auto_import_fund_nav_mail
@@ -33,7 +34,10 @@ from portal.services.imap_common import (
     find_latest_mail_id_by_exact_subject,
     normalize_attachment_filename,
 )
-from portal.services.trade_calendar_service import is_trade_date_iso
+from portal.services.trade_calendar_service import (
+    is_trade_date_iso,
+    prev_trading_day_iso_before,
+)
 
 
 def _excel_ext_ok(filename: str) -> bool:
@@ -76,19 +80,21 @@ def _save_excel_attachments_from_mail(msg_bytes: bytes, save_dir: Path) -> list[
 
 class Command(BaseCommand):
     help = (
-        "交易日次日 9:30 抓取博士一号净值邮件 Excel（xlsx/xls）并写入 fund_nav_real（前一日须为交易日）"
+        "仅运行日为交易日时执行：抓取博士一号净值邮件 Excel（xlsx/xls）并写入 "
+        "fund_nav_real.WZ_BSYH_MASTER / fund_nav_real.WZ_BSYH_B；"
+        "nav_date 默认为运行日之前最近一个交易日。"
     )
 
     def add_arguments(self, parser):
         parser.add_argument(
             "--force",
             action="store_true",
-            help="忽略「前一日为交易日」判断，仍尝试按 nav_date 拉取并导入。",
+            help="忽略「运行日须为交易日」及手工 nav-date 的交易日校验，仍尝试导入。",
         )
         parser.add_argument(
             "--nav-date",
             default="",
-            help="净值日 YYYY-MM-DD，默认：运行日前一日（本地时区）。",
+            help="净值日 YYYY-MM-DD；默认取运行日之前最近一个交易日（本地时区）。",
         )
 
     def _send_result_email(
@@ -129,7 +135,7 @@ class Command(BaseCommand):
         fail_lines = report.get("failed_lines") or []
         body = "\n".join(
             [
-                "博士一号真实净值（fund_nav_real）自动导入结果",
+                "博士一号真实净值（fund_nav_real / WZ_BSYH_MASTER、WZ_BSYH_B）自动导入结果",
                 "",
                 f"状态: {status}",
                 f"开始时间: {timezone.localtime(started_at).strftime('%Y-%m-%d %H:%M:%S')}",
@@ -137,7 +143,8 @@ class Command(BaseCommand):
                 f"运行时长(秒): {duration_sec}",
                 f"服务地址: {base_url or '-'}",
                 f"目标净值日(nav_date): {report.get('nav_date') or '-'}",
-                f"前一日为交易日: {report.get('is_trading_day')}",
+                f"运行日为交易日: {report.get('run_day_is_trading')}",
+                f"nav_date 为交易日: {report.get('nav_date_is_trading')}",
                 f"成功条数: {report.get('ok_count', 0)}",
                 f"结果说明: {report.get('message') or '-'}",
                 f"异常信息: {report.get('error') or '-'}",
@@ -171,39 +178,63 @@ class Command(BaseCommand):
             "status": "UNKNOWN",
             "run_date": timezone.localdate().isoformat(),
             "nav_date": "",
-            "is_trading_day": False,
+            "run_day_is_trading": False,
+            "nav_date_is_trading": False,
             "ok_count": 0,
             "success_lines": [],
             "failed_lines": [],
             "message": "",
             "error": "",
+            "notify": True,
         }
 
         local_date = timezone.localdate()
-        nav_raw = (options["nav_date"] or "").strip()
-        if nav_raw:
-            nav_iso = nav_raw[:10]
-        else:
-            nav_iso = (local_date - timedelta(days=1)).isoformat()
-        report["nav_date"] = nav_iso
+        run_iso = local_date.isoformat()
+        report["run_day_is_trading"] = is_trade_date_iso(run_iso)
 
         self.stdout.write(
-            f"运行日: {local_date.isoformat()}，目标净值日(nav_date): {nav_iso}"
+            f"运行日: {run_iso}，运行日是否交易日: {report['run_day_is_trading']}"
         )
         if base_url:
             self.stdout.write(f"服务地址: {base_url}")
 
         try:
-            if not options["force"] and not is_trade_date_iso(nav_iso):
+            if not options["force"] and not report["run_day_is_trading"]:
                 report["status"] = "SKIPPED"
-                report["is_trading_day"] = False
+                report["notify"] = False
                 report["message"] = (
-                    f"{nav_iso} 非交易日（trade_calendar），跳过。使用 --force 可强制执行。"
+                    f"{run_iso} 非交易日（trade_calendar），不执行、不发送结果邮件。"
+                    " 使用 --force 可强制执行。"
                 )
                 self.stdout.write(self.style.WARNING(report["message"]))
                 return
 
-            report["is_trading_day"] = is_trade_date_iso(nav_iso)
+            nav_raw = (options["nav_date"] or "").strip()
+            if nav_raw:
+                nav_iso = nav_raw[:10]
+            else:
+                nav_iso = prev_trading_day_iso_before(run_iso) or ""
+                if not nav_iso:
+                    report["status"] = "FAILED"
+                    report["message"] = (
+                        "无法在 trade_calendar 中解析「运行日之前最近一个交易日」，"
+                        "请检查日历数据是否已导入。"
+                    )
+                    self.stderr.write(self.style.ERROR(report["message"]))
+                    return
+            report["nav_date"] = nav_iso
+            report["nav_date_is_trading"] = is_trade_date_iso(nav_iso)
+
+            self.stdout.write(f"目标净值日(nav_date): {nav_iso}")
+
+            if nav_raw and not options["force"] and not report["nav_date_is_trading"]:
+                report["status"] = "SKIPPED"
+                report["message"] = (
+                    f"{nav_iso} 非交易日（trade_calendar），跳过。"
+                    "使用 --force 可强制执行。"
+                )
+                self.stdout.write(self.style.WARNING(report["message"]))
+                return
 
             email_user, email_pass, imap_server, imap_port = resolve_imap_credentials()
             self.stdout.write(f"IMAP: {email_user} @ {imap_server}:{imap_port}")
@@ -265,6 +296,7 @@ class Command(BaseCommand):
                         )
                         upsert_fund_nav_doc(
                             doc,
+                            fund=fund,
                             source_subject=subj,
                         )
                     except Exception as exc:
@@ -316,4 +348,5 @@ class Command(BaseCommand):
             self.stderr.write(self.style.ERROR(f"执行失败: {exc}"))
             raise
         finally:
-            self._send_result_email(report, started_at, timezone.now(), base_url)
+            if report.get("notify", True):
+                self._send_result_email(report, started_at, timezone.now(), base_url)
