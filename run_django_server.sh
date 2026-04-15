@@ -84,24 +84,20 @@ precheck_linux_env() {
         exit 1
     fi
 
-    # 检测依赖，缺失时自动安装
-    "$PY_CMD" -c "import django" >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        echo "[WARN] 缺少 Python 依赖: django"
+    # 检测关键依赖（requirements 关键模块），缺失时自动安装
+    local missing_mods=()
+    local check_mods=("django" "dotenv" "pymongo" "pandas" "numpy" "openpyxl" "xlrd" "rqdatac")
+    local m=""
+    for m in "${check_mods[@]}"; do
+        "$PY_CMD" -c "import ${m}" >/dev/null 2>&1 || missing_mods+=("${m}")
+    done
+    if [ ${#missing_mods[@]} -gt 0 ]; then
+        echo "[WARN] 缺少 Python 依赖模块: ${missing_mods[*]}"
         if [ -f "requirements.txt" ]; then
             auto_install_python_deps "-r requirements.txt"
         else
-            auto_install_python_deps "django"
-        fi
-    fi
-
-    "$PY_CMD" -c "import dotenv" >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        echo "[WARN] 缺少 Python 依赖: python-dotenv (import dotenv 失败)"
-        if [ -f "requirements.txt" ]; then
-            auto_install_python_deps "-r requirements.txt"
-        else
-            auto_install_python_deps "python-dotenv"
+            echo "[ERROR] 未找到 requirements.txt，无法自动安装完整依赖。"
+            exit 1
         fi
     fi
 
