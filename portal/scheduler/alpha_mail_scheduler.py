@@ -13,6 +13,7 @@ _scheduler_started = False
 # (HH:MM, management command name, kwargs)
 _DEFAULT_SCHEDULES: list[tuple[str, str, dict]] = [
     ("09:30", "auto_import_fund_nav_mail", {}),
+    ("09:31", "update_rq_bench", {}),
     ("17:30", "auto_import_alpha_mail", {}),
 ]
 
@@ -25,10 +26,21 @@ def _fund_nav_enabled() -> bool:
     )
 
 
+def _rq_bench_enabled() -> bool:
+    return os.getenv("RQ_BENCH_SCHEDULER_ENABLED", "1").strip() not in (
+        "0",
+        "false",
+        "False",
+    )
+
+
 def _schedules() -> list[tuple[str, str, dict]]:
+    s = list(_DEFAULT_SCHEDULES)
     if not _fund_nav_enabled():
-        return [x for x in _DEFAULT_SCHEDULES if x[1] != "auto_import_fund_nav_mail"]
-    return list(_DEFAULT_SCHEDULES)
+        s = [x for x in s if x[1] != "auto_import_fund_nav_mail"]
+    if not _rq_bench_enabled():
+        s = [x for x in s if x[1] != "update_rq_bench"]
+    return s
 
 
 def _run_job(command_name: str, *, force: bool) -> None:

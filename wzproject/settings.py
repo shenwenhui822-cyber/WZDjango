@@ -114,3 +114,9 @@ ALPHADATA_DIR = BASE_DIR / "Alphadata"
 # 交易日历：库名同 MONGODB_DB_NAME，独立集合（字段仍为 trade_date）
 MONGODB_TRADE_CALENDAR_COLLECTION = "trade_calendar"
 TRADE_DATES_CSV = BASE_DIR / "trade_dates_all" / "trade_dates_all.csv"
+
+# RQ 基准行情：库 basic_rq，集合 rq_bench（供 update_rq_bench 系列任务使用）
+MONGODB_RQ_BENCH_DB = "basic_rq"
+MONGODB_RQ_BENCH_COLLECTION = "rq_bench"
+
+

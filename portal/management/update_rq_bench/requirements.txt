@@ -1,0 +1,12 @@
+# rq_bench 同步脚本依赖（update_rq_bench_17.py / update_rq_bench_range.py）
+# 安装: pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+#
+# 说明:
+# - rqdatac 需完整 wheel；若报 No module named rqdatac.connection，请: pip uninstall rqdatac -y && pip install -r requirements.txt
+# - numpy 固定为 1.x，避免与旧版 pyarrow / numba 等二进制扩展冲突（pandas 2.3 仍兼容 numpy 1.26）
+# - PyPI 上无 rqdatac==2.9.5，2.9 线最低版本为 2.9.39.3；建议用 3.4.7.8+
+
+numpy>=1.26.0,<2
+pandas>=2.0,<3
+pymongo>=4.0
+rqdatac==3.4.7.8
