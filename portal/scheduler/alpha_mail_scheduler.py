@@ -12,8 +12,8 @@ _scheduler_started = False
 
 # (HH:MM, management command name, kwargs)
 _DEFAULT_SCHEDULES: list[tuple[str, str, dict]] = [
-    ("09:30", "auto_import_fund_nav_mail", {}),
-    ("09:31", "update_rq_bench", {}),
+    ("09:31", "auto_import_fund_nav_mail", {}),
+    ("09:30", "update_rq_bench", {}),
     ("17:30", "auto_import_alpha_mail", {}),
 ]
 
@@ -43,13 +43,33 @@ def _schedules() -> list[tuple[str, str, dict]]:
     return s
 
 
-def _run_job(command_name: str, *, force: bool) -> None:
+def _run_job(command_name: str, *, force: bool, extra_kwargs: dict | None = None) -> None:
     ts = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[alpha-scheduler] [{ts}] 触发执行 {command_name} ...")
-    kwargs = {"force": True} if force else {}
-    call_command(command_name, **kwargs)
-    ts2 = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[alpha-scheduler] [{ts2}] {command_name} 本次执行结束。")
+    kwargs = dict(extra_kwargs or {})
+    if force:
+        kwargs["force"] = True
+    try:
+        call_command(command_name, **kwargs)
+        ts2 = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[alpha-scheduler] [{ts2}] {command_name} 本次执行结束。")
+    except Exception as exc:
+        ts2 = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[alpha-scheduler] [{ts2}] {command_name} 执行失败: {exc}")
+
+
+def _dispatch_job_async(command_name: str, *, force: bool, extra_kwargs: dict | None = None) -> None:
+    t = threading.Thread(
+        target=_run_job,
+        kwargs={
+            "command_name": command_name,
+            "force": force,
+            "extra_kwargs": extra_kwargs,
+        },
+        name=f"alpha-job-{command_name}",
+        daemon=True,
+    )
+    t.start()
 
 
 def run_scheduler_loop(
@@ -73,18 +93,18 @@ def run_scheduler_loop(
     last_run_date: dict[str, str | None] = {f"{cmd}@{tm}": None for tm, cmd, _ in schedules}
 
     if run_now:
-        for target, cmd_name, _ in schedules:
-            _run_job(cmd_name, force=force)
+        for target, cmd_name, job_kwargs in schedules:
+            _dispatch_job_async(cmd_name, force=force, extra_kwargs=job_kwargs)
             last_run_date[f"{cmd_name}@{target}"] = timezone.localdate().isoformat()
 
     while True:
         now_local = timezone.localtime()
         today = now_local.date().isoformat()
         hm = now_local.strftime("%H:%M")
-        for target, cmd_name, _ in schedules:
+        for target, cmd_name, job_kwargs in schedules:
             key = f"{cmd_name}@{target}"
             if hm == target and last_run_date.get(key) != today:
-                _run_job(cmd_name, force=force)
+                _dispatch_job_async(cmd_name, force=force, extra_kwargs=job_kwargs)
                 last_run_date[key] = today
         time.sleep(max(5, int(poll_seconds)))
 
