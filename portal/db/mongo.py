@@ -44,6 +44,29 @@ def get_trade_date_collection() -> Collection:
     return db[settings.MONGODB_TRADE_CALENDAR_COLLECTION]
 
 
+def get_rq_bench_collection() -> Collection:
+    """原始指数行情：{MONGODB_RQ_BENCH_DB}.{MONGODB_RQ_BENCH_COLLECTION}。"""
+    client = get_mongo_client()
+    db = client[settings.MONGODB_RQ_BENCH_DB]
+    return db[settings.MONGODB_RQ_BENCH_COLLECTION]
+
+
+def get_rq_bench_calc_collection(calc_collection_name: str) -> Collection:
+    """
+    计算结果集合：须位于 MONGODB_RQ_BENCH_DB，且集合名以 MONGODB_RQ_BENCH_CALC_PREFIX 开头，
+    与原始 rq_bench 区分。
+    """
+    name = (calc_collection_name or "").strip()
+    prefix = getattr(settings, "MONGODB_RQ_BENCH_CALC_PREFIX", "calc_")
+    if not name.startswith(prefix):
+        raise ValueError(
+            f"计算集合名必须以 {prefix!r} 开头，当前: {calc_collection_name!r}"
+        )
+    client = get_mongo_client()
+    db = client[settings.MONGODB_RQ_BENCH_DB]
+    return db[name]
+
+
 def bson_safe_value(v: Any) -> Any:
     """将 pandas/numpy 等类型转为可写入 MongoDB 的基本类型。"""
     if v is None:

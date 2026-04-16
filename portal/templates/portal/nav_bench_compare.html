@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+{% block title %}净值基准对比 - WZ Alpha{% endblock %}
+{% block extra_css %}
+<style>
+    .panel-card { border: 1px solid #dee2e6; border-radius: 0.5rem; background: #fff; }
+    .panel-card .panel-hd { padding: 0.625rem 0.75rem; border-bottom: 1px solid #eef0f2; font-weight: 600; font-size: 0.95rem; }
+    .panel-card .panel-bd { padding: 0.75rem; }
+    .chart-wrap { max-width: 100%; height: 460px; }
+    .product-list { max-height: 460px; overflow-y: auto; }
+    .cmp-group { border-bottom: 1px solid #eef0f2; }
+    .cmp-group:last-child { border-bottom: 0; }
+    .cmp-group-summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding: 0.55rem 0.75rem;
+        font-weight: 600;
+        cursor: pointer;
+        list-style: none;
+        user-select: none;
+    }
+    .cmp-group-summary::-webkit-details-marker { display: none; }
+    .cmp-group-title {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        min-width: 0;
+    }
+    .cmp-group-arrow { color: #6c757d; transition: transform .2s ease; }
+    .cmp-group[open] .cmp-group-arrow { transform: rotate(180deg); }
+    .cmp-group-count { color: #6c757d; font-size: 0.8rem; }
+    .cmp-children { padding: 0 0 0.1rem 0; }
+    .cmp-product-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0.75rem 0.5rem 1.75rem;
+        margin: 0;
+        cursor: pointer;
+    }
+    .cmp-product-item.is-active {
+        background: #eaf3ff;
+        color: #0d31fd5d;
+        font-weight: 600;
+    }
+    .cmp-product-radio { margin-top: 0; }
+    .cmp-dot {
+        width: 0.35rem;
+        height: 0.35rem;
+        border-radius: 50%;
+        background: #adb5bd;
+        flex: 0 0 auto;
+    }
+    .cmp-folder { color: #98a1ab; font-size: 0.95rem; line-height: 1; }
+    .cmp-product-item.is-active .cmp-folder { color: #0d6efd; }
+    .cmp-product-text { line-height: 1.2; }
+    .kpi-card { border: 1px solid #e6e9ef; border-radius: 0.5rem; background: #fff; padding: 0.9rem 1rem; }
+    .kpi-title { color: #5f6b7a; font-size: 0.9rem; margin-bottom: 0.2rem; }
+    .kpi-value { font-size: 2rem; font-weight: 600; line-height: 1.1; }
+</style>
+{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'portal:home' %}">首页</a></li>
+        <li class="breadcrumb-item active" aria-current="page">净值基准对比</li>
+    </ol>
+</nav>
+
+<h1 class="h4 mb-3">净值基准对比</h1>
+
+{% if error_msg %}
+<div class="alert alert-danger">{{ error_msg }}</div>
+{% endif %}
+
+<form id="cmp-filter-form" method="get" action="">
+    <div class="row g-3 align-items-stretch">
+        <div class="col-12 col-lg-3">
+            <div class="panel-card h-100">
+                <div class="panel-hd">产品名称</div>
+                <div class="panel-bd p-0">
+                    <div class="product-list">
+                        {% for group in product_groups %}
+                        <details class="cmp-group" {% if group.open %}open{% endif %}>
+                            <summary class="cmp-group-summary">
+                                <span class="cmp-group-title">
+                                    <i class="bi bi-folder-fill cmp-folder" aria-hidden="true"></i>
+                                    <span>{{ group.name }}</span>
+                                </span>
+                                <span class="d-flex align-items-center gap-2">
+                                    <span class="cmp-group-count">{{ group.products|length }}</span>
+                                    <i class="bi bi-chevron-down cmp-group-arrow" aria-hidden="true"></i>
+                                </span>
+                            </summary>
+                            <div class="cmp-children">
+                                {% for p in group.products %}
+                                <label class="cmp-product-item {% if p == selected_product %}is-active{% endif %}" for="cmp_p_{{ forloop.parentloop.counter }}_{{ forloop.counter }}">
+                                    <input class="form-check-input cmp-product-radio" type="radio" name="product_name" value="{{ p }}" id="cmp_p_{{ forloop.parentloop.counter }}_{{ forloop.counter }}" {% if p == selected_product %}checked{% endif %}>
+                                    <span class="cmp-dot" aria-hidden="true"></span>
+                                    <i class="bi bi-folder-fill cmp-folder" aria-hidden="true"></i>
+                                    <span class="cmp-product-text">{{ p }}</span>
+                                </label>
+                                {% endfor %}
+                            </div>
+                        </details>
+                        {% empty %}
+                        <div class="small text-muted p-3">（无产品）</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-7">
+            <div class="panel-card">
+                <div class="panel-bd">
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+                        <div>
+                            <div class="h4 mb-0">基金净值与基准对比</div>
+                            <div class="text-muted small">{{ selected_product|default:"-" }} vs {{ bench_name|default:bench_code|default:"-" }}</div>
+                        </div>
+                        <div class="btn-group btn-group-sm" role="group" aria-label="区间选择">
+                            <input type="radio" class="btn-check cmp-recent" name="recent" id="cmp_r1m" value="21" {% if recent == "21" %}checked{% endif %}>
+                            <label class="btn btn-outline-primary" for="cmp_r1m">近1月</label>
+                            <input type="radio" class="btn-check cmp-recent" name="recent" id="cmp_r3m" value="63" {% if recent == "63" %}checked{% endif %}>
+                            <label class="btn btn-outline-primary" for="cmp_r3m">近3月</label>
+                            <input type="radio" class="btn-check cmp-recent" name="recent" id="cmp_r6m" value="126" {% if recent == "126" %}checked{% endif %}>
+                            <label class="btn btn-outline-primary" for="cmp_r6m">近6月</label>
+                            <input type="radio" class="btn-check cmp-recent" name="recent" id="cmp_r1y" value="252" {% if recent == "252" or not recent %}checked{% endif %}>
+                            <label class="btn btn-outline-primary" for="cmp_r1y">近1年</label>
+                            <input type="radio" class="btn-check cmp-recent" name="recent" id="cmp_rall" value="all" {% if recent == "all" %}checked{% endif %}>
+                            <label class="btn btn-outline-primary" for="cmp_rall">成立以来</label>
+                        </div>
+                    </div>
+                    <div class="small text-muted mb-2">
+                        行数：<strong>{{ row_count }}</strong>；
+                        <!-- 数据来源：{% if from_cache %}<strong>已落库结果</strong>{% else %}<strong>实时计算并自动落库</strong>{% endif %} -->
+                    </div>
+                    <!-- <div class="small text-muted mb-2">
+                        基准口径：使用 `rq_bench.pct_chg` 日收益累乘归一化（起点=1）；日历对齐：以产品交易日为主轴，若当日基准缺失则沿用前一日。
+                        年化因子：<strong>{{ annualization_factor }}</strong>；
+                        最小样本：<strong>{{ min_sample_days }}</strong> 交易日；
+                        无风险利率：<strong>{{ risk_free_annual_pct|floatformat:2 }}%</strong>（年化常数）。
+                    </div> -->
+                    <div class="chart-wrap border rounded p-2 bg-white">
+                        <canvas id="cmpChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-2">
+            <div class="d-flex flex-column gap-3">
+                <div class="kpi-card">
+                    <div class="kpi-title">最大回撤</div>
+                    <div class="kpi-value">
+                        {% if metrics.max_drawdown_pct == None %}—{% else %}{{ metrics.max_drawdown_pct|floatformat:2 }}%{% endif %}
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-title">年化波动</div>
+                    <div class="kpi-value">
+                        {% if metrics.annual_vol_pct == None %}—{% else %}{{ metrics.annual_vol_pct|floatformat:2 }}%{% endif %}
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-title">夏普比率</div>
+                    <div class="kpi-value">
+                        {% if metrics.sharpe == None %}—{% else %}{{ metrics.sharpe|floatformat:2 }}{% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+{% endblock %}
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script id="cmp-data" type="application/json">{{ chart_json|safe }}</script>
+<script>
+(function () {
+    var form = document.getElementById('cmp-filter-form');
+    function submitFilters() { if (form) form.submit(); }
+    document.querySelectorAll('.cmp-product-radio').forEach(function (control) {
+        control.addEventListener('change', submitFilters);
+    });
+    // 某些浏览器下，label 点击可能不触发 change（尤其已选中项），这里兜底强制提交。
+    document.querySelectorAll('.cmp-product-item').forEach(function (item) {
+        item.addEventListener('click', function () {
+            var radio = item.querySelector('.cmp-product-radio');
+            if (!radio) return;
+            if (!radio.checked) radio.checked = true;
+            submitFilters();
+        });
+    });
+    document.querySelectorAll('.cmp-recent').forEach(function (control) {
+        control.addEventListener('change', submitFilters);
+    });
+
+    var el = document.getElementById('cmp-data');
+    if (!el) return;
+    var cfg = JSON.parse(el.textContent || '{}');
+    var labels = cfg.labels || [];
+    var datasetsRaw = cfg.datasets || [];
+    var ctx = document.getElementById('cmpChart');
+    if (!ctx) return;
+
+    var colors = [
+        ['rgb(220,53,69)', 'rgba(220,53,69,0.12)'],
+        ['rgb(13,110,253)', 'rgba(13,110,253,0.12)']
+    ];
+    var datasets = datasetsRaw.map(function (ds, idx) {
+        var c = colors[idx % colors.length];
+        return {
+            label: ds.label,
+            data: ds.data || [],
+            borderColor: c[0],
+            backgroundColor: c[1],
+            tension: 0.15,
+            fill: false,
+            pointRadius: 2,
+            spanGaps: true
+        };
+    });
+
+    new Chart(ctx, {
+        type: 'line',
+        data: { labels: labels, datasets: datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { ticks: { maxRotation: 45, minRotation: 0 } },
+                y: { title: { display: true, text: '归一化净值' } }
+            },
+            plugins: { legend: { display: true } }
+        }
+    });
+})();
+</script>
+{% endblock %}
+

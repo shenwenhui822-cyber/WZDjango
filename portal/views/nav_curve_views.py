@@ -1,6 +1,7 @@
 """净值曲线相关页面与接口视图（Nav Curve Views）。"""
 
 import json
+import math
 import time
 from datetime import datetime
 
@@ -17,11 +18,48 @@ from portal.db.fund_nav_queries import (
     fetch_fund_nav_portal_documents,
     fund_nav_product_keys_from_request,
 )
+from portal.services.benchmark_compare_service import build_and_store_nav_bench_compare
 from portal.services.formatters import row_to_fund_nav_display_cells
 from portal.services.trade_calendar_service import (
     distinct_product_names,
     fetch_nav_curve_series,
 )
+
+_BENCH_COMPARE_GROUP_PREFIXES: list[str] = [
+    "中证1000指增",
+    "中证500指增",
+    "双创选股",
+    "尊选",
+    "沪深300指增",
+    "红利",
+    "量化对冲",
+    "量化选股",
+]
+
+
+def _group_compare_products(products: list[str], selected: str) -> list[dict]:
+    grouped: list[dict] = []
+    assigned: set[str] = set()
+    for prefix in _BENCH_COMPARE_GROUP_PREFIXES:
+        children = [p for p in products if p.startswith(prefix)]
+        assigned.update(children)
+        grouped.append(
+            {
+                "name": prefix,
+                "products": children,
+                "open": bool(selected and any(p == selected for p in children)),
+            }
+        )
+    others = [p for p in products if p not in assigned]
+    if others:
+        grouped.append(
+            {
+                "name": "其他",
+                "products": others,
+                "open": bool(selected and selected in others),
+            }
+        )
+    return grouped
 
 
 def _parse_only_trading_days(request) -> bool:
@@ -32,9 +70,11 @@ def _parse_only_trading_days(request) -> bool:
 
 
 def _parse_recent_trading_days(request) -> tuple[int | None, str]:
-    raw = (request.GET.get("recent") or "").strip()
-    if raw in ("5", "10", "15"):
+    raw = (request.GET.get("recent") or "").strip().lower()
+    if raw in ("21", "63", "126", "252"):
         return int(raw), raw
+    if raw == "all":
+        return 0, "all"
     return None, raw
 
 
@@ -43,6 +83,96 @@ def _parse_nav_time_mode(request) -> str:
     if raw == "custom":
         return "custom"
     return "recent"
+
+
+def _parse_compare_recent_window(request) -> tuple[int, str]:
+    raw = (request.GET.get("recent") or "").strip().lower()
+    if raw in ("21", "63", "126", "252"):
+        return int(raw), raw
+    if raw == "all":
+        return 0, "all"
+    return 252, "252"
+
+
+def _slice_compare_rows(rows: list[dict], recent_window: int) -> list[dict]:
+    if recent_window <= 0:
+        return list(rows)
+    if len(rows) <= recent_window:
+        return list(rows)
+    return rows[-recent_window:]
+
+
+def _rebase_compare_rows(rows: list[dict]) -> list[dict]:
+    """将区间起点重置为 1：产品和基准都以窗口首日为基准。"""
+    if not rows:
+        return []
+    p0 = rows[0].get("product_nav_norm")
+    b0 = rows[0].get("bench_nav_norm")
+    out: list[dict] = []
+    for r in rows:
+        x = dict(r)
+        p = x.get("product_nav_norm")
+        b = x.get("bench_nav_norm")
+        x["product_nav_norm"] = (float(p) / float(p0)) if (p is not None and p0 not in (None, 0)) else None
+        x["bench_nav_norm"] = (float(b) / float(b0)) if (b is not None and b0 not in (None, 0)) else None
+        pn = x.get("product_nav_norm")
+        bn = x.get("bench_nav_norm")
+        x["excess_cum"] = (pn / bn - 1.0) if (pn is not None and bn not in (None, 0)) else None
+        out.append(x)
+    return out
+
+
+def _compute_compare_metrics(
+    rows: list[dict],
+    *,
+    risk_free_annual: float,
+    annualization_factor: int,
+    min_sample_days: int,
+    mdd_zero_as_na: bool,
+) -> dict[str, float | None]:
+    if not rows:
+        return {"max_drawdown": None, "annual_vol": None, "sharpe": None}
+
+    navs: list[float] = []
+    rets: list[float] = []
+    for r in rows:
+        nav = r.get("product_nav")
+        if nav is not None:
+            navs.append(float(nav))
+        pr = r.get("product_ret")
+        if pr is not None:
+            rets.append(float(pr))
+    if not navs:
+        return {"max_drawdown": None, "annual_vol": None, "sharpe": None}
+
+    peak = navs[0]
+    mdd = 0.0
+    for x in navs:
+        if x > peak:
+            peak = x
+        if peak > 0:
+            dd = x / peak - 1.0
+            if dd < mdd:
+                mdd = dd
+
+    mdd_out: float | None = None if (mdd_zero_as_na and abs(mdd) < 1e-12) else mdd
+    if len(rets) < max(2, min_sample_days):
+        return {"max_drawdown": mdd_out, "annual_vol": None, "sharpe": None}
+
+    mean_ret = sum(rets) / len(rets)
+    var = sum((x - mean_ret) ** 2 for x in rets) / (len(rets) - 1)
+    std = math.sqrt(var) if var > 0 else 0.0
+    annual_vol = std * math.sqrt(annualization_factor)
+
+    rf_daily = (1.0 + max(-0.9999, float(risk_free_annual))) ** (
+        1.0 / annualization_factor
+    ) - 1.0
+    excess = [x - rf_daily for x in rets]
+    mean_ex = sum(excess) / len(excess)
+    std_ex_var = sum((x - mean_ex) ** 2 for x in excess) / (len(excess) - 1)
+    std_ex = math.sqrt(std_ex_var) if std_ex_var > 0 else 0.0
+    sharpe = (mean_ex / std_ex * math.sqrt(annualization_factor)) if std_ex > 0 else None
+    return {"max_drawdown": mdd_out, "annual_vol": annual_vol, "sharpe": sharpe}
 
 
 def _fund_nav_visible_field_keys(request) -> list[str]:
@@ -83,8 +213,8 @@ def nav_curve(request):
 
     recent_n, recent_raw = _parse_recent_trading_days(request)
     if recent_n is None:
-        recent_n = 5
-        recent_raw = "5"
+        recent_n = 21
+        recent_raw = "21"
 
     date_from_ctx = ""
     date_to_ctx = ""
@@ -263,6 +393,101 @@ def raw_nav(request):
     return render(request, "portal/raw_nav.html", context)
 
 
+@login_required(login_url="/")
+def nav_bench_compare(request):
+    """产品净值 vs 指数基准对比页（计算结果自动落库到 basic_rq.calc_*）。"""
+    products = distinct_product_names()
+    selected = (request.GET.get("product_name") or "").strip()
+    if not selected and products:
+        selected = products[0]
+    _recent_window, recent_raw = _parse_compare_recent_window(request)
+
+    error_msg = None
+    rows_all: list[dict] = []
+    rows: list[dict] = []
+    bench_code = ""
+    bench_name = ""
+    elapsed_ms: float | None = None
+    from_cache = False
+    if not products:
+        error_msg = "库中暂无产品数据，请先导入 Alpha 日报。"
+    elif not selected:
+        error_msg = "请选择产品。"
+    else:
+        try:
+            if selected not in products:
+                raise ValueError("所选产品无效，请重新选择。")
+            t0 = time.perf_counter()
+            result = build_and_store_nav_bench_compare(product_name=selected)
+            elapsed_ms = (time.perf_counter() - t0) * 1000.0
+            rows_all = result.get("rows") or []
+            bench_code = str(result.get("bench_code") or "")
+            bench_name = str(result.get("bench_name") or bench_code or "")
+            from_cache = bool(result.get("from_cache"))
+            rows = _slice_compare_rows(rows_all, _recent_window)
+            rows = _rebase_compare_rows(rows)
+        except ValueError as exc:
+            error_msg = str(exc)
+        except Exception as exc:
+            error_msg = str(exc)
+
+    labels = [r.get("report_date") for r in rows if r.get("report_date")]
+    product_data = [r.get("product_nav_norm") for r in rows]
+    bench_data = [r.get("bench_nav_norm") for r in rows]
+    chart_json = json.dumps(
+        {
+            "labels": labels,
+            "datasets": [
+                {"label": f"{selected} 归一化净值", "data": product_data},
+                {"label": f"{bench_name or bench_code} 归一化基准", "data": bench_data},
+            ],
+        },
+        ensure_ascii=False,
+    )
+    risk_free_annual = float(getattr(settings, "NAV_COMPARE_RISK_FREE_ANNUAL", 0.0))
+    annualization_factor = int(getattr(settings, "NAV_ANNUALIZATION_FACTOR", 252))
+    if annualization_factor <= 0:
+        annualization_factor = 252
+    min_sample_days = int(getattr(settings, "NAV_MIN_SAMPLE_DAYS", 60))
+    if min_sample_days <= 0:
+        min_sample_days = 2
+    mdd_zero_as_na = bool(getattr(settings, "NAV_MDD_ZERO_AS_NA", False))
+    metrics = _compute_compare_metrics(
+        rows,
+        risk_free_annual=risk_free_annual,
+        annualization_factor=annualization_factor,
+        min_sample_days=min_sample_days,
+        mdd_zero_as_na=mdd_zero_as_na,
+    )
+    metrics_display = {
+        "max_drawdown_pct": (metrics["max_drawdown"] * 100.0) if metrics["max_drawdown"] is not None else None,
+        "annual_vol_pct": (metrics["annual_vol"] * 100.0) if metrics["annual_vol"] is not None else None,
+        "sharpe": metrics["sharpe"],
+    }
+
+    context = {
+        "error_msg": error_msg,
+        "products": products,
+        "product_groups": _group_compare_products(products, selected),
+        "selected_product": selected,
+        "rows": rows,
+        "row_count": len(rows),
+        "bench_code": bench_code,
+        "bench_name": bench_name or bench_code,
+        "from_cache": from_cache,
+        "recent": recent_raw,
+        "metrics": metrics_display,
+        "chart_json": chart_json,
+        "elapsed_ms": round(elapsed_ms, 3) if elapsed_ms is not None else None,
+        "calc_daily_collection": settings.MONGODB_RQ_BENCH_CALC_NAV_BENCH_DAILY,
+        "calc_summary_collection": settings.MONGODB_RQ_BENCH_CALC_NAV_BENCH_SUMMARY,
+        "annualization_factor": annualization_factor,
+        "min_sample_days": min_sample_days,
+        "risk_free_annual_pct": risk_free_annual * 100.0,
+    }
+    return render(request, "portal/nav_bench_compare.html", context)
+
+
 @csrf_exempt
 def api_nav_curve(request):
     """净值曲线查询 API 视图。"""
@@ -279,12 +504,14 @@ def api_nav_curve(request):
     only_td = _parse_only_trading_days(request)
     recent_raw = (request.GET.get("recent") or "").strip()
 
-    if recent_raw in ("5", "10", "15"):
+    if recent_raw in ("21", "63", "126", "252"):
         use_recent = int(recent_raw)
+    elif recent_raw == "all":
+        use_recent = 0
     elif date_from or date_to:
         use_recent = None
     else:
-        use_recent = 5
+        use_recent = 21
 
     try:
         if use_recent is not None:

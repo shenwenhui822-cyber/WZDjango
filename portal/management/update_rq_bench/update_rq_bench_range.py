@@ -15,7 +15,7 @@
 用法（项目根目录）：
   python ./portal/management/update_rq_bench/update_rq_bench_range.py
   python ./portal/management/update_rq_bench/update_rq_bench_range.py 2026-04-01
-  python ./portal/management/update_rq_bench/update_rq_bench_range.py 2026-04-01 2026-04-30
+  python ./portal/management/update_rq_bench/update_rq_bench_range.py 2025-04-01 2026-04-10
   python ./portal/management/update_rq_bench/update_rq_bench_range.py 2026-04-01 2026-04-30 --force-non-trading
 """
 

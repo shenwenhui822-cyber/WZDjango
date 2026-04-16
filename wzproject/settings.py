@@ -118,5 +118,18 @@ TRADE_DATES_CSV = BASE_DIR / "trade_dates_all" / "trade_dates_all.csv"
 # RQ 基准行情：库 basic_rq，集合 rq_bench（供 update_rq_bench 系列任务使用）
 MONGODB_RQ_BENCH_DB = "basic_rq"
 MONGODB_RQ_BENCH_COLLECTION = "rq_bench"
+# 同一库内：以 calc_ 开头的集合存放「计算结果」，与原始行情 rq_bench 区分
+MONGODB_RQ_BENCH_CALC_PREFIX = "calc_"
+# 产品净值 vs 基准对比（日频行、区间汇总）；名称可扩展，须以 calc_ 开头
+MONGODB_RQ_BENCH_CALC_NAV_BENCH_DAILY = "calc_nav_bench_daily"
+MONGODB_RQ_BENCH_CALC_NAV_BENCH_SUMMARY = "calc_nav_bench_summary"
+
+# 净值基准对比页面的指标口径配置
+# A 股日频年化因子，默认 252；若改为 244/245，需全站统一
+NAV_ANNUALIZATION_FACTOR = 252
+# 波动率/夏普的最小样本天数；不足时显示为空
+NAV_MIN_SAMPLE_DAYS = 60
+# 最大回撤是否在 0 时显示为空（True=显示为空；False=显示 0.00%）
+NAV_MDD_ZERO_AS_NA = False
 
 

@@ -16,6 +16,7 @@ web_urlpatterns = [
         name="alpha_daily_import",
     ),
     path("nav/curve/", nav_curve_views.nav_curve, name="nav_curve"),
+    path("nav/bench-compare/", nav_curve_views.nav_bench_compare, name="nav_bench_compare"),
     path("nav/raw/", nav_curve_views.raw_nav, name="raw_nav"),
     path("logout/", auth_views.logout_view, name="logout"),
 ]

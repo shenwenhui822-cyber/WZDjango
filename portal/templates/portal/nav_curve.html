@@ -5,7 +5,31 @@
     .panel-card { border: 1px solid #dee2e6; border-radius: 0.5rem; background: #fff; }
     .panel-card .panel-hd { padding: 0.625rem 0.75rem; border-bottom: 1px solid #eef0f2; font-weight: 600; font-size: 0.95rem; }
     .panel-card .panel-bd { padding: 0.75rem; }
-    .product-check-wrap { max-height: 180px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.375rem; background: #fff; padding: 0.5rem; }
+    .product-check-wrap { max-height: 460px; overflow-y: auto; }
+    .nav-product-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid #eef0f2;
+        margin: 0;
+        cursor: pointer;
+    }
+    .nav-product-item:last-child { border-bottom: 0; }
+    .nav-product-item.is-active {
+        background: #eaf3ff;
+        color: #0d6efd;
+        font-weight: 600;
+    }
+    .nav-dot {
+        width: 0.35rem;
+        height: 0.35rem;
+        border-radius: 50%;
+        background: #adb5bd;
+        flex: 0 0 auto;
+    }
+    .nav-folder { color: #98a1ab; font-size: 0.95rem; line-height: 1; }
+    .nav-product-item.is-active .nav-folder { color: #0d6efd; }
     .chart-wrap { max-width: 100%; height: 460px; }
 </style>
 {% endblock %}
@@ -24,25 +48,48 @@
 {% endif %}
 
 <form id="nav-filter-form" method="get" action="">
-    <div class="panel-card mb-3">
-        <div class="panel-hd">筛选条件</div>
-        <div class="panel-bd">
-            <div class="row g-3 align-items-start">
-                <div class="col-12 col-lg-4">
-                    <label class="form-label small mb-1">产品名称（可多选）</label>
+    <div class="row g-3 align-items-stretch mb-3">
+        <div class="col-12 col-lg-3">
+            <div class="panel-card h-100">
+                <div class="panel-hd">产品名称（可多选）</div>
+                <div class="panel-bd p-0">
                     <div class="product-check-wrap">
                         {% for p in products %}
-                        <div class="form-check mb-1">
+                        <label class="nav-product-item {% if p in selected_products %}is-active{% endif %}" for="pn_{{ forloop.counter }}">
                             <input class="form-check-input product-check" type="checkbox" name="product_name" value="{{ p }}" id="pn_{{ forloop.counter }}" {% if p in selected_products %}checked{% endif %}>
-                            <label class="form-check-label small" for="pn_{{ forloop.counter }}">{{ p }}</label>
-                        </div>
+                            <span class="nav-dot" aria-hidden="true"></span>
+                            <i class="bi bi-folder-fill nav-folder" aria-hidden="true"></i>
+                            <span class="small">{{ p }}</span>
+                        </label>
                         {% empty %}
-                        <div class="text-muted small">（无产品）</div>
+                        <div class="text-muted small p-3">（无产品）</div>
                         {% endfor %}
                     </div>
-                    <div class="form-text mt-1">最多可选 10 个，勾选后自动刷新图表。</div>
+                    <div class="form-text px-3 pb-2">最多可选 10 个，勾选后自动刷新图表。</div>
                 </div>
-                <div class="col-12 col-lg-8">
+            </div>
+        </div>
+        <div class="col-12 col-lg-9">
+            <div class="panel-card">
+                <div class="panel-bd">
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+                        <div>
+                            <div class="h4 mb-0">基金净值曲线</div>
+                            <div class="text-muted small">已选产品：{{ selected_products|length }}；点数：<strong>{{ point_count }}</strong></div>
+                        </div>
+                        <div class="btn-group btn-group-sm" role="group" aria-label="最近交易日">
+                            <input type="radio" class="btn-check" name="recent" id="r1m" value="21" {% if recent == "21" %}checked{% endif %}>
+                            <label class="btn btn-outline-primary" for="r1m">一个月</label>
+                            <input type="radio" class="btn-check" name="recent" id="r3m" value="63" {% if recent == "63" %}checked{% endif %}>
+                            <label class="btn btn-outline-primary" for="r3m">三个月</label>
+                            <input type="radio" class="btn-check" name="recent" id="r6m" value="126" {% if recent == "126" %}checked{% endif %}>
+                            <label class="btn btn-outline-primary" for="r6m">半年</label>
+                            <input type="radio" class="btn-check" name="recent" id="r1y" value="252" {% if recent == "252" or not recent %}checked{% endif %}>
+                            <label class="btn btn-outline-primary" for="r1y">一年</label>
+                            <input type="radio" class="btn-check" name="recent" id="rall" value="all" {% if recent == "all" %}checked{% endif %}>
+                            <label class="btn btn-outline-primary" for="rall">成立以来</label>
+                        </div>
+                    </div>
                     <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
                         <label class="small text-muted mb-0">时间范围</label>
                         <div class="form-check form-check-inline mb-0">
@@ -55,45 +102,22 @@
                                    {% if time_mode == "custom" %}checked{% endif %}>
                             <label class="form-check-label small" for="tmc">自定义日期</label>
                         </div>
-                    </div>
-                    <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
                         <label class="small text-muted mb-0" for="df">开始</label>
                         <input type="date" name="date_from" id="df" value="{{ date_from }}"
                                class="form-control form-control-sm" style="width: 10rem;">
                         <label class="small text-muted mb-0" for="dt">结束</label>
                         <input type="date" name="date_to" id="dt" value="{{ date_to }}"
                                class="form-control form-control-sm" style="width: 10rem;">
-                    </div>
-                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                        <label class="small text-muted mb-0 me-1">最近交易日数量</label>
-                        <div class="btn-group btn-group-sm" role="group" aria-label="最近交易日">
-                            <input type="radio" class="btn-check" name="recent" id="r5" value="5" {% if recent == "5" %}checked{% endif %}>
-                            <label class="btn btn-outline-primary" for="r5">最近 5 个交易日</label>
-                            <input type="radio" class="btn-check" name="recent" id="r10" value="10" {% if recent == "10" %}checked{% endif %}>
-                            <label class="btn btn-outline-primary" for="r10">最近 10 个交易日</label>
-                            <input type="radio" class="btn-check" name="recent" id="r15" value="15" {% if recent == "15" %}checked{% endif %}>
-                            <label class="btn btn-outline-primary" for="r15">最近 15 个交易日</label>
-                        </div>
-                    </div>
-                    <div class="d-flex flex-wrap align-items-center gap-2">
-                        <button type="submit" class="btn btn-primary btn-sm">查询</button>
                         <a href="{% url 'portal:nav_curve' %}" class="btn btn-outline-secondary btn-sm">重置</a>
-                        <span class="text-muted small">点数：<strong>{{ point_count }}</strong></span>
+                    </div>
+                    <div class="chart-wrap border rounded p-2 bg-white">
+                        <canvas id="navChart"></canvas>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 </form>
-
-<div class="panel-card">
-    <div class="panel-hd">净值对比图</div>
-    <div class="panel-bd">
-        <div class="chart-wrap border rounded p-2 bg-white">
-            <canvas id="navChart"></canvas>
-        </div>
-    </div>
-</div>
 {% endblock %}
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -105,7 +129,7 @@
         if (form) form.submit();
     }
 
-    ['tmr', 'tmc', 'r5', 'r10', 'r15'].forEach(function (id) {
+    ['tmr', 'tmc', 'r1m', 'r3m', 'r6m', 'r1y', 'rall'].forEach(function (id) {
         var control = document.getElementById(id);
         if (control) control.addEventListener('change', submitFilters);
     });

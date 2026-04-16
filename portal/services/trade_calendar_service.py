@@ -136,7 +136,9 @@ def fetch_nav_curve_series(
 
     coll = get_app_collection()
 
-    if recent_trading_days in (5, 10, 15):
+    if recent_trading_days is not None:
+        if recent_trading_days < 0:
+            raise ValueError("recent_trading_days 不能小于 0")
         q0: dict[str, Any] = {
             "_schema": ALPHA_DAILY_SCHEMA,
             "product_name": pn,
@@ -152,7 +154,8 @@ def fetch_nav_curve_series(
             tset = trading_date_iso_set()
             if tset:
                 dates = [x for x in dates if x in tset]
-        if len(dates) > recent_trading_days:
+        # 0 表示“成立以来”（不截断）；>0 表示取最近 N 个交易日
+        if recent_trading_days > 0 and len(dates) > recent_trading_days:
             dates = dates[-recent_trading_days:]
         if not dates:
             return []
