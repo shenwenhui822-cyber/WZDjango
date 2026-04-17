@@ -28,15 +28,29 @@
             justify-content: space-between;
             flex-wrap: wrap;
             gap: 0.5rem 1rem;
-            /* 左侧多留白，Logo 不靠边（参考图二整体内缩） */
-            padding: 0 clamp(200px, 4vw, 56px) 0 clamp(230px, 7vw, 100px);
+            padding: 0 clamp(200px, 2vw, 24px) 0 clamp(230px, 1.25vw, 16px);
             min-height: 56px;
             box-sizing: border-box;
+        }
+        .site-brand-wrap {
+            display: flex;
+            align-items: center;
+            gap: clamp(0.75rem, 2vw, 1.5rem);
+            flex-shrink: 0;
+            min-width: 0;
+        }
+        .site-platform-title {
+            font-size: clamp(15px, 1.85vw, 21px);
+            font-weight: 600;
+            color: #003366;
+            letter-spacing: 0.04em;
+            white-space: nowrap;
+            line-height: 1.25;
         }
         .site-logo-block {
             display: flex;
             align-items: center;
-            padding: 8px 0 8px 4px;
+            padding: 8px 0;
             text-decoration: none;
             color: inherit;
             flex-shrink: 0;
@@ -148,9 +162,12 @@
 <body class="bg-light">
 <header class="site-header">
     <nav class="site-nav-bar" aria-label="主导航">
-        <a class="site-logo-block" href="{% if user.is_authenticated %}{% url 'portal:nav_bench_compare' %}{% else %}{% url 'portal:index' %}{% endif %}">
-            <img src="{% static 'img/wuzhilogo.png' %}" alt="吾执" class="site-logo-img">
-        </a>
+        <div class="site-brand-wrap">
+            <a class="site-logo-block" href="{% if user.is_authenticated %}{% url 'portal:nav_bench_compare' %}{% else %}{% url 'portal:index' %}{% endif %}">
+                <img src="{% static 'img/wuzhilogo.jpg' %}" alt="吾执" class="site-logo-img">
+            </a>
+            <span class="site-platform-title">吾执内部投研平台</span>
+        </div>
         {% if user.is_authenticated %}
         {# 前端暂不展示：净值曲线(nav_curve)、Alpha 产品日报(alpha_daily)，路由仍可用直接访问 #}
         <ul class="site-nav-menu">
