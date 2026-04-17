@@ -8,7 +8,7 @@ from django.shortcuts import redirect, render
 def index(request):
     """登录入口视图。"""
     if request.user.is_authenticated:
-        return redirect("portal:nav_curve")
+        return redirect("portal:nav_bench_compare")
 
     if request.method == "POST":
         username = (request.POST.get("username") or "").strip()
@@ -16,9 +16,9 @@ def index(request):
         user = authenticate(request, username=username, password=password)
         if user is not None:
             login(request, user)
-            next_url = request.GET.get("next") or "/nav/curve/"
+            next_url = request.GET.get("next") or "/nav/bench-compare/"
             if not next_url.startswith("/"):
-                next_url = "/nav/curve/"
+                next_url = "/nav/bench-compare/"
             return redirect(next_url)
         return render(
             request,
@@ -33,7 +33,7 @@ def index(request):
 @login_required(login_url="/")
 def home(request):
     """首页跳转视图。"""
-    return redirect("portal:nav_curve")
+    return redirect("portal:nav_bench_compare")
 
 
 def logout_view(request):

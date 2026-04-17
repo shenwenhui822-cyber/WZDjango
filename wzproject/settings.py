@@ -88,7 +88,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # 登录/登出跳转
 LOGIN_URL = "/"
-LOGIN_REDIRECT_URL = "/home/"
+LOGIN_REDIRECT_URL = "/nav/bench-compare/"
 LOGOUT_REDIRECT_URL = "/"
 
 # 跨域与 CSRF（便于前端通过 http://<host>:7443 访问）
@@ -124,7 +124,7 @@ MONGODB_RQ_BENCH_CALC_PREFIX = "calc_"
 MONGODB_RQ_BENCH_CALC_NAV_BENCH_DAILY = "calc_nav_bench_daily"
 MONGODB_RQ_BENCH_CALC_NAV_BENCH_SUMMARY = "calc_nav_bench_summary"
 
-# 净值基准对比页面的指标口径配置
+# alpha产品表现页面的指标口径配置
 # A 股日频年化因子，默认 252；若改为 244/245，需全站统一
 NAV_ANNUALIZATION_FACTOR = 252
 # 波动率/夏普的最小样本天数；不足时显示为空
