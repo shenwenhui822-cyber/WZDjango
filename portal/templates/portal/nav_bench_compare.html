@@ -1,6 +1,7 @@
 {% extends "base.html" %}
-{% block title %}alpha产品表现 - 吾执内部投研平台{% endblock %}
+{% block title %}alpha产品表现 - 吾执产品平台{% endblock %}
 {% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
 <style>
     .panel-card { border: 1px solid #dee2e6; border-radius: 0.5rem; background: #fff; }
     .panel-card .panel-hd { padding: 0.625rem 0.75rem; border-bottom: 1px solid #eef0f2; font-weight: 600; font-size: 0.95rem; }
@@ -58,6 +59,9 @@
     .kpi-card { border: 1px solid #e6e9ef; border-radius: 0.5rem; background: #fff; padding: 0.9rem 1rem; }
     .kpi-title { color: #5f6b7a; font-size: 0.9rem; margin-bottom: 0.2rem; }
     .kpi-value { font-size: 2rem; font-weight: 600; line-height: 1.1; }
+    .cmp-table-wrap { overflow-x: auto; max-height: 62vh; }
+    .cmp-table-wrap th { position: sticky; top: 0; background: #e7f1ff; z-index: 1; white-space: nowrap; }
+    .cmp-table-wrap td { white-space: nowrap; }
 </style>
 {% endblock %}
 {% block content %}
@@ -70,11 +74,16 @@
 
 <h1 class="h4 mb-3">alpha产品表现</h1>
 
-{% if error_msg %}
-<div class="alert alert-danger">{{ error_msg }}</div>
-{% endif %}
+<div id="cmpErrorWrap">
+    {% if error_msg %}
+    <div class="alert alert-danger">{{ error_msg }}</div>
+    {% endif %}
+</div>
 
 <form id="cmp-filter-form" method="get" action="">
+    <input type="hidden" name="mode" id="cmpMode" value="{{ mode|default:'' }}">
+    <input type="hidden" name="date_from" id="id_cmp_date_from" value="{{ date_from }}">
+    <input type="hidden" name="date_to" id="id_cmp_date_to" value="{{ date_to }}">
     <div class="row g-3 align-items-stretch">
         <div class="col-12 col-lg-3">
             <div class="panel-card h-100">
@@ -117,7 +126,7 @@
                     <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
                         <div>
                             <div class="h4 mb-0">基金净值与基准对比</div>
-                            <div class="text-muted small">{{ selected_product|default:"-" }} vs {{ bench_name|default:bench_code|default:"-" }}</div>
+                            <div class="text-muted small" id="cmpSubtitle">{{ selected_product|default:"-" }} vs {{ bench_name|default:bench_code|default:"-" }}</div>
                         </div>
                         <div class="btn-group btn-group-sm" role="group" aria-label="区间选择">
                             <input type="radio" class="btn-check cmp-recent" name="recent" id="cmp_r1m" value="21" {% if recent == "21" %}checked{% endif %}>
@@ -133,7 +142,7 @@
                         </div>
                     </div>
                     <div class="small text-muted mb-2">
-                        行数：<strong>{{ row_count }}</strong>；
+                        行数：<strong id="cmpRowCount">{{ row_count }}</strong>；
                         <!-- 数据来源：{% if from_cache %}<strong>已落库结果</strong>{% else %}<strong>实时计算并自动落库</strong>{% endif %} -->
                     </div>
                     <!-- <div class="small text-muted mb-2">
@@ -145,6 +154,26 @@
                     <div class="chart-wrap border rounded p-2 bg-white">
                         <canvas id="cmpChart"></canvas>
                     </div>
+                    <div class="panel-card mt-3">
+                        <div class="panel-bd">
+                            <div class="row g-2 align-items-end">
+                                <div class="col-12 col-lg-auto">
+                                    <label class="form-label small mb-0" for="cmp_date_range">净值日</label>
+                                    <input type="text" id="cmp_date_range" class="form-control form-control-sm" placeholder="选择日期或区间" autocomplete="off" readonly style="min-width: 14rem; max-width: 22rem;">
+                                </div>
+                                <div class="col-auto">
+                                    <label class="form-label small mb-0" for="cmp_limit">条数上限</label>
+                                    <input type="number" id="cmp_limit" name="limit" class="form-control form-control-sm" value="{{ limit }}" min="1" max="1000" style="width: 6rem;">
+                                </div>
+                                <div class="col-12 col-lg">
+                                    <div class="d-flex flex-wrap align-items-center gap-2">
+                                        <button type="submit" class="btn btn-primary btn-sm" id="cmpQueryBtn">查询</button>
+                                        <a href="{% url 'portal:nav_bench_compare' %}" class="btn btn-outline-secondary btn-sm">重置</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -152,21 +181,52 @@
             <div class="d-flex flex-column gap-3">
                 <div class="kpi-card">
                     <div class="kpi-title">最大回撤</div>
-                    <div class="kpi-value">
+                    <div class="kpi-value" id="cmpKpiMaxDrawdown">
                         {% if metrics.max_drawdown_pct == None %}—{% else %}{{ metrics.max_drawdown_pct|floatformat:2 }}%{% endif %}
                     </div>
                 </div>
                 <div class="kpi-card">
                     <div class="kpi-title">年化波动</div>
-                    <div class="kpi-value">
+                    <div class="kpi-value" id="cmpKpiAnnualVol">
                         {% if metrics.annual_vol_pct == None %}—{% else %}{{ metrics.annual_vol_pct|floatformat:2 }}%{% endif %}
                     </div>
                 </div>
                 <div class="kpi-card">
                     <div class="kpi-title">夏普比率</div>
-                    <div class="kpi-value">
+                    <div class="kpi-value" id="cmpKpiSharpe">
                         {% if metrics.sharpe == None %}—{% else %}{{ metrics.sharpe|floatformat:2 }}{% endif %}
                     </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12">
+            <div class="panel-card">
+                <div class="panel-hd">数据明细</div>
+                <div class="panel-bd" id="cmpAlphaTableWrap">
+                    {% if alpha_table_rows %}
+                    <div class="cmp-table-wrap border rounded shadow-sm">
+                        <table class="table table-sm table-bordered table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    {% for h in alpha_headers_zh %}
+                                    <th>{{ h }}</th>
+                                    {% endfor %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in alpha_table_rows %}
+                                <tr>
+                                    {% for cell in row %}
+                                    <td>{{ cell }}</td>
+                                    {% endfor %}
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-warning mb-0">暂无可展示数据。</div>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -175,65 +235,265 @@
 {% endblock %}
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/zh.js"></script>
 <script id="cmp-data" type="application/json">{{ chart_json|safe }}</script>
 <script>
 (function () {
-    var form = document.getElementById('cmp-filter-form');
-    function submitFilters() { if (form) form.submit(); }
-    document.querySelectorAll('.cmp-product-radio').forEach(function (control) {
-        control.addEventListener('change', submitFilters);
-    });
-    // 某些浏览器下，label 点击可能不触发 change（尤其已选中项），这里兜底强制提交。
-    document.querySelectorAll('.cmp-product-item').forEach(function (item) {
-        item.addEventListener('click', function () {
-            var radio = item.querySelector('.cmp-product-radio');
-            if (!radio) return;
-            if (!radio.checked) radio.checked = true;
-            submitFilters();
+    var fromEl = document.getElementById('id_cmp_date_from');
+    var toEl = document.getElementById('id_cmp_date_to');
+    var displayEl = document.getElementById('cmp_date_range');
+    if (displayEl && fromEl && toEl) {
+        if (typeof flatpickr !== 'undefined' && flatpickr.l10ns && flatpickr.l10ns.zh) {
+            flatpickr.localize(flatpickr.l10ns.zh);
+        }
+        function syncHiddenFromSelection(selectedDates, instance) {
+            if (!selectedDates || selectedDates.length === 0) {
+                fromEl.value = '';
+                toEl.value = '';
+                return;
+            }
+            if (selectedDates.length === 1) {
+                var d = instance.formatDate(selectedDates[0], 'Y-m-d');
+                fromEl.value = d;
+                toEl.value = d;
+                return;
+            }
+            var d0 = instance.formatDate(selectedDates[0], 'Y-m-d');
+            var d1 = instance.formatDate(selectedDates[1], 'Y-m-d');
+            if (d0 > d1) {
+                var t = d0;
+                d0 = d1;
+                d1 = t;
+            }
+            fromEl.value = d0;
+            toEl.value = d1;
+        }
+        var initialFrom = (fromEl.value || '').trim();
+        var initialTo = (toEl.value || '').trim();
+        var defaultDates = [];
+        if (initialFrom && initialTo) {
+            defaultDates = initialFrom === initialTo ? [initialFrom] : [initialFrom, initialTo];
+        } else if (initialFrom) {
+            defaultDates = [initialFrom];
+        } else if (initialTo) {
+            defaultDates = [initialTo];
+        }
+        flatpickr(displayEl, {
+            mode: 'range',
+            dateFormat: 'Y-m-d',
+            allowInput: false,
+            defaultDate: defaultDates.length ? defaultDates : undefined,
+            onClose: function (selectedDates, dateStr, instance) {
+                syncHiddenFromSelection(selectedDates, instance);
+            }
         });
-    });
-    document.querySelectorAll('.cmp-recent').forEach(function (control) {
-        control.addEventListener('change', submitFilters);
-    });
+    }
+})();
 
+(function () {
+    var form = document.getElementById('cmp-filter-form');
+    var errorWrapEl = document.getElementById('cmpErrorWrap');
+    var subtitleEl = document.getElementById('cmpSubtitle');
+    var rowCountEl = document.getElementById('cmpRowCount');
+    var kpiMddEl = document.getElementById('cmpKpiMaxDrawdown');
+    var kpiVolEl = document.getElementById('cmpKpiAnnualVol');
+    var kpiSharpeEl = document.getElementById('cmpKpiSharpe');
+    var alphaTableWrapEl = document.getElementById('cmpAlphaTableWrap');
+    var modeEl = document.getElementById('cmpMode');
+    var fromEl = document.getElementById('id_cmp_date_from');
+    var toEl = document.getElementById('id_cmp_date_to');
+    var dateDisplayEl = document.getElementById('cmp_date_range');
+    var limitEl = document.getElementById('cmp_limit');
     var el = document.getElementById('cmp-data');
-    if (!el) return;
+    if (!el || !form) return;
     var cfg = JSON.parse(el.textContent || '{}');
     var labels = cfg.labels || [];
     var datasetsRaw = cfg.datasets || [];
-    var ctx = document.getElementById('cmpChart');
-    if (!ctx) return;
+    var canvasEl = document.getElementById('cmpChart');
+    if (!canvasEl) return;
 
     var colors = [
         ['rgb(220,53,69)', 'rgba(220,53,69,0.12)'],
         ['rgb(13,110,253)', 'rgba(13,110,253,0.12)']
     ];
-    var datasets = datasetsRaw.map(function (ds, idx) {
-        var c = colors[idx % colors.length];
-        return {
-            label: ds.label,
-            data: ds.data || [],
-            borderColor: c[0],
-            backgroundColor: c[1],
-            tension: 0.15,
-            fill: false,
-            pointRadius: 2,
-            spanGaps: true
-        };
-    });
+    var chartIns = null;
 
-    new Chart(ctx, {
-        type: 'line',
-        data: { labels: labels, datasets: datasets },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                x: { ticks: { maxRotation: 45, minRotation: 0 } },
-                y: { title: { display: true, text: '归一化净值' } }
-            },
-            plugins: { legend: { display: true } }
+    function esc(value) {
+        return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function formatNum(v, digits, suffix) {
+        if (v === null || v === undefined || Number.isNaN(Number(v))) return '—';
+        return Number(v).toFixed(digits) + (suffix || '');
+    }
+
+    function buildDatasets(datasetsInput) {
+        return (datasetsInput || []).map(function (ds, idx) {
+            var c = colors[idx % colors.length];
+            return {
+                label: ds.label,
+                data: ds.data || [],
+                borderColor: c[0],
+                backgroundColor: c[1],
+                tension: 0.15,
+                fill: false,
+                pointRadius: 2,
+                spanGaps: true
+            };
+        });
+    }
+
+    function renderChart(chartData) {
+        var chartLabels = chartData.labels || [];
+        var chartDatasets = buildDatasets(chartData.datasets || []);
+        if (chartIns) chartIns.destroy();
+        chartIns = new Chart(canvasEl, {
+            type: 'line',
+            data: { labels: chartLabels, datasets: chartDatasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { ticks: { maxRotation: 45, minRotation: 0 } },
+                    y: { title: { display: true, text: '归一化净值' } }
+                },
+                plugins: { legend: { display: true } }
+            }
+        });
+    }
+
+    function setActiveProductClass() {
+        document.querySelectorAll('.cmp-product-item').forEach(function (item) {
+            var radio = item.querySelector('.cmp-product-radio');
+            if (!radio) return;
+            item.classList.toggle('is-active', !!radio.checked);
+        });
+    }
+
+    function renderAlphaTable(headers, rows) {
+        if (!alphaTableWrapEl) return;
+        if (!rows || !rows.length) {
+            alphaTableWrapEl.innerHTML = '<div class="alert alert-warning mb-0">暂无可展示数据。</div>';
+            return;
         }
+        var thead = '<tr>' + (headers || []).map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('') + '</tr>';
+        var tbody = rows.map(function (r) {
+            return '<tr>' + (r || []).map(function (c) { return '<td>' + esc(c) + '</td>'; }).join('') + '</tr>';
+        }).join('');
+        alphaTableWrapEl.innerHTML = [
+            '<div class="cmp-table-wrap border rounded shadow-sm">',
+            '<table class="table table-sm table-bordered table-hover mb-0">',
+            '<thead>', thead, '</thead>',
+            '<tbody>', tbody, '</tbody>',
+            '</table>',
+            '</div>'
+        ].join('');
+    }
+
+    function getCheckedValue(selector) {
+        var checked = form.querySelector(selector + ':checked');
+        return checked ? checked.value : '';
+    }
+
+    function setMode(nextMode) {
+        if (modeEl) modeEl.value = nextMode;
+    }
+
+    function buildParams(mode) {
+        var params = new URLSearchParams();
+        var pn = getCheckedValue('.cmp-product-radio');
+        if (pn) params.set('product_name', pn);
+        params.set('mode', mode);
+        if (mode === 'custom') {
+            if (fromEl && fromEl.value) params.set('date_from', fromEl.value);
+            if (toEl && toEl.value) params.set('date_to', toEl.value);
+            var limitVal = limitEl && limitEl.value ? limitEl.value : '200';
+            params.set('limit', limitVal);
+        } else {
+            var recentVal = getCheckedValue('.cmp-recent');
+            if (recentVal) params.set('recent', recentVal);
+        }
+        return params;
+    }
+
+    function submitAjax(mode) {
+        var usingMode = mode || ((modeEl && modeEl.value) ? modeEl.value : 'recent');
+        var params = buildParams(usingMode);
+        fetch(window.location.pathname + '?' + params.toString(), {
+            method: 'GET',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin'
+        })
+            .then(function (res) {
+                if (!res.ok) throw new Error('请求失败，状态码：' + res.status);
+                return res.json();
+            })
+            .then(function (data) {
+                if (errorWrapEl) {
+                    errorWrapEl.innerHTML = data.error_msg
+                        ? '<div class="alert alert-danger">' + esc(data.error_msg) + '</div>'
+                        : '';
+                }
+                if (subtitleEl) subtitleEl.textContent = (data.selected_product || '-') + ' vs ' + (data.bench_name || '-');
+                if (rowCountEl) rowCountEl.textContent = String(data.row_count || 0);
+                if (kpiMddEl) kpiMddEl.textContent = formatNum(data.metrics && data.metrics.max_drawdown_pct, 2, '%');
+                if (kpiVolEl) kpiVolEl.textContent = formatNum(data.metrics && data.metrics.annual_vol_pct, 2, '%');
+                if (kpiSharpeEl) kpiSharpeEl.textContent = formatNum(data.metrics && data.metrics.sharpe, 2, '');
+                renderChart(data.chart_data || { labels: [], datasets: [] });
+                renderAlphaTable(data.alpha_headers_zh || [], data.alpha_table_rows || []);
+                setActiveProductClass();
+            })
+            .catch(function (err) {
+                if (errorWrapEl) {
+                    errorWrapEl.innerHTML = '<div class="alert alert-danger">' + esc(err.message || '请求失败') + '</div>';
+                }
+            });
+    }
+
+    renderChart({ labels: labels, datasets: datasetsRaw });
+    setActiveProductClass();
+    form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        setMode('custom');
+        submitAjax('custom');
+    });
+    document.querySelectorAll('.cmp-product-radio').forEach(function (control) {
+        control.addEventListener('change', function () {
+            var currentMode = (modeEl && modeEl.value) ? modeEl.value : 'recent';
+            submitAjax(currentMode);
+        });
+    });
+    // 某些浏览器下，label 点击可能不触发 change（尤其已选中项），这里兜底触发 AJAX。
+    document.querySelectorAll('.cmp-product-item').forEach(function (item) {
+        item.addEventListener('click', function () {
+            var radio = item.querySelector('.cmp-product-radio');
+            if (!radio) return;
+            if (!radio.checked) radio.checked = true;
+            setActiveProductClass();
+            var currentMode = (modeEl && modeEl.value) ? modeEl.value : 'recent';
+            submitAjax(currentMode);
+        });
+    });
+    document.querySelectorAll('.cmp-recent').forEach(function (control) {
+        control.addEventListener('change', function () {
+            if (fromEl) fromEl.value = '';
+            if (toEl) toEl.value = '';
+            if (dateDisplayEl) {
+                if (dateDisplayEl._flatpickr) {
+                    dateDisplayEl._flatpickr.clear();
+                } else {
+                    dateDisplayEl.value = '';
+                }
+            }
+            setMode('recent');
+            submitAjax('recent');
+        });
     });
 })();
 </script>

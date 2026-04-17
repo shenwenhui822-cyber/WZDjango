@@ -61,7 +61,10 @@ def _report_date_range_clause(
 
 
 def build_alpha_daily_query(
-    date_from: str | None, date_to: str | None
+    date_from: str | None,
+    date_to: str | None,
+    *,
+    product_name: str | None = None,
 ) -> dict[str, Any]:
     """构建 Alpha 日报 MongoDB 查询条件（不含 limit/sort）。"""
     query: dict[str, Any] = {"_schema": ALPHA_DAILY_SCHEMA}
@@ -73,6 +76,10 @@ def build_alpha_daily_query(
             query["$or"] = rd["$or"]
         else:
             query.update(rd)
+
+    pn = (product_name or "").strip()
+    if pn:
+        query["product_name"] = pn
 
     return query
 
@@ -90,9 +97,10 @@ def fetch_alpha_daily_documents(
     limit: int = 100,
     date_from: str | None = None,
     date_to: str | None = None,
+    product_name: str | None = None,
 ) -> list[dict[str, Any]]:
     coll = get_app_collection()
-    query = build_alpha_daily_query(date_from, date_to)
+    query = build_alpha_daily_query(date_from, date_to, product_name=product_name)
 
     cursor = (
         coll.find(query).sort(ALPHA_DAILY_SORT).limit(max(1, min(limit, 10000)))

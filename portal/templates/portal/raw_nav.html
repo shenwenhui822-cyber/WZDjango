@@ -1,15 +1,80 @@
 {% extends "base.html" %}
-{% block title %}基金净值 - 吾执内部投研平台{% endblock %}
+{% block title %}基金净值 - 吾执产品平台{% endblock %}
 {% block extra_css %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
 <style>
     .fund-nav-table-wrap { overflow-x: auto; max-height: 75vh; }
     .fund-nav-table-wrap table { font-size: 0.8rem; white-space: nowrap; }
     .fund-nav-table-wrap th { position: sticky; top: 0; background: #e7f1ff; z-index: 1; }
+    .fund-nav-chart-wrap { max-width: 100%; height: 360px; }
+    .fund-nav-product-panel {
+        border: 1px solid #dee2e6;
+        border-radius: 0.5rem;
+        background: #fff;
+        height: 100%;
+    }
+    .fund-nav-product-panel-hd {
+        font-weight: 600;
+        padding: 0.6rem 0.8rem;
+        border-bottom: 1px solid #eef0f2;
+    }
+    .fund-nav-product-panel-bd {
+        max-height: 420px;
+        overflow-y: auto;
+        padding: 0.45rem 0.6rem 0.65rem;
+    }
+    .fund-nav-chart-details {
+        border: 1px solid #dee2e6;
+        border-radius: 0.5rem;
+        background: #fff;
+        margin-bottom: 0.75rem;
+    }
+    .fund-nav-chart-summary {
+        list-style: none;
+        cursor: pointer;
+        font-weight: 600;
+        padding: 0.6rem 0.8rem;
+        border-bottom: 1px solid #eef0f2;
+    }
+    .fund-nav-chart-summary::-webkit-details-marker { display: none; }
+    .fund-nav-chart-content { padding: 0.7rem 0.8rem; }
+    .fund-nav-query-panel {
+        border: 1px solid #dee2e6;
+        border-radius: 0.5rem;
+        background: #fff;
+        padding: 0.7rem 0.8rem;
+    }
     #nav_date_range { min-width: 14rem; max-width: 22rem; background-color: #fff; }
     .fund-nav-col-pick { font-size: 0.8rem; }
     .fund-nav-col-pick .form-check { min-height: 1.15rem; }
     .btn-fund-nav-col-modal { white-space: nowrap; }
+    .fund-nav-group {
+        border: 1px solid #e9ecef;
+        border-radius: 0.45rem;
+        background: #fff;
+        margin-top: 0.35rem;
+    }
+    .fund-nav-group-summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding: 0.5rem 0.7rem;
+        list-style: none;
+        cursor: pointer;
+        font-weight: 600;
+    }
+    .fund-nav-group-summary::-webkit-details-marker { display: none; }
+    .fund-nav-group-body {
+        border-top: 1px solid #eef1f4;
+        padding: 0.45rem 0.7rem 0.6rem;
+    }
+    .fund-nav-group-item {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        margin: 0.15rem 0;
+    }
 </style>
 {% endblock %}
 {% block content %}
@@ -22,57 +87,104 @@
 
 <h1 class="h4 mb-3">基金净值</h1>
 
-{% if error_msg %}
-<div class="alert alert-danger">{{ error_msg }}</div>
-{% endif %}
+<div id="fundNavMessages">
+    {% if error_msg %}
+    <div class="alert alert-danger">{{ error_msg }}</div>
+    {% endif %}
 
-{% if fund_nav_empty_product_pick %}
-<div class="alert alert-warning py-2 mb-2">请至少勾选一个产品后再查询。</div>
-{% endif %}
+    {% if fund_nav_empty_product_pick %}
+    <div class="alert alert-warning py-2 mb-2">请至少勾选一个产品后再查询。</div>
+    {% endif %}
+</div>
 
 <form class="row g-2 align-items-end mb-3" method="get" action="" id="fundNavForm">
     <input type="hidden" name="nav_q" value="1">
-    <div class="col-12 col-lg-auto">
-        <label class="form-label small mb-0" for="nav_date_range">净值日</label>
-        <input type="text" id="nav_date_range" class="form-control form-control-sm" placeholder="选择日期或区间" autocomplete="off" readonly>
-        <input type="hidden" name="date_from" id="id_nav_date_from" value="{{ date_from }}">
-        <input type="hidden" name="date_to" id="id_nav_date_to" value="{{ date_to }}">
-    </div>
-    <div class="col-auto">
-        <label class="form-label small mb-0">条数上限</label>
-        <input type="number" name="limit" class="form-control form-control-sm" value="{{ limit }}" min="1" max="10000" style="width: 6rem;">
-    </div>
+    <input type="hidden" name="date_from" id="id_nav_date_from" value="{{ date_from }}">
+    <input type="hidden" name="date_to" id="id_nav_date_to" value="{{ date_to }}">
     <div class="col-12">
-        <span class="form-label small mb-0 d-block">产品（可多选）</span>
-        <div class="d-flex flex-wrap gap-2 pt-1">
-            {% for fund in fund_nav_products %}
-            <div class="form-check form-check-inline mb-0">
-                <input class="form-check-input" type="checkbox" name="product_key" value="{{ fund.product_key }}"
-                       id="fund_pk_{{ fund.product_key }}"
-                       {% if fund_nav_selection is None %}checked{% elif fund.product_key in fund_nav_selection %}checked{% endif %}>
-                <label class="form-check-label small" for="fund_pk_{{ fund.product_key }}">{{ fund.name_prefix }}</label>
+        <div class="row g-3 mt-0">
+            <div class="col-12 col-lg-3">
+                <div class="fund-nav-product-panel">
+                    <div class="fund-nav-product-panel-hd">产品名称</div>
+                    <div class="fund-nav-product-panel-bd">
+                        {% for group in fund_nav_product_groups %}
+                        <details class="fund-nav-group" {% if group.open %}open{% endif %}>
+                            <summary class="fund-nav-group-summary">
+                                <span>{{ group.name }}</span>
+                                <span class="text-muted small">{{ group.products|length }}</span>
+                            </summary>
+                            <div class="fund-nav-group-body">
+                                {% for fund in group.products %}
+                                <label class="form-check fund-nav-group-item mb-0" for="fund_pk_{{ fund.product_key }}">
+                                    <input class="form-check-input" type="checkbox" name="product_key" value="{{ fund.product_key }}"
+                                           id="fund_pk_{{ fund.product_key }}"
+                                           {% if fund_nav_selection is None %}checked{% elif fund.product_key in fund_nav_selection %}checked{% endif %}>
+                                    <span class="form-check-label small">{{ fund.name_prefix }}</span>
+                                </label>
+                                {% endfor %}
+                            </div>
+                        </details>
+                        {% endfor %}
+                    </div>
+                </div>
             </div>
-            {% endfor %}
-        </div>
-    </div>
-    <div class="col-12">
-        <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3 pt-1">
-            <button type="button" class="btn btn-outline-secondary btn-sm btn-fund-nav-col-modal" data-bs-toggle="modal" data-bs-target="#fundNavColModal">
-                选择显示列
-            </button>
-            <span class="text-muted small" id="fundNavColSummary" title="当前勾选列数"></span>
-            {% if fund_nav_debug_enabled %}
-            <div class="form-check mb-0">
-                <input class="form-check-input" type="checkbox" name="debug" value="1" id="fundNavDebug"
-                       {% if show_debug %}checked{% endif %}>
-                <label class="form-check-label small" for="fundNavDebug">调试信息</label>
+            <div class="col-12 col-lg-9">
+                <details class="fund-nav-chart-details" id="fundNavChartPanel" open>
+                    <summary class="fund-nav-chart-summary">基金净值走势</summary>
+                    <div class="fund-nav-chart-content">
+                        <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-2">
+                            <div class="small text-muted">按当前筛选条件展示单位净值</div>
+                            <div class="btn-group btn-group-sm" role="group" aria-label="区间选择">
+                                <input type="radio" class="btn-check fund-nav-recent" name="recent" id="fund_nav_r1m" value="21" {% if recent == "21" %}checked{% endif %}>
+                                <label class="btn btn-outline-primary" for="fund_nav_r1m">近1月</label>
+                                <input type="radio" class="btn-check fund-nav-recent" name="recent" id="fund_nav_r3m" value="63" {% if recent == "63" %}checked{% endif %}>
+                                <label class="btn btn-outline-primary" for="fund_nav_r3m">近3月</label>
+                                <input type="radio" class="btn-check fund-nav-recent" name="recent" id="fund_nav_r6m" value="126" {% if recent == "126" %}checked{% endif %}>
+                                <label class="btn btn-outline-primary" for="fund_nav_r6m">近6月</label>
+                                <input type="radio" class="btn-check fund-nav-recent" name="recent" id="fund_nav_r1y" value="252" {% if recent == "252" or not recent %}checked{% endif %}>
+                                <label class="btn btn-outline-primary" for="fund_nav_r1y">近1年</label>
+                                <input type="radio" class="btn-check fund-nav-recent" name="recent" id="fund_nav_rall" value="all" {% if recent == "all" %}checked{% endif %}>
+                                <label class="btn btn-outline-primary" for="fund_nav_rall">成立以来</label>
+                            </div>
+                        </div>
+                        <div class="fund-nav-chart-wrap">
+                            <canvas id="fundNavChart"></canvas>
+                        </div>
+                    </div>
+                </details>
+                <div class="fund-nav-query-panel">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-12 col-md-auto">
+                            <label class="form-label small mb-0" for="nav_date_range">净值日</label>
+                            <input type="text" id="nav_date_range" class="form-control form-control-sm" placeholder="选择日期或区间" autocomplete="off" readonly>
+                        </div>
+                        <div class="col-auto">
+                            <label class="form-label small mb-0">条数上限</label>
+                            <input type="number" name="limit" class="form-control form-control-sm" value="{{ limit }}" min="1" max="10000" style="width: 6rem;">
+                        </div>
+                        <div class="col-12">
+                            <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3">
+                                <button type="button" class="btn btn-outline-secondary btn-sm btn-fund-nav-col-modal" data-bs-toggle="modal" data-bs-target="#fundNavColModal">
+                                    选择显示列
+                                </button>
+                                <span class="text-muted small" id="fundNavColSummary" title="当前勾选列数"></span>
+                                {% if fund_nav_debug_enabled %}
+                                <div class="form-check mb-0">
+                                    <input class="form-check-input" type="checkbox" name="debug" value="1" id="fundNavDebug"
+                                           {% if show_debug %}checked{% endif %}>
+                                    <label class="form-check-label small" for="fundNavDebug">调试信息</label>
+                                </div>
+                                {% endif %}
+                                <div class="d-flex flex-wrap gap-1 align-items-center">
+                                    <button type="submit" class="btn btn-primary btn-sm">查询</button>
+                                    <a href="{% url 'portal:raw_nav' %}" class="btn btn-outline-secondary btn-sm">重置</a>
+                                </div>
+                                <span class="text-muted small ms-md-auto">当前展示 <strong id="fundNavCurrentCount">{{ raw_count }}</strong> 条</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            {% endif %}
-            <div class="d-flex flex-wrap gap-1 align-items-center">
-                <button type="submit" class="btn btn-primary btn-sm">查询</button>
-                <a href="{% url 'portal:raw_nav' %}" class="btn btn-outline-secondary btn-sm">重置</a>
-            </div>
-            <span class="text-muted small ms-md-auto">当前展示 <strong>{{ raw_count }}</strong> 条</span>
         </div>
     </div>
 
@@ -111,45 +223,53 @@
     </div>
 </form>
 
-{% if debug_info_text %}
-<div class="alert alert-secondary py-2 mb-3">
-    <div class="small text-muted mb-1">调试（仅 <code>FUND_NAV_PAGE_DEBUG=True</code> 时可用）</div>
-    <pre class="small mb-0 bg-white border rounded p-2 text-break" style="max-height: 16rem; overflow: auto;">{{ debug_info_text }}</pre>
+<div id="fundNavDebugWrap">
+    {% if debug_info_text %}
+    <div class="alert alert-secondary py-2 mb-3">
+        <div class="small text-muted mb-1">调试（仅 <code>FUND_NAV_PAGE_DEBUG=True</code> 时可用）</div>
+        <pre class="small mb-0 bg-white border rounded p-2 text-break" style="max-height: 16rem; overflow: auto;">{{ debug_info_text }}</pre>
+    </div>
+    {% endif %}
 </div>
-{% endif %}
 
-{% if not error_msg and not fund_nav_empty_product_pick and raw_count == 0 %}
-<div class="alert alert-warning">暂无数据。</div>
-{% endif %}
+<div id="fundNavTableWrap">
+    <div id="fundNavTableContent">
+        {% if not error_msg and not fund_nav_empty_product_pick and raw_count == 0 %}
+        <div class="alert alert-warning">暂无数据。</div>
+        {% endif %}
 
-{% if table_rows %}
-<div class="fund-nav-table-wrap border rounded shadow-sm">
-    <table class="table table-sm table-bordered table-hover mb-0">
-        <thead>
-            <tr>
-                {% for h in headers_zh %}
-                <th>{{ h }}</th>
-                {% endfor %}
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in table_rows %}
-            <tr>
-                {% for cell in row %}
-                <td>{{ cell }}</td>
-                {% endfor %}
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+        {% if table_rows %}
+        <div class="fund-nav-table-wrap border rounded shadow-sm">
+            <table class="table table-sm table-bordered table-hover mb-0">
+                <thead>
+                    <tr>
+                        {% for h in headers_zh %}
+                        <th>{{ h }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in table_rows %}
+                    <tr>
+                        {% for cell in row %}
+                        <td>{{ cell }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
 </div>
-{% endif %}
 
 <p class="mt-3"><a href="{% url 'portal:home' %}" class="btn btn-outline-primary">返回首页</a></p>
 {% endblock %}
 {% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/zh.js"></script>
+<script id="fund-nav-chart-data" type="application/json">{{ chart_json|safe }}</script>
 <script>
 (function () {
     var fromEl = document.getElementById("id_nav_date_from");
@@ -290,6 +410,190 @@
     }
 
     if (boxes.length) bindAll();
+})();
+
+(function () {
+    var form = document.getElementById("fundNavForm");
+    var messagesEl = document.getElementById("fundNavMessages");
+    var debugWrapEl = document.getElementById("fundNavDebugWrap");
+    var tableWrapEl = document.getElementById("fundNavTableContent");
+    var countEl = document.getElementById("fundNavCurrentCount");
+    var chartPanelEl = document.getElementById("fundNavChartPanel");
+    var chartCanvasEl = document.getElementById("fundNavChart");
+    var chartDataEl = document.getElementById("fund-nav-chart-data");
+    var chartIns = null;
+    var fromEl = document.getElementById("id_nav_date_from");
+    var toEl = document.getElementById("id_nav_date_to");
+    var displayEl = document.getElementById("nav_date_range");
+
+    if (!form || !messagesEl || !tableWrapEl || !countEl || typeof fetch === "undefined") return;
+
+    function esc(value) {
+        return String(value == null ? "" : value)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
+
+    function renderMessages(data) {
+        var html = "";
+        if (data.error_msg) {
+            html += '<div class="alert alert-danger">' + esc(data.error_msg) + "</div>";
+        }
+        if (data.fund_nav_empty_product_pick) {
+            html += '<div class="alert alert-warning py-2 mb-2">请至少勾选一个产品后再查询。</div>';
+        }
+        messagesEl.innerHTML = html;
+    }
+
+    function renderDebug(data) {
+        if (!debugWrapEl) return;
+        if (!data.debug_info_text) {
+            debugWrapEl.innerHTML = "";
+            return;
+        }
+        debugWrapEl.innerHTML = [
+            '<div class="alert alert-secondary py-2 mb-3">',
+            '<div class="small text-muted mb-1">调试（仅 <code>FUND_NAV_PAGE_DEBUG=True</code> 时可用）</div>',
+            '<pre class="small mb-0 bg-white border rounded p-2 text-break" style="max-height: 16rem; overflow: auto;">',
+            esc(data.debug_info_text),
+            "</pre>",
+            "</div>",
+        ].join("");
+    }
+
+    function renderTable(data) {
+        if (data.error_msg || data.fund_nav_empty_product_pick) {
+            tableWrapEl.innerHTML = "";
+            return;
+        }
+        if (!data.raw_count) {
+            tableWrapEl.innerHTML = '<div class="alert alert-warning">暂无数据。</div>';
+            return;
+        }
+        var headers = Array.isArray(data.headers_zh) ? data.headers_zh : [];
+        var rows = Array.isArray(data.table_rows) ? data.table_rows : [];
+        var thead = "<tr>" + headers.map(function (h) { return "<th>" + esc(h) + "</th>"; }).join("") + "</tr>";
+        var tbody = rows.map(function (r) {
+            var cells = (Array.isArray(r) ? r : []).map(function (c) {
+                return "<td>" + esc(c) + "</td>";
+            }).join("");
+            return "<tr>" + cells + "</tr>";
+        }).join("");
+        tableWrapEl.innerHTML = [
+            '<div class="fund-nav-table-wrap border rounded shadow-sm">',
+            '<table class="table table-sm table-bordered table-hover mb-0">',
+            "<thead>", thead, "</thead>",
+            "<tbody>", tbody, "</tbody>",
+            "</table>",
+            "</div>",
+        ].join("");
+    }
+
+    function renderChart(chartData) {
+        if (!chartPanelEl || !chartCanvasEl || typeof Chart === "undefined") return;
+        var labels = (chartData && Array.isArray(chartData.labels)) ? chartData.labels : [];
+        var datasetsRaw = (chartData && Array.isArray(chartData.datasets)) ? chartData.datasets : [];
+        if (!labels.length || !datasetsRaw.length) {
+            chartPanelEl.style.display = "none";
+            if (chartIns) {
+                chartIns.destroy();
+                chartIns = null;
+            }
+            return;
+        }
+        chartPanelEl.style.display = "";
+        var colors = [
+            ["rgb(220,53,69)", "rgba(220,53,69,0.12)"],
+            ["rgb(13,110,253)", "rgba(13,110,253,0.12)"],
+            ["rgb(25,135,84)", "rgba(25,135,84,0.12)"],
+            ["rgb(102,16,242)", "rgba(102,16,242,0.12)"],
+        ];
+        var datasets = datasetsRaw.map(function (ds, idx) {
+            var c = colors[idx % colors.length];
+            return {
+                label: ds.label || ("序列" + (idx + 1)),
+                data: Array.isArray(ds.data) ? ds.data : [],
+                borderColor: c[0],
+                backgroundColor: c[1],
+                pointRadius: 2,
+                tension: 0.15,
+                fill: false,
+                spanGaps: true,
+            };
+        });
+        if (chartIns) chartIns.destroy();
+        chartIns = new Chart(chartCanvasEl, {
+            type: "line",
+            data: { labels: labels, datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { ticks: { maxRotation: 45, minRotation: 0 } },
+                    y: { title: { display: true, text: "单位净值" } },
+                },
+                plugins: { legend: { display: true } },
+            },
+        });
+    }
+
+    if (chartDataEl) {
+        try {
+            renderChart(JSON.parse(chartDataEl.textContent || "{}"));
+        } catch (_e) {}
+    }
+
+    function clearDateRangeFilters() {
+        if (fromEl) fromEl.value = "";
+        if (toEl) toEl.value = "";
+        if (displayEl) {
+            if (displayEl._flatpickr) {
+                displayEl._flatpickr.clear();
+            } else {
+                displayEl.value = "";
+            }
+        }
+    }
+
+    document.querySelectorAll(".fund-nav-recent").forEach(function (control) {
+        control.addEventListener("change", function () {
+            clearDateRangeFilters();
+            form.dispatchEvent(new Event("submit", { cancelable: true }));
+        });
+    });
+
+    form.addEventListener("submit", function (event) {
+        event.preventDefault();
+        var submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) submitBtn.disabled = true;
+
+        var params = new URLSearchParams(new FormData(form));
+        fetch(window.location.pathname + "?" + params.toString(), {
+            method: "GET",
+            headers: { "X-Requested-With": "XMLHttpRequest" },
+            credentials: "same-origin",
+        })
+            .then(function (res) {
+                if (!res.ok) throw new Error("请求失败，状态码：" + res.status);
+                return res.json();
+            })
+            .then(function (data) {
+                countEl.textContent = String(data.raw_count || 0);
+                renderMessages(data);
+                renderDebug(data);
+                renderChart(data.chart_data || {});
+                renderTable(data);
+            })
+            .catch(function (err) {
+                messagesEl.innerHTML = '<div class="alert alert-danger">' + esc(err.message || "请求失败") + "</div>";
+            })
+            .finally(function () {
+                if (submitBtn) submitBtn.disabled = false;
+            });
+    });
 })();
 </script>
 {% endblock %}

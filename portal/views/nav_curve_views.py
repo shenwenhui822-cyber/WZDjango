@@ -11,15 +11,16 @@ from django.http import JsonResponse
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 
-from portal.data.alpha_daily_schema import is_alpha_daily_product_name_excluded
+from portal.data.alpha_daily_schema import ALPHA_DAILY_COLUMNS, is_alpha_daily_product_name_excluded
 from portal.data.fund_nav_real_config import FUND_NAV_PORTAL_COLUMNS, FUND_NAV_PRODUCTS
 from portal.db.fund_nav_queries import (
     build_fund_nav_mongo_query,
     fetch_fund_nav_portal_documents,
     fund_nav_product_keys_from_request,
 )
+from portal.db.queries import fetch_alpha_daily_documents
 from portal.services.benchmark_compare_service import build_and_store_nav_bench_compare
-from portal.services.formatters import row_to_fund_nav_display_cells
+from portal.services.formatters import row_to_display_cells, row_to_fund_nav_display_cells
 from portal.services.trade_calendar_service import (
     distinct_product_names,
     fetch_nav_curve_series,
@@ -34,6 +35,11 @@ _BENCH_COMPARE_GROUP_PREFIXES: list[str] = [
     "红利",
     "量化对冲",
     "量化选股",
+]
+
+
+_FUND_NAV_GROUP_PREFIXES: list[str] = [
+    "吾执博士一号私募证券投资基金",
 ]
 
 
@@ -60,6 +66,92 @@ def _group_compare_products(products: list[str], selected: str) -> list[dict]:
             }
         )
     return grouped
+
+
+def _group_fund_nav_products(
+    selection: frozenset[str] | None,
+) -> list[dict]:
+    grouped: list[dict] = []
+    assigned: set[str] = set()
+    for prefix in _FUND_NAV_GROUP_PREFIXES:
+        children = [f for f in FUND_NAV_PRODUCTS if f["name_prefix"].startswith(prefix)]
+        assigned.update({f["product_key"] for f in children})
+        grouped.append(
+            {
+                "name": prefix,
+                "products": children,
+                "open": bool(
+                    selection is None
+                    or any((f["product_key"] in selection) for f in children)
+                ),
+            }
+        )
+    others = [f for f in FUND_NAV_PRODUCTS if f["product_key"] not in assigned]
+    if others:
+        grouped.append(
+            {
+                "name": "其他",
+                "products": others,
+                "open": bool(
+                    selection is None
+                    or any((f["product_key"] in selection) for f in others)
+                ),
+            }
+        )
+    return grouped
+
+
+def _build_fund_nav_chart_data(rows: list[dict], selected_keys: list[str] | None) -> dict:
+    labels_set: set[str] = set()
+    points_by_product: dict[str, dict[str, float | None]] = {}
+    label_by_product: dict[str, str] = {}
+
+    for doc in rows:
+        nd = doc.get("nav_date")
+        if hasattr(nd, "strftime"):
+            day = nd.strftime("%Y-%m-%d")
+        else:
+            day = str(nd or "")[:10]
+        if not day:
+            continue
+        labels_set.add(day)
+        product_key = str(doc.get("product_key") or "")
+        if not product_key:
+            continue
+        label_by_product[product_key] = str(
+            doc.get("product_label")
+            or doc.get("asset_name")
+            or product_key
+        )
+        raw_nav = doc.get("unit_nav")
+        try:
+            nav_val = float(raw_nav) if raw_nav is not None else None
+        except (TypeError, ValueError):
+            nav_val = None
+        points_by_product.setdefault(product_key, {})[day] = nav_val
+
+    labels = sorted(labels_set)
+    if selected_keys is None:
+        product_order = [f["product_key"] for f in FUND_NAV_PRODUCTS]
+    else:
+        product_order = list(selected_keys)
+    for k in points_by_product.keys():
+        if k not in product_order:
+            product_order.append(k)
+
+    datasets: list[dict] = []
+    for product_key in product_order:
+        day_map = points_by_product.get(product_key)
+        if not day_map:
+            continue
+        datasets.append(
+            {
+                "label": label_by_product.get(product_key, product_key),
+                "data": [day_map.get(day) for day in labels],
+            }
+        )
+
+    return {"labels": labels, "datasets": datasets}
 
 
 def _parse_only_trading_days(request) -> bool:
@@ -100,6 +192,88 @@ def _slice_compare_rows(rows: list[dict], recent_window: int) -> list[dict]:
     if len(rows) <= recent_window:
         return list(rows)
     return rows[-recent_window:]
+
+
+def _filter_compare_rows_by_date_range(
+    rows: list[dict], date_from: str | None, date_to: str | None
+) -> list[dict]:
+    df = (date_from or "").strip() or None
+    dt = (date_to or "").strip() or None
+    if not df and not dt:
+        return list(rows)
+    out: list[dict] = []
+    for row in rows:
+        day = str(row.get("report_date") or "")[:10]
+        if not day:
+            continue
+        if df and day < df:
+            continue
+        if dt and day > dt:
+            continue
+        out.append(row)
+    return out
+
+
+def _slice_fund_nav_rows_by_recent_days(rows: list[dict], recent_window: int) -> list[dict]:
+    if recent_window <= 0:
+        return list(rows)
+    days: list[str] = []
+    seen_days: set[str] = set()
+    for doc in rows:
+        nd = doc.get("nav_date")
+        if hasattr(nd, "strftime"):
+            day = nd.strftime("%Y-%m-%d")
+        else:
+            day = str(nd or "")[:10]
+        if not day or day in seen_days:
+            continue
+        seen_days.add(day)
+        days.append(day)
+    days_sorted = sorted(days)
+    if len(days_sorted) <= recent_window:
+        return list(rows)
+    keep_days = set(days_sorted[-recent_window:])
+    out: list[dict] = []
+    for doc in rows:
+        nd = doc.get("nav_date")
+        if hasattr(nd, "strftime"):
+            day = nd.strftime("%Y-%m-%d")
+        else:
+            day = str(nd or "")[:10]
+        if day in keep_days:
+            out.append(doc)
+    return out
+
+
+def _slice_alpha_daily_rows_by_recent_days(rows: list[dict], recent_window: int) -> list[dict]:
+    if recent_window <= 0:
+        return list(rows)
+    seen_days: set[str] = set()
+    ordered_days: list[str] = []
+    for doc in rows:
+        rd = doc.get("report_date")
+        if hasattr(rd, "strftime"):
+            day = rd.strftime("%Y-%m-%d")
+        else:
+            day = str(rd or "")[:10]
+        if not day or day in seen_days:
+            continue
+        seen_days.add(day)
+        ordered_days.append(day)
+    ordered_days = sorted(ordered_days)
+    if len(ordered_days) <= recent_window:
+        return list(rows)
+    keep_days = set(ordered_days[-recent_window:])
+    out: list[dict] = []
+    for doc in rows:
+        rd = doc.get("report_date")
+        if hasattr(rd, "strftime"):
+            day = rd.strftime("%Y-%m-%d")
+        else:
+            day = str(rd or "")[:10]
+        if day in keep_days:
+            out.append(doc)
+    return out
 
 
 def _rebase_compare_rows(rows: list[dict]) -> list[dict]:
@@ -307,6 +481,9 @@ def raw_nav(request):
 
     date_from = (request.GET.get("date_from") or "").strip()
     date_to = (request.GET.get("date_to") or "").strip()
+    recent_window, recent_raw = _parse_compare_recent_window(request)
+    use_recent_mode = recent_raw in ("21", "63", "126", "252", "all")
+    effective_limit = 10000 if use_recent_mode else limit
 
     fund_nav_debug_enabled = getattr(settings, "FUND_NAV_PAGE_DEBUG", False)
     show_debug = fund_nav_debug_enabled and request.GET.get("debug") == "1"
@@ -337,11 +514,12 @@ def raw_nav(request):
         try:
             t0 = time.perf_counter()
             rows = fetch_fund_nav_portal_documents(
-                limit=limit,
+                limit=effective_limit,
                 date_from=date_from or None,
                 date_to=date_to or None,
                 product_keys=product_keys,
             )
+            rows = _slice_fund_nav_rows_by_recent_days(rows, recent_window)
             elapsed_ms = (time.perf_counter() - t0) * 1000.0
         except Exception as exc:
             error_msg = f"读取 MongoDB 失败：{exc}"
@@ -365,11 +543,13 @@ def raw_nav(request):
                 date_from or None, date_to or None
             ),
             "product_keys": product_keys,
-            "limit": limit,
+            "limit": effective_limit,
             "elapsed_ms": round(elapsed_ms, 3),
             "row_count": len(rows),
         }
         debug_info_text = json.dumps(dbg, ensure_ascii=False, indent=2, default=str)
+
+    chart_data = _build_fund_nav_chart_data(rows, product_keys)
 
     context = {
         "headers_zh": headers_zh,
@@ -379,8 +559,10 @@ def raw_nav(request):
         "date_from": date_from,
         "date_to": date_to,
         "limit": limit,
+        "recent": recent_raw,
         "error_msg": error_msg,
         "fund_nav_products": FUND_NAV_PRODUCTS,
+        "fund_nav_product_groups": _group_fund_nav_products(fund_nav_selection),
         "fund_nav_selection": fund_nav_selection,
         "fund_nav_empty_product_pick": fund_nav_empty_product_pick,
         "fund_nav_debug_enabled": fund_nav_debug_enabled,
@@ -389,20 +571,57 @@ def raw_nav(request):
         "fund_nav_mongo_db": settings.MONGODB_FUND_NAV_REAL_DB,
         "fund_nav_coll_master": settings.NAV_REAL_WZ_BSYH_MASTER,
         "fund_nav_coll_b": settings.NAV_REAL_WZ_BSYH_B,
+        "chart_json": json.dumps(chart_data, ensure_ascii=False),
     }
+    is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
+    if is_ajax:
+        return JsonResponse(
+            {
+                "ok": error_msg is None,
+                "error_msg": error_msg,
+                "raw_count": len(rows),
+                "headers_zh": headers_zh,
+                "table_rows": table_rows,
+                "fund_nav_empty_product_pick": fund_nav_empty_product_pick,
+                "debug_info_text": debug_info_text,
+                "chart_data": chart_data,
+                "recent": recent_raw,
+            },
+            json_dumps_params={"ensure_ascii": False},
+        )
     return render(request, "portal/raw_nav.html", context)
 
 
 @login_required(login_url="/")
 def nav_bench_compare(request):
     """产品净值 vs 指数基准对比页（计算结果自动落库到 basic_rq.calc_*）。"""
+    mode = (request.GET.get("mode") or "").strip().lower()
+    try:
+        limit = int(request.GET.get("limit") or 200)
+    except ValueError:
+        limit = 200
+    limit = max(1, min(limit, 1000))
+    date_from = (request.GET.get("date_from") or "").strip() or None
+    date_to = (request.GET.get("date_to") or "").strip() or None
+    date_error_msg: str | None = None
+    try:
+        if date_from:
+            datetime.strptime(date_from, "%Y-%m-%d")
+        if date_to:
+            datetime.strptime(date_to, "%Y-%m-%d")
+        if date_from and date_to and date_from > date_to:
+            raise ValueError("开始日期不能晚于结束日期。")
+    except ValueError:
+        date_error_msg = "日期格式须为 YYYY-MM-DD（请使用下方日期选择器）。"
+
     products = distinct_product_names()
     selected = (request.GET.get("product_name") or "").strip()
     if not selected and products:
         selected = products[0]
     _recent_window, recent_raw = _parse_compare_recent_window(request)
+    use_custom_query = mode == "custom"
 
-    error_msg = None
+    error_msg = date_error_msg
     rows_all: list[dict] = []
     rows: list[dict] = []
     bench_code = ""
@@ -413,7 +632,7 @@ def nav_bench_compare(request):
         error_msg = "库中暂无产品数据，请先导入 Alpha 日报。"
     elif not selected:
         error_msg = "请选择产品。"
-    else:
+    elif date_error_msg is None:
         try:
             if selected not in products:
                 raise ValueError("所选产品无效，请重新选择。")
@@ -424,7 +643,12 @@ def nav_bench_compare(request):
             bench_code = str(result.get("bench_code") or "")
             bench_name = str(result.get("bench_name") or bench_code or "")
             from_cache = bool(result.get("from_cache"))
-            rows = _slice_compare_rows(rows_all, _recent_window)
+            if use_custom_query:
+                rows = _filter_compare_rows_by_date_range(rows_all, date_from, date_to)
+                if len(rows) > limit:
+                    rows = rows[-limit:]
+            else:
+                rows = _slice_compare_rows(rows_all, _recent_window)
             rows = _rebase_compare_rows(rows)
         except ValueError as exc:
             error_msg = str(exc)
@@ -464,6 +688,26 @@ def nav_bench_compare(request):
         "annual_vol_pct": (metrics["annual_vol"] * 100.0) if metrics["annual_vol"] is not None else None,
         "sharpe": metrics["sharpe"],
     }
+    alpha_rows_raw: list[dict] = []
+    alpha_headers_zh = [cn for cn, _en in ALPHA_DAILY_COLUMNS]
+    alpha_field_keys = [en for _cn, en in ALPHA_DAILY_COLUMNS]
+    alpha_table_rows: list[list[str]] = []
+    if selected:
+        try:
+            if use_custom_query:
+                alpha_rows_raw = fetch_alpha_daily_documents(
+                    limit=limit,
+                    date_from=date_from,
+                    date_to=date_to,
+                    product_name=selected,
+                )
+            else:
+                alpha_rows_raw = fetch_alpha_daily_documents(limit=1000, product_name=selected)
+                alpha_rows_raw = _slice_alpha_daily_rows_by_recent_days(alpha_rows_raw, _recent_window)
+            alpha_table_rows = [row_to_display_cells(doc, alpha_field_keys) for doc in alpha_rows_raw]
+        except Exception:
+            alpha_rows_raw = []
+            alpha_table_rows = []
 
     context = {
         "error_msg": error_msg,
@@ -484,7 +728,42 @@ def nav_bench_compare(request):
         "annualization_factor": annualization_factor,
         "min_sample_days": min_sample_days,
         "risk_free_annual_pct": risk_free_annual * 100.0,
+        "limit": limit,
+        "date_from": date_from or "",
+        "date_to": date_to or "",
+        "mode": mode,
+        "alpha_headers_zh": alpha_headers_zh,
+        "alpha_table_rows": alpha_table_rows,
+        "alpha_row_count": len(alpha_rows_raw),
     }
+    is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
+    if is_ajax:
+        return JsonResponse(
+            {
+                "ok": error_msg is None,
+                "error_msg": error_msg,
+                "selected_product": selected,
+                "bench_name": bench_name or bench_code,
+                "row_count": len(rows),
+                "recent": recent_raw,
+                "limit": limit,
+                "date_from": date_from or "",
+                "date_to": date_to or "",
+                "mode": mode,
+                "metrics": metrics_display,
+                "chart_data": {
+                    "labels": labels,
+                    "datasets": [
+                        {"label": f"{selected} 归一化净值", "data": product_data},
+                        {"label": f"{bench_name or bench_code} 归一化基准", "data": bench_data},
+                    ],
+                },
+                "alpha_headers_zh": alpha_headers_zh,
+                "alpha_table_rows": alpha_table_rows,
+                "alpha_row_count": len(alpha_rows_raw),
+            },
+            json_dumps_params={"ensure_ascii": False},
+        )
     return render(request, "portal/nav_bench_compare.html", context)
 
 

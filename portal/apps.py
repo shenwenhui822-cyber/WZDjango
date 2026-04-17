@@ -6,7 +6,7 @@ import sys
 class PortalConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "portal"
-    verbose_name = "吾执内部投研平台"
+    verbose_name = "吾执产品平台"
 
     def ready(self):
         # 开发/部署启动 Django 进程后自动进入定时循环（可用环境变量关闭）
