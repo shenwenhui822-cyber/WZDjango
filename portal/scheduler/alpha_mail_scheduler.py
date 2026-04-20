@@ -14,6 +14,7 @@ _scheduler_started = False
 _DEFAULT_SCHEDULES: list[tuple[str, str, dict]] = [
     ("09:31", "auto_import_fund_nav_mail", {}),
     ("09:30", "update_rq_bench", {}),
+    ("12:00", "auto_import_zxdw_nav_mail", {}),
     ("17:30", "auto_import_alpha_mail", {}),
 ]
 
@@ -34,12 +35,22 @@ def _rq_bench_enabled() -> bool:
     )
 
 
+def _zxdw_nav_mail_enabled() -> bool:
+    return os.getenv("ZXDW_NAV_MAIL_SCHEDULER_ENABLED", "1").strip() not in (
+        "0",
+        "false",
+        "False",
+    )
+
+
 def _schedules() -> list[tuple[str, str, dict]]:
     s = list(_DEFAULT_SCHEDULES)
     if not _fund_nav_enabled():
         s = [x for x in s if x[1] != "auto_import_fund_nav_mail"]
     if not _rq_bench_enabled():
         s = [x for x in s if x[1] != "update_rq_bench"]
+    if not _zxdw_nav_mail_enabled():
+        s = [x for x in s if x[1] != "auto_import_zxdw_nav_mail"]
     return s
 
 

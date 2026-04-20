@@ -56,6 +56,43 @@ def select_latest_mail_id_by_date_header(
     return latest_id
 
 
+def subject_matches_fund_and_report_date(
+    subject: str,
+    fund_phrases: tuple[str, ...],
+    report_date_ymd: str,
+) -> bool:
+    """主题须包含报告日期 YYYYMMDD，且至少包含一条基金关键词（子串）。"""
+    subj = (subject or "").strip()
+    ymd = (report_date_ymd or "").strip()
+    if not ymd or ymd not in subj:
+        return False
+    return any((p or "").strip() and (p in subj) for p in fund_phrases)
+
+
+def find_mail_id_by_fuzzy_fund_subject(
+    mailbox: imaplib.IMAP4_SSL,
+    fund_phrases: tuple[str, ...],
+    report_date_ymd: str,
+) -> str | None:
+    """遍历 INBOX，按「基金关键词 + 报告日期 YYYYMMDD」匹配主题；多封取 Date 最新。"""
+    status, data = mailbox.search(None, "ALL")
+    if status != "OK" or not data or not data[0]:
+        return None
+    matched: list[bytes] = []
+    for raw_id in data[0].split():
+        mail_id = raw_id.decode()
+        status, msg_data = mailbox.fetch(mail_id, "(BODY[HEADER.FIELDS (SUBJECT)])")
+        if status != "OK" or not msg_data or not msg_data[0]:
+            continue
+        msg = email.message_from_bytes(msg_data[0][1])
+        subject = decode_mime_header(msg.get("Subject", "")).strip()
+        if subject_matches_fund_and_report_date(subject, fund_phrases, report_date_ymd):
+            matched.append(raw_id)
+    if not matched:
+        return None
+    return select_latest_mail_id_by_date_header(mailbox, matched)
+
+
 def find_latest_mail_id_by_exact_subject(
     mailbox: imaplib.IMAP4_SSL, target_subject: str
 ) -> str | None:

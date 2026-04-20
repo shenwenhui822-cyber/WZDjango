@@ -51,6 +51,22 @@ def get_rq_bench_collection() -> Collection:
     return db[settings.MONGODB_RQ_BENCH_COLLECTION]
 
 
+def get_fund_nav_zxdw_nav_collection(collection_name: str) -> Collection:
+    """
+    五列净值表明细：库 MONGODB_FUND_NAV_REAL_DB（fund_nav_real），集合名为 MONGODB_ZXDW_NAV_COLLECTIONS 之一。
+    与博士一号 WZ_BSYH_MASTER / WZ_BSYH_B 同库不同集合。
+    """
+    allowed = frozenset(getattr(settings, "MONGODB_ZXDW_NAV_COLLECTIONS", ()))
+    name = (collection_name or "").strip()
+    if name not in allowed:
+        raise ValueError(
+            f"未知 ZXDW 净值集合名: {collection_name!r}，允许: {sorted(allowed)}"
+        )
+    client = get_mongo_client()
+    db = client[settings.MONGODB_FUND_NAV_REAL_DB]
+    return db[name]
+
+
 def get_rq_bench_calc_collection(calc_collection_name: str) -> Collection:
     """
     计算结果集合：须位于 MONGODB_RQ_BENCH_DB，且集合名以 MONGODB_RQ_BENCH_CALC_PREFIX 开头，

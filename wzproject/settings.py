@@ -123,6 +123,16 @@ MONGODB_RQ_BENCH_CALC_PREFIX = "calc_"
 # 产品净值 vs 基准对比（日频行、区间汇总）；名称可扩展，须以 calc_ 开头
 MONGODB_RQ_BENCH_CALC_NAV_BENCH_DAILY = "calc_nav_bench_daily"
 MONGODB_RQ_BENCH_CALC_NAV_BENCH_SUMMARY = "calc_nav_bench_summary"
+# 泽鑫多维等五列净值表：与博士一号相同库 fund_nav_real，独立四个集合（与 WZ_BSYH_* 并列）
+MONGODB_ZXDW_NAV_COLLECTIONS = (
+    "WZ_ZXDW_MASTER",
+    "WZ_ZXDW_A",
+    "WZ_ZXDW_B",
+    "WZ_ZXDW_C",
+)
+ZXDW_NAV_IMPORT_DIR = BASE_DIR / "WZ_ZXDW_MASTER"
+# ZXDW 净值邮件附件落盘目录；主题关键词见 auto_import_zxdw_nav_mail.ZXDW_NAV_MAIL_FUND_KEY_PHRASES
+ZXDW_NAV_MAIL_ATTACH_DIR = BASE_DIR / "downloaded_attachments_zxdw_nav"
 
 # alpha产品表现页面的指标口径配置
 # A 股日频年化因子，默认 252；若改为 244/245，需全站统一
