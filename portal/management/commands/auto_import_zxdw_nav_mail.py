@@ -83,10 +83,10 @@ def _resolve_imap_credentials_from_env_v1() -> tuple[str, str, str, int]:
     """
     从 .env / 环境变量读取邮箱配置（_v1 版本键名）。
     """
-    user = (os.getenv("FARPORT_MAIL_USER_v1") or "").strip()
-    pwd = (os.getenv("FARPORT_MAIL_PASS_v1") or "").strip()
-    host = (os.getenv("FARPORT_IMAP_SERVER_v1") or "imap.exmail.qq.com").strip()
-    port = int(os.getenv("FARPORT_IMAP_PORT_v1") or "993")
+    user = (os.getenv("FARPORT_MAIL_USER") or "").strip()
+    pwd = (os.getenv("FARPORT_MAIL_PASS") or "").strip()
+    host = (os.getenv("ALPHA_IMAP_SERVER") or "imap.exmail.qq.com").strip()
+    port = int(os.getenv("ALPHA_IMAP_PORT") or "993")
     if not (user and pwd):
         raise RuntimeError(
             "未配置邮箱：请在 .env 中设置 FARPORT_MAIL_USER_v1、FARPORT_MAIL_PASS_v1。"
