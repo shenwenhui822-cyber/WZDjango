@@ -6,7 +6,7 @@
 
 业务约定：运行日中午拉取「前一交易日」净值表；主题中须含该日 YYYYMMDD + 基金关键词之一
 （见本模块常量 ZXDW_NAV_MAIL_FUND_KEY_PHRASES）。
-邮箱登录账号从 wzproject/secure_config.pyd 的 get_config() 读取。
+邮箱登录账号从 .env 读取 FARPORT_MAIL_USER_v1 / FARPORT_MAIL_PASS_v1。
 任务结束后按 ALPHA_NOTIFY_* 发送结果邮件（非交易日跳过时不发）。
 
 用法：
@@ -22,7 +22,6 @@ import os
 from datetime import timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from importlib import import_module
 from pathlib import Path
 from smtplib import SMTPException, SMTP_SSL
 
@@ -80,32 +79,18 @@ def _save_excel_attachments_from_mail(msg_bytes: bytes, save_dir: Path) -> list[
     return saved
 
 
-def _resolve_imap_credentials_from_secure_config() -> tuple[str, str, str, int]:
+def _resolve_imap_credentials_from_env_v1() -> tuple[str, str, str, int]:
     """
-    从 wzproject/secure_config.pyd 读取邮箱配置。
-
-    约定 get_config() 返回 dict，键名兼容：
-    - email_address / password
-    - imap_server(默认 imap.exmail.qq.com) / imap_port(默认 993)
+    从 .env / 环境变量读取邮箱配置（_v1 版本键名）。
     """
-    try:
-        secure_mod = import_module("wzproject.secure_config")
-    except Exception as exc:
-        raise RuntimeError(
-            "无法加载 wzproject.secure_config（secure_config.pyd），请确认文件存在且可导入。"
-        ) from exc
-
-    get_config = getattr(secure_mod, "get_config", None)
-    if get_config is None:
-        raise RuntimeError("wzproject.secure_config 未提供 get_config()。")
-
-    cfg = get_config() or {}
-    user = str(cfg.get("email_address") or "").strip()
-    pwd = str(cfg.get("password") or "").strip()
-    host = str(cfg.get("imap_server") or "imap.exmail.qq.com").strip()
-    port = int(cfg.get("imap_port") or 993)
+    user = (os.getenv("FARPORT_MAIL_USER_v1") or "").strip()
+    pwd = (os.getenv("FARPORT_MAIL_PASS_v1") or "").strip()
+    host = (os.getenv("FARPORT_IMAP_SERVER_v1") or "imap.exmail.qq.com").strip()
+    port = int(os.getenv("FARPORT_IMAP_PORT_v1") or "993")
     if not (user and pwd):
-        raise RuntimeError("secure_config 中 email_address/password 未配置。")
+        raise RuntimeError(
+            "未配置邮箱：请在 .env 中设置 FARPORT_MAIL_USER_v1、FARPORT_MAIL_PASS_v1。"
+        )
     return user, pwd, host, port
 
 
@@ -278,7 +263,7 @@ class Command(BaseCommand):
                 return
             target_subjects = [f"{prefix}{ymd}" for prefix in subject_prefixes]
 
-            user, pwd, host, port = _resolve_imap_credentials_from_secure_config()
+            user, pwd, host, port = _resolve_imap_credentials_from_env_v1()
             try:
                 mailbox = imaplib.IMAP4_SSL(host, port)
                 mailbox.login(user, pwd)
