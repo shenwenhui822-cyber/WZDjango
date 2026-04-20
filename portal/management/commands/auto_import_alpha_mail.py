@@ -255,7 +255,6 @@ class Command(BaseCommand):
                 f"开始时间: {timezone.localtime(started_at).strftime('%Y-%m-%d %H:%M:%S')}",
                 f"结束时间: {timezone.localtime(ended_at).strftime('%Y-%m-%d %H:%M:%S')}",
                 f"运行时长(秒): {duration_sec}",
-                f"服务地址: {base_url or '-'}",
                 f"交易日: {report.get('is_trading_day')}",
                 f"主题日期: {report.get('subject_date')}",
                 f"目标主题: {report.get('target_subject')}",

@@ -141,7 +141,6 @@ class Command(BaseCommand):
                 f"开始时间: {timezone.localtime(started_at).strftime('%Y-%m-%d %H:%M:%S')}",
                 f"结束时间: {timezone.localtime(ended_at).strftime('%Y-%m-%d %H:%M:%S')}",
                 f"运行时长(秒): {duration_sec}",
-                f"服务地址: {base_url or '-'}",
                 f"目标净值日(nav_date): {report.get('nav_date') or '-'}",
                 f"运行日为交易日: {report.get('run_day_is_trading')}",
                 f"nav_date 为交易日: {report.get('nav_date_is_trading')}",

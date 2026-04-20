@@ -8,3 +8,4 @@ venv/
 .env
 # 忽略 Alphadata 目录下的所有 .xlsx 文件
 /Alphadata/
+/downloaded_attachments_zxdw_nav/

@@ -6,6 +6,7 @@
 
 业务约定：运行日中午拉取「前一交易日」净值表；主题中须含该日 YYYYMMDD + 基金关键词之一
 （见本模块常量 ZXDW_NAV_MAIL_FUND_KEY_PHRASES）。
+邮箱登录账号从 wzproject/secure_config.pyd 的 get_config() 读取。
 任务结束后按 ALPHA_NOTIFY_* 发送结果邮件（非交易日跳过时不发）。
 
 用法：
@@ -21,6 +22,7 @@ import os
 from datetime import timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from importlib import import_module
 from pathlib import Path
 from smtplib import SMTPException, SMTP_SSL
 
@@ -28,19 +30,16 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from portal.config.mail_imap import resolve_imap_credentials
 from portal.services.imap_common import (
     decode_mime_header,
-    find_mail_id_by_fuzzy_fund_subject,
     normalize_attachment_filename,
 )
 from portal.services.trade_calendar_service import is_trade_date_iso, prev_trading_day_iso_before
 from portal.services.zxdw_fund_nav_service import import_zxdw_excel_routed_by_product_code
 
+# 主题匹配规则：固定前缀 + 报告日 YYYYMMDD
 ZXDW_NAV_MAIL_FUND_KEY_PHRASES: tuple[str, ...] = (
-    "上海吾执投资管理有限公司",
-    "【净值表】",
-    "吾执安澜6号私募证券投资基金-STZ056",
+    "【净值表】上海吾执投资管理有限公司吾执泽鑫多维产品净值表发送-管理人",
 )
 
 
@@ -79,6 +78,58 @@ def _save_excel_attachments_from_mail(msg_bytes: bytes, save_dir: Path) -> list[
         output.write_bytes(payload)
         saved.append(output)
     return saved
+
+
+def _resolve_imap_credentials_from_secure_config() -> tuple[str, str, str, int]:
+    """
+    从 wzproject/secure_config.pyd 读取邮箱配置。
+
+    约定 get_config() 返回 dict，键名兼容：
+    - email_address / password
+    - imap_server(默认 imap.exmail.qq.com) / imap_port(默认 993)
+    """
+    try:
+        secure_mod = import_module("wzproject.secure_config")
+    except Exception as exc:
+        raise RuntimeError(
+            "无法加载 wzproject.secure_config（secure_config.pyd），请确认文件存在且可导入。"
+        ) from exc
+
+    get_config = getattr(secure_mod, "get_config", None)
+    if get_config is None:
+        raise RuntimeError("wzproject.secure_config 未提供 get_config()。")
+
+    cfg = get_config() or {}
+    user = str(cfg.get("email_address") or "").strip()
+    pwd = str(cfg.get("password") or "").strip()
+    host = str(cfg.get("imap_server") or "imap.exmail.qq.com").strip()
+    port = int(cfg.get("imap_port") or 993)
+    if not (user and pwd):
+        raise RuntimeError("secure_config 中 email_address/password 未配置。")
+    return user, pwd, host, port
+
+
+def _find_first_mail_id_by_exact_subject(
+    mailbox: imaplib.IMAP4_SSL,
+    target_subject: str,
+) -> str | None:
+    """
+    按完整主题精确匹配，命中第一封（按邮件 ID 倒序，优先较新）后立即结束扫描。
+    """
+    status, data = mailbox.search(None, "ALL")
+    if status != "OK" or not data or not data[0]:
+        return None
+
+    for raw_id in reversed(data[0].split()):
+        mail_id = raw_id.decode()
+        status, msg_data = mailbox.fetch(mail_id, "(BODY[HEADER.FIELDS (SUBJECT)])")
+        if status != "OK" or not msg_data or not msg_data[0]:
+            continue
+        msg = email.message_from_bytes(msg_data[0][1])
+        subject = decode_mime_header(msg.get("Subject", "")).strip()
+        if subject == target_subject.strip():
+            return mail_id
+    return None
 
 
 class Command(BaseCommand):
@@ -130,7 +181,7 @@ class Command(BaseCommand):
 
         status = str(report.get("status") or "UNKNOWN")
         subject = (
-            f"[{status}] ZXDW 多维净值邮件导入 "
+            f"[{status}] ZXDW 泽鑫多维净值邮件导入 "
             f"{timezone.localdate().strftime('%Y-%m-%d')}"
         )
         warn_lines = report.get("warn_lines") or []
@@ -143,7 +194,6 @@ class Command(BaseCommand):
                 f"开始时间: {timezone.localtime(started_at).strftime('%Y-%m-%d %H:%M:%S')}",
                 f"结束时间: {timezone.localtime(ended_at).strftime('%Y-%m-%d %H:%M:%S')}",
                 f"运行时长(秒): {duration_sec}",
-                f"服务地址: {base_url or '-'}",
                 f"报告日(report_date): {report.get('report_date') or '-'}",
                 f"主题日期(ymd): {report.get('ymd') or '-'}",
                 f"累计 upsert 条数: {report.get('total_upsert', 0)}",
@@ -220,14 +270,15 @@ class Command(BaseCommand):
             report["report_date"] = report_iso
             report["ymd"] = ymd
 
-            phrases = ZXDW_NAV_MAIL_FUND_KEY_PHRASES
-            if not phrases:
+            subject_prefixes = ZXDW_NAV_MAIL_FUND_KEY_PHRASES
+            if not subject_prefixes:
                 report["status"] = "FAILED"
                 report["message"] = "ZXDW_NAV_MAIL_FUND_KEY_PHRASES 为空，请在本文件顶部配置"
                 self.stderr.write(self.style.ERROR(report["message"]))
                 return
+            target_subjects = [f"{prefix}{ymd}" for prefix in subject_prefixes]
 
-            user, pwd, host, port = resolve_imap_credentials()
+            user, pwd, host, port = _resolve_imap_credentials_from_secure_config()
             try:
                 mailbox = imaplib.IMAP4_SSL(host, port)
                 mailbox.login(user, pwd)
@@ -238,15 +289,22 @@ class Command(BaseCommand):
                     self.stderr.write(self.style.ERROR(report["message"]))
                     return
 
-                self.stdout.write(
-                    f"查找主题含 {ymd} 且关键词之一 {list(phrases)} 的邮件（报告日 {report_iso}）..."
-                )
-                mail_id = find_mail_id_by_fuzzy_fund_subject(mailbox, phrases, ymd)
+                self.stdout.write("按完整主题精确匹配邮件（非模糊匹配）...")
+                for sub in target_subjects:
+                    self.stdout.write(f"目标主题：{sub}")
+                mail_id = None
+                matched_subject = ""
+                for sub in target_subjects:
+                    mail_id = _find_first_mail_id_by_exact_subject(mailbox, sub)
+                    if mail_id:
+                        matched_subject = sub
+                        break
                 if not mail_id:
                     report["status"] = "FAILED"
-                    report["message"] = "未找到匹配邮件"
+                    report["message"] = "未找到完整主题精确匹配的邮件"
                     self.stderr.write(self.style.ERROR(report["message"]))
                     return
+                self.stdout.write(self.style.SUCCESS(f"已命中主题：{matched_subject}"))
 
                 st, msg_data = mailbox.fetch(mail_id, "(RFC822)")
                 if st != "OK" or not msg_data or not msg_data[0]:
@@ -270,6 +328,7 @@ class Command(BaseCommand):
                     report["message"] = "邮件中无 Excel 附件（.xlsx/.xls/.xlsm）"
                     self.stderr.write(self.style.ERROR(report["message"]))
                     return
+                self.stdout.write(self.style.SUCCESS(f"附件已保存到目录：{day_dir}"))
 
                 subj = f"imap:{ymd}"
                 total_upsert = 0
