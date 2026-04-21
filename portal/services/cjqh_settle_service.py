@@ -88,7 +88,8 @@ def _parse_number(raw: str, *, is_percent: bool) -> float:
 
 def _extract_value_by_aliases(text: str, aliases: tuple[str, ...]) -> str:
     for alias in aliases:
-        pattern = rf"{re.escape(alias)}\s*[:：.]?\s*([+-]?\d[\d,]*(?:\.\d+)?%?)"
+        # 兼容标签与数值之间存在中文说明、全角冒号、额外空格等情况
+        pattern = rf"{re.escape(alias)}[^\d+\-%]{{0,48}}([+-]?\d[\d,]*(?:\.\d+)?%?)"
         val = _extract_first(text, pattern)
         if val:
             return val
@@ -112,9 +113,30 @@ def _pick_target_txt(root: Path, account_id: str) -> Path:
     txt_files = sorted(root.rglob("*.txt"))
     if not txt_files:
         raise RuntimeError("RAR 解压后未找到 txt 文件。")
+
+    # 1) 优先命中主结算单：81801575.TXT（忽略大小写）
+    exact_name = f"{account_id}.txt".lower()
+    for p in txt_files:
+        if p.name.lower() == exact_name:
+            return p
+
+    # 2) 次优先：文件名含 account/summary/statement（排除成交明细 trade）
+    summary_hits = []
+    for p in txt_files:
+        low = p.name.lower()
+        if account_id in low and any(k in low for k in ("account", "summary", "statement")) and "trade" not in low:
+            summary_hits.append(p)
+    if summary_hits:
+        return summary_hits[0]
+
+    # 3) 再次优先：只要包含账号，仍优先非 trade 文件
     account_hits = [p for p in txt_files if account_id in p.name]
     if account_hits:
+        non_trade = [p for p in account_hits if "trade" not in p.name.lower()]
+        if non_trade:
+            return non_trade[0]
         return account_hits[0]
+
     return txt_files[0]
 
 

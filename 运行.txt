@@ -131,7 +131,7 @@
     落库配置在 settings：
     MONGODB_CJQH_SETTLE_DB / MONGODB_CJQH_SETTLE_COLLECTION
     python manage.py auto_import_cjqh_settle_mail
-    python manage.py auto_import_cjqh_settle_mail --subject-date 2026-04-17
+    python3 manage.py auto_import_cjqh_settle_mail --subject-date 2026-04-17
     python manage.py auto_import_cjqh_settle_mail --subject-date 2026-04-17 --days 7
     兼容命令（等价）：
     python manage.py cjqh_settle_service
