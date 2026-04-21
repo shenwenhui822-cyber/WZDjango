@@ -111,13 +111,21 @@
     python manage.py auto_import_fund_nav_mail --force
     python manage.py auto_import_fund_nav_mail --nav-date 2026-04-02
 
-  --- 泽鑫多维 ZXDW 净值邮件（IMAP 用 .env：FARPORT_MAIL_USER_v1 / FARPORT_MAIL_PASS_v1）---
-    可选：FARPORT_IMAP_SERVER_v1、FARPORT_IMAP_PORT_v1（默认 imap.exmail.qq.com:993）
+  --- 泽鑫多维 ZXDW 净值邮件（IMAP 用 .env：FARPORT_MAIL_USER / FARPORT_MAIL_PASS）---
+    可选：ALPHA_IMAP_SERVER、ALPHA_IMAP_PORT（默认 imap.exmail.qq.com:993）
     python manage.py auto_import_zxdw_nav_mail
     python manage.py auto_import_zxdw_nav_mail --force
     python manage.py auto_import_zxdw_nav_mail --report-date 2026-04-17
 
-  Alpha 结果通知邮件（SMTP）：.env 中 ALPHA_NOTIFY_*、ALPHA_NOTIFY_TO
+  --- 吾矿期货结算单（IMAP 用 .env：FARPORT_MAIL_USER / FARPORT_MAIL_PASS）---
+    python manage.py auto_import_wkqh_settle_mail
+    python manage.py auto_import_wkqh_settle_mail --subject-date 2026-04-20
+    python manage.py auto_import_wkqh_settle_mail --subject-date 2026-04-20 --days 7
+    兼容命令（等价）：
+    python manage.py wkqh_settle_service
+    python manage.py wkqh_settle_service --subject-date 2026-04-20
+
+  结果通知邮件（SMTP）：.env 中 ALPHA_NOTIFY_*、ALPHA_NOTIFY_TO
 
 --------------------------------------------------------------------------------
 九、内置定时任务（随 Django 进程启动，见 portal.scheduler.alpha_mail_scheduler）
@@ -128,6 +136,7 @@
     09:31  auto_import_fund_nav_mail
     12:00  auto_import_zxdw_nav_mail
     17:30  auto_import_alpha_mail
+    18:00  auto_import_wkqh_settle_mail
 
   说明：使用 runserver 或部署 ASGI/WSGI 且加载了该 scheduler 时，后台线程按上述时间
         调用对应 manage.py 命令。若仅需要“手动跑任务”，可直接执行第八节命令。

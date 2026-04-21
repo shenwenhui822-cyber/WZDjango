@@ -17,7 +17,11 @@ from portal.services.imap_common import (
     find_latest_mail_id_by_exact_subject,
     normalize_attachment_filename,
 )
-from portal.services.mail_import_common import imap_logout_safe, imap_open_inbox
+from portal.services.mail_import_common import (
+    imap_logout_safe,
+    imap_open_inbox,
+    send_alpha_notify_result_email,
+)
 from portal.services.wkqh_settle_service import extract_settle_record_from_rar
 
 DEFAULT_ACCOUNT_ID = "66601123"
@@ -128,79 +132,142 @@ class Command(BaseCommand):
             help="账号前缀（默认 66601123）。",
         )
 
+    def _send_result_email(self, report: dict[str, object], started_at, ended_at, base_url: str) -> None:
+        duration = ended_at - started_at
+        if isinstance(duration, timedelta):
+            duration_sec = round(duration.total_seconds(), 3)
+        else:
+            duration_sec = 0.0
+        status = str(report.get("status") or "UNKNOWN")
+        subject = f"[{status}] 吾矿期货结算单入库 {timezone.localdate().strftime('%Y-%m-%d')}"
+        body = "\n".join(
+            [
+                "吾矿期货结算单自动入库执行结果",
+                "",
+                f"状态: {status}",
+                f"开始时间: {timezone.localtime(started_at).strftime('%Y-%m-%d %H:%M:%S')}",
+                f"结束时间: {timezone.localtime(ended_at).strftime('%Y-%m-%d %H:%M:%S')}",
+                f"运行时长(秒): {duration_sec}",
+                f"服务地址: {base_url or '-'}",
+                f"目标主题: {report.get('target_subject') or '-'}",
+                f"主题日期: {report.get('subject_ymd') or '-'}",
+                f"交易日(trade_date): {report.get('trade_date') or '-'}",
+                f"账号(account_id): {report.get('account_id') or '-'}",
+                f"RAR 文件: {report.get('source_rar_file') or '-'}",
+                f"TXT 文件: {report.get('source_txt_file_ascii') or '-'}",
+                f"结果说明: {report.get('message') or '-'}",
+                f"异常信息: {report.get('error') or '-'}",
+            ]
+        )
+        send_alpha_notify_result_email(
+            mail_subject=subject,
+            body=body,
+            log_stdout=self.stdout.write,
+            log_stderr_warn=lambda s: self.stderr.write(self.style.WARNING(s)),
+        )
+
     def handle(self, *args, **options):
+        started_at = timezone.now()
+        base_url = getattr(settings, "PORTAL_RUN_ADDRESS", "")
+        report: dict[str, object] = {
+            "status": "UNKNOWN",
+            "subject_ymd": "",
+            "target_subject": "",
+            "trade_date": "",
+            "account_id": "",
+            "source_rar_file": "",
+            "source_txt_file_ascii": "",
+            "message": "",
+            "error": "",
+            "notify": True,
+        }
         ymd = _normalize_ymd(
             (options.get("subject_date") or "").strip()
             or timezone.localdate().strftime("%Y%m%d")
         )
+        report["subject_ymd"] = ymd
         account_id = str(options.get("account_id") or DEFAULT_ACCOUNT_ID).strip()
+        report["account_id"] = account_id
         lookback_days = max(1, int(options.get("days") or 5))
         target_subject = f"{SUBJECT_PREFIX}{ymd}"
+        report["target_subject"] = target_subject
         since_date = timezone.localdate() - timedelta(days=lookback_days)
 
         self.stdout.write(f"目标主题: {target_subject}")
         user, pwd, host, port = _resolve_farport_imap_credentials()
         mailbox: imaplib.IMAP4_SSL | None = None
         try:
-            mailbox = imap_open_inbox(user, pwd, host, port)
-            mail_id = find_latest_mail_id_by_exact_subject(
-                mailbox,
-                target_subject,
-                since_calendar_date=since_date,
-            )
-            if not mail_id:
-                raise RuntimeError("未找到匹配主题的邮件。")
-
-            attach_dir = Path(settings.BASE_DIR) / "downloaded_attachments_wkqh" / ymd
-            rar_path = _save_target_rar_attachment(
-                mailbox,
-                mail_id,
-                output_dir=attach_dir,
-                account_id=account_id,
-                ymd=ymd,
-            )
-            self.stdout.write(self.style.SUCCESS(f"已下载目标 RAR: {rar_path}"))
-
-            parsed = extract_settle_record_from_rar(
-                rar_path,
-                account_id=account_id,
-                ymd=ymd,
-            )
-            statement_ymd = str(parsed["statement_ymd"])
-            trade_date = _ymd_to_iso(statement_ymd)
-
-            payload = {
-                "trade_date": trade_date,
-                "account_id": str(parsed["client_id"] or account_id),
-                "subject_ymd": ymd,
-                "source_rar_file": rar_path.name,
-                "source_txt_file_ascii": _ascii_safe_name(str(parsed["txt_file_name"])),
-                "metrics": parsed["metrics"],
-                "updated_at": timezone.now().isoformat(),
-            }
-
-            client = get_mongo_client()
             try:
-                coll = client["future_settle_real"]["WKQH_66601123"]
-                coll.create_index(
-                    [("trade_date", 1), ("account_id", 1)],
-                    unique=True,
-                    background=True,
+                mailbox = imap_open_inbox(user, pwd, host, port)
+                mail_id = find_latest_mail_id_by_exact_subject(
+                    mailbox,
+                    target_subject,
+                    since_calendar_date=since_date,
                 )
-                result = coll.update_one(
-                    {"trade_date": trade_date, "account_id": payload["account_id"]},
-                    {"$set": payload},
-                    upsert=True,
-                )
-            finally:
-                client.close()
+                if not mail_id:
+                    raise RuntimeError("未找到匹配主题的邮件。")
 
-            self.stdout.write(
-                self.style.SUCCESS(
+                attach_dir = Path(settings.BASE_DIR) / "downloaded_attachments_wkqh" / ymd
+                rar_path = _save_target_rar_attachment(
+                    mailbox,
+                    mail_id,
+                    output_dir=attach_dir,
+                    account_id=account_id,
+                    ymd=ymd,
+                )
+                report["source_rar_file"] = rar_path.name
+                self.stdout.write(self.style.SUCCESS(f"已下载目标 RAR: {rar_path}"))
+
+                parsed = extract_settle_record_from_rar(
+                    rar_path,
+                    account_id=account_id,
+                    ymd=ymd,
+                )
+                statement_ymd = str(parsed["statement_ymd"])
+                trade_date = _ymd_to_iso(statement_ymd)
+                report["trade_date"] = trade_date
+                source_txt_file_ascii = _ascii_safe_name(str(parsed["txt_file_name"]))
+                report["source_txt_file_ascii"] = source_txt_file_ascii
+
+                payload = {
+                    "trade_date": trade_date,
+                    "account_id": str(parsed["client_id"] or account_id),
+                    "subject_ymd": ymd,
+                    "source_rar_file": rar_path.name,
+                    "source_txt_file_ascii": source_txt_file_ascii,
+                    "metrics": parsed["metrics"],
+                    "updated_at": timezone.now().isoformat(),
+                }
+
+                client = get_mongo_client()
+                try:
+                    coll = client["future_settle_real"]["WKQH_66601123"]
+                    coll.create_index(
+                        [("trade_date", 1), ("account_id", 1)],
+                        unique=True,
+                        background=True,
+                    )
+                    result = coll.update_one(
+                        {"trade_date": trade_date, "account_id": payload["account_id"]},
+                        {"$set": payload},
+                        upsert=True,
+                    )
+                finally:
+                    client.close()
+
+                report["status"] = "SUCCESS"
+                report["message"] = (
                     "入库完成: future_settle_real.WKQH_66601123 "
                     f"(matched={result.matched_count}, modified={result.modified_count}, "
                     f"upserted={result.upserted_id is not None})"
                 )
-            )
+                self.stdout.write(self.style.SUCCESS(str(report["message"])))
+            except Exception as exc:
+                report["status"] = "FAILED"
+                report["error"] = str(exc)
+                report["message"] = str(exc)
+                raise
         finally:
             imap_logout_safe(mailbox)
+            if report.get("notify", True):
+                self._send_result_email(report, started_at, timezone.now(), base_url)
