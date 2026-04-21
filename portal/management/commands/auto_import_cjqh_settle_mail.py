@@ -250,6 +250,11 @@ class Command(BaseCommand):
                     "metrics": parsed["metrics"],
                     "updated_at": timezone.now().isoformat(),
                 }
+                metrics = payload["metrics"] or {}
+                if not any(v is not None for v in metrics.values()):
+                    raise RuntimeError(
+                        "Account Summary 指标解析为空：请确认命中了主结算单 TXT（如 81801575.TXT）"
+                    )
 
                 client = get_mongo_client()
                 try:

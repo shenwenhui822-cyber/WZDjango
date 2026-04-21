@@ -110,7 +110,9 @@ def _extract_account_summary_metrics(text: str) -> dict[str, float | None]:
 
 
 def _pick_target_txt(root: Path, account_id: str) -> Path:
-    txt_files = sorted(root.rglob("*.txt"))
+    txt_files = sorted(
+        [p for p in root.rglob("*") if p.is_file() and p.suffix.lower() == ".txt"]
+    )
     if not txt_files:
         raise RuntimeError("RAR 解压后未找到 txt 文件。")
 
