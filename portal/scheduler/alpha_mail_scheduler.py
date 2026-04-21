@@ -11,6 +11,7 @@ from django.utils import timezone
 _scheduler_started = False
 
 # (HH:MM, management command name, kwargs)
+# 邮件类任务在各自命令内校验「查询日～运行日」闭区间交易日个数 ≤ MAIL_JOB_MAX_TRADING_DAY_SPAN（默认 3）。
 _DEFAULT_SCHEDULES: list[tuple[str, str, dict]] = [
     ("09:31", "auto_import_fund_nav_mail", {}),
     ("09:30", "update_rq_bench", {}),

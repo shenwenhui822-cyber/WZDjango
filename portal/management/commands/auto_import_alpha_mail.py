@@ -14,10 +14,7 @@ import imaplib
 import os
 import re
 from datetime import timedelta
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from pathlib import Path
-from smtplib import SMTPException, SMTP_SSL
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -31,6 +28,13 @@ from portal.services.imap_common import (
     normalize_attachment_filename,
 )
 from portal.services.import_service import import_excel_fileobj
+from portal.services.mail_import_common import (
+    imap_logout_safe,
+    imap_open_inbox,
+    iso_date_from_yyyymmdd,
+    send_alpha_notify_result_email,
+    validate_mail_job_query_span,
+)
 
 
 class Command(BaseCommand):
@@ -77,6 +81,18 @@ class Command(BaseCommand):
         report["subject_date"] = subject_date
 
         try:
+            query_iso = iso_date_from_yyyymmdd(subject_date)
+            span_err = validate_mail_job_query_span(
+                query_iso=query_iso,
+                run_iso=local_date.isoformat(),
+                force=bool(options["force"]),
+            )
+            if span_err:
+                report["status"] = "FAILED"
+                report["message"] = span_err
+                self.stderr.write(self.style.ERROR(span_err))
+                return
+
             report["is_trading_day"] = self._is_trading_day(local_date)
             if not options["force"] and not report["is_trading_day"]:
                 report["status"] = "SKIPPED"
@@ -97,11 +113,9 @@ class Command(BaseCommand):
 
             mailbox = None
             try:
-                mailbox = imaplib.IMAP4_SSL(imap_server, imap_port)
-                mailbox.login(email_user, email_pass)
-                status, _ = mailbox.select("INBOX", readonly=True)
-                if status != "OK":
-                    raise RuntimeError("无法打开 INBOX")
+                mailbox = imap_open_inbox(
+                    email_user, email_pass, imap_server, imap_port
+                )
 
                 mail_id = find_latest_mail_id_by_exact_subject(mailbox, target_subject)
                 if not mail_id:
@@ -143,11 +157,7 @@ class Command(BaseCommand):
                 report["message"] = f"完成: 共 {len(files)} 个 xlsx 已导入 MongoDB。"
                 self.stdout.write(self.style.SUCCESS(report["message"]))
             finally:
-                if mailbox is not None:
-                    try:
-                        mailbox.logout()
-                    except Exception:
-                        pass
+                imap_logout_safe(mailbox)
         except Exception as exc:
             report["status"] = "FAILED"
             report["error"] = str(exc)
@@ -217,29 +227,15 @@ class Command(BaseCommand):
         ended_at,
         base_url: str,
     ) -> None:
-        to_raw = os.getenv("ALPHA_NOTIFY_TO", "")
-        recipients = [x.strip() for x in to_raw.split(",") if x.strip()]
-        smtp_host = os.getenv("ALPHA_NOTIFY_SMTP_HOST", "").strip()
-        smtp_port = int(os.getenv("ALPHA_NOTIFY_SMTP_PORT", "465"))
-        smtp_user = os.getenv("ALPHA_NOTIFY_USER", "").strip()
-        smtp_pass = os.getenv("ALPHA_NOTIFY_PASS", "").strip()
-        sender = os.getenv("ALPHA_NOTIFY_FROM", smtp_user).strip()
-
-        if not recipients:
-            self.stdout.write("未配置 ALPHA_NOTIFY_TO，跳过结果通知邮件。")
-            return
-        if not (smtp_host and smtp_user and smtp_pass and sender):
-            self.stdout.write("通知邮箱 SMTP 配置不完整，跳过结果通知邮件。")
-            return
-
         duration = ended_at - started_at
         if isinstance(duration, timedelta):
             duration_sec = round(duration.total_seconds(), 3)
         else:
             duration_sec = 0.0
-
         status = str(report.get("status") or "UNKNOWN")
-        subject = f"[{status}] Alpha 日报自动导入 {timezone.localdate().strftime('%Y-%m-%d')}"
+        mail_subject = (
+            f"[{status}] Alpha 日报自动导入 {timezone.localdate().strftime('%Y-%m-%d')}"
+        )
         imported = report.get("imported") or []
         imported_lines = []
         for row in imported:
@@ -255,6 +251,7 @@ class Command(BaseCommand):
                 f"开始时间: {timezone.localtime(started_at).strftime('%Y-%m-%d %H:%M:%S')}",
                 f"结束时间: {timezone.localtime(ended_at).strftime('%Y-%m-%d %H:%M:%S')}",
                 f"运行时长(秒): {duration_sec}",
+                f"服务地址: {base_url or '-'}",
                 f"交易日: {report.get('is_trading_day')}",
                 f"主题日期: {report.get('subject_date')}",
                 f"目标主题: {report.get('target_subject')}",
@@ -268,17 +265,9 @@ class Command(BaseCommand):
                 *(imported_lines or ["- 无"]),
             ]
         )
-
-        msg = MIMEMultipart()
-        msg["Subject"] = subject
-        msg["From"] = sender
-        msg["To"] = ";".join(recipients)
-        msg.attach(MIMEText(body, "plain", "utf-8"))
-        try:
-            smtp = SMTP_SSL(smtp_host, smtp_port)
-            smtp.login(smtp_user, smtp_pass)
-            smtp.sendmail(sender, recipients, msg.as_string())
-            smtp.quit()
-            self.stdout.write(f"结果通知邮件已发送: {', '.join(recipients)}")
-        except SMTPException as exc:
-            self.stderr.write(self.style.WARNING(f"结果通知邮件发送失败: {exc}"))
+        send_alpha_notify_result_email(
+            mail_subject=mail_subject,
+            body=body,
+            log_stdout=self.stdout.write,
+            log_stderr_warn=lambda s: self.stderr.write(self.style.WARNING(s)),
+        )

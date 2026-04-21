@@ -82,6 +82,49 @@ def is_trade_date_iso(iso: str) -> bool:
     return coll.find_one({"trade_date": day}, {"_id": 1}) is not None
 
 
+def calendar_day_isos_prev_trading_through_run(run_iso: str) -> list[str]:
+    """
+    从前一交易日（T-1）到 run_iso（通常为运行日「今天」）闭区间内的**每一个**自然日 YYYY-MM-DD，
+    顺序为**新→旧**。中间凡是非交易日（周末、长假等）**一律包含**，不做省略或截断。
+    """
+    day = (run_iso or "").strip()[:10]
+    if len(day) != 10:
+        return []
+    end = date.fromisoformat(day)
+    prev_t = prev_trading_day_iso_before(run_iso)
+    if not prev_t:
+        return [end.isoformat()]
+    start = date.fromisoformat(prev_t[:10])
+    if end < start:
+        return [end.isoformat()]
+    out: list[str] = []
+    d = end
+    while d >= start:
+        out.append(d.isoformat())
+        d -= timedelta(days=1)
+    return out
+
+
+def last_n_prev_trading_day_isos(ref_iso: str, n: int, *, max_days: int = 400) -> list[str]:
+    """
+    从 ref_iso 的前一交易日起，连续向前取最多 n 个交易日 YYYY-MM-DD。
+    例：ref 为运行日，则依次为 T-1、T-2、T-3（均为交易日）。
+
+    若需「T-1 至今天」之间每个自然日（含非交易日），请用 calendar_day_isos_prev_trading_through_run。
+    """
+    out: list[str] = []
+    ref = (ref_iso or "").strip()[:10]
+    if len(ref) != 10:
+        return out
+    for _ in range(max(0, n)):
+        p = prev_trading_day_iso_before(ref, max_days=max_days)
+        if not p:
+            break
+        out.append(p)
+        ref = p
+    return out
+
+
 def prev_trading_day_iso_before(ref_iso: str, *, max_days: int = 400) -> str | None:
     """
     严格早于 ref_iso（通常为「运行日」当日）的最近一个交易日 YYYY-MM-DD。
@@ -97,6 +140,26 @@ def prev_trading_day_iso_before(ref_iso: str, *, max_days: int = 400) -> str | N
             return d.isoformat()
         d -= timedelta(days=1)
     return None
+
+
+def count_trading_days_inclusive(start_iso: str, end_iso: str) -> int:
+    """闭区间 [start_iso, end_iso] 内（含首尾）的交易日数量；要求 start_iso <= end_iso。"""
+    s = (start_iso or "").strip()[:10]
+    e = (end_iso or "").strip()[:10]
+    if len(s) != 10 or len(e) != 10:
+        return 0
+    d0 = date.fromisoformat(s)
+    d1 = date.fromisoformat(e)
+    if d0 > d1:
+        return 0
+    n = 0
+    cur = d0
+    one = timedelta(days=1)
+    while cur <= d1:
+        if is_trade_date_iso(cur.isoformat()):
+            n += 1
+        cur += one
+    return n
 
 
 def distinct_product_names() -> list[str]:

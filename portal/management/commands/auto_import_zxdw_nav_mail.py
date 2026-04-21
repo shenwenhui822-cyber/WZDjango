@@ -4,9 +4,9 @@
 
 调度：portal.scheduler.alpha_mail_scheduler 默认 12:00（环境变量 ZXDW_NAV_MAIL_SCHEDULER_ENABLED）。
 
-业务约定：运行日中午拉取「前一交易日」净值表；主题中须含该日 YYYYMMDD + 基金关键词之一
-（见本模块常量 ZXDW_NAV_MAIL_FUND_KEY_PHRASES）。
-邮箱登录账号从 .env 读取 FARPORT_MAIL_USER_v1 / FARPORT_MAIL_PASS_v1。
+业务约定：未指定 --report-date 时，从前一交易日（T-1）到「今天」之间**每一个自然日**（含周末等非交易日）
+依次尝试主题（固定前缀+该日 ymd）；指定单日则只查该日。
+邮箱登录账号从 .env 读取 FARPORT_MAIL_USER / FARPORT_MAIL_PASS。
 任务结束后按 ALPHA_NOTIFY_* 发送结果邮件（非交易日跳过时不发）。
 
 用法：
@@ -16,68 +16,34 @@
 """
 from __future__ import annotations
 
-import email
 import imaplib
 import os
-from datetime import timedelta
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+from datetime import date, timedelta
 from pathlib import Path
-from smtplib import SMTPException, SMTP_SSL
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from portal.services.imap_common import (
-    decode_mime_header,
-    normalize_attachment_filename,
+from portal.services.imap_common import find_latest_mail_id_by_exact_subject
+from portal.services.mail_import_common import (
+    imap_logout_safe,
+    imap_open_inbox,
+    max_mail_job_trading_day_span,
+    save_excel_attachments_from_rfc822,
+    send_alpha_notify_result_email,
+    validate_mail_job_query_span,
 )
-from portal.services.trade_calendar_service import is_trade_date_iso, prev_trading_day_iso_before
+from portal.services.trade_calendar_service import (
+    calendar_day_isos_prev_trading_through_run,
+    is_trade_date_iso,
+)
 from portal.services.zxdw_fund_nav_service import import_zxdw_excel_routed_by_product_code
 
 # 主题匹配规则：固定前缀 + 报告日 YYYYMMDD
 ZXDW_NAV_MAIL_FUND_KEY_PHRASES: tuple[str, ...] = (
     "【净值表】上海吾执投资管理有限公司吾执泽鑫多维产品净值表发送-管理人",
 )
-
-
-def _excel_ext_ok(filename: str) -> bool:
-    _, ext = os.path.splitext((filename or "").lower())
-    return ext in (".xlsx", ".xls", ".xlsm")
-
-
-def _save_excel_attachments_from_mail(msg_bytes: bytes, save_dir: Path) -> list[Path]:
-    msg = email.message_from_bytes(msg_bytes)
-    save_dir.mkdir(parents=True, exist_ok=True)
-    saved: list[Path] = []
-    for part in msg.walk():
-        disp = str(part.get("Content-Disposition", ""))
-        if "attachment" not in disp.lower():
-            continue
-        filename_raw = part.get_filename()
-        filename = normalize_attachment_filename(
-            decode_mime_header(filename_raw) if filename_raw else ""
-        )
-        if not _excel_ext_ok(filename):
-            continue
-        payload = part.get_payload(decode=True)
-        if payload is None:
-            continue
-        output = save_dir / filename
-        if output.exists():
-            stem, ext = output.stem, output.suffix
-            i = 1
-            while True:
-                candidate = save_dir / f"{stem}_{i}{ext}"
-                if not candidate.exists():
-                    output = candidate
-                    break
-                i += 1
-        output.write_bytes(payload)
-        saved.append(output)
-    return saved
-
 
 def _resolve_imap_credentials_from_env_v1() -> tuple[str, str, str, int]:
     """
@@ -89,32 +55,9 @@ def _resolve_imap_credentials_from_env_v1() -> tuple[str, str, str, int]:
     port = int(os.getenv("ALPHA_IMAP_PORT") or "993")
     if not (user and pwd):
         raise RuntimeError(
-            "未配置邮箱：请在 .env 中设置 FARPORT_MAIL_USER_v1、FARPORT_MAIL_PASS_v1。"
+            "未配置邮箱：请在 .env 中设置 FARPORT_MAIL_USER、FARPORT_MAIL_PASS。"
         )
     return user, pwd, host, port
-
-
-def _find_first_mail_id_by_exact_subject(
-    mailbox: imaplib.IMAP4_SSL,
-    target_subject: str,
-) -> str | None:
-    """
-    按完整主题精确匹配，命中第一封（按邮件 ID 倒序，优先较新）后立即结束扫描。
-    """
-    status, data = mailbox.search(None, "ALL")
-    if status != "OK" or not data or not data[0]:
-        return None
-
-    for raw_id in reversed(data[0].split()):
-        mail_id = raw_id.decode()
-        status, msg_data = mailbox.fetch(mail_id, "(BODY[HEADER.FIELDS (SUBJECT)])")
-        if status != "OK" or not msg_data or not msg_data[0]:
-            continue
-        msg = email.message_from_bytes(msg_data[0][1])
-        subject = decode_mime_header(msg.get("Subject", "")).strip()
-        if subject == target_subject.strip():
-            return mail_id
-    return None
 
 
 class Command(BaseCommand):
@@ -132,7 +75,9 @@ class Command(BaseCommand):
         parser.add_argument(
             "--report-date",
             default="",
-            help="报告日期 YYYY-MM-DD；默认取运行日之前最近一个交易日（前一交易日净值日）。",
+            help=(
+                "报告日期 YYYY-MM-DD；未指定时从 T-1 到今天的每个自然日（含中间全部非交易日）依次尝试主题。"
+            ),
         )
 
     def _send_result_email(
@@ -142,30 +87,13 @@ class Command(BaseCommand):
         ended_at,
         base_url: str,
     ) -> None:
-        """与 auto_import_fund_nav_mail 相同：ALPHA_NOTIFY_* / SMTP_SSL。"""
-        to_raw = os.getenv("ALPHA_NOTIFY_TO", "")
-        recipients = [x.strip() for x in to_raw.split(",") if x.strip()]
-        smtp_host = os.getenv("ALPHA_NOTIFY_SMTP_HOST", "").strip()
-        smtp_port = int(os.getenv("ALPHA_NOTIFY_SMTP_PORT", "465"))
-        smtp_user = os.getenv("ALPHA_NOTIFY_USER", "").strip()
-        smtp_pass = os.getenv("ALPHA_NOTIFY_PASS", "").strip()
-        sender = os.getenv("ALPHA_NOTIFY_FROM", smtp_user).strip()
-
-        if not recipients:
-            self.stdout.write("未配置 ALPHA_NOTIFY_TO，跳过结果通知邮件。")
-            return
-        if not (smtp_host and smtp_user and smtp_pass and sender):
-            self.stdout.write("通知邮箱 SMTP 配置不完整，跳过结果通知邮件。")
-            return
-
         duration = ended_at - started_at
         if isinstance(duration, timedelta):
             duration_sec = round(duration.total_seconds(), 3)
         else:
             duration_sec = 0.0
-
         status = str(report.get("status") or "UNKNOWN")
-        subject = (
+        mail_subject = (
             f"[{status}] ZXDW 泽鑫多维净值邮件导入 "
             f"{timezone.localdate().strftime('%Y-%m-%d')}"
         )
@@ -179,8 +107,10 @@ class Command(BaseCommand):
                 f"开始时间: {timezone.localtime(started_at).strftime('%Y-%m-%d %H:%M:%S')}",
                 f"结束时间: {timezone.localtime(ended_at).strftime('%Y-%m-%d %H:%M:%S')}",
                 f"运行时长(秒): {duration_sec}",
+                f"服务地址: {base_url or '-'}",
                 f"报告日(report_date): {report.get('report_date') or '-'}",
                 f"主题日期(ymd): {report.get('ymd') or '-'}",
+                f"尝试过的报告日: {report.get('report_dates_tried') or '-'}",
                 f"累计 upsert 条数: {report.get('total_upsert', 0)}",
                 f"结果说明: {report.get('message') or '-'}",
                 f"异常信息: {report.get('error') or '-'}",
@@ -196,20 +126,12 @@ class Command(BaseCommand):
                 ),
             ]
         )
-
-        msg = MIMEMultipart()
-        msg["Subject"] = subject
-        msg["From"] = sender
-        msg["To"] = ";".join(recipients)
-        msg.attach(MIMEText(body, "plain", "utf-8"))
-        try:
-            smtp = SMTP_SSL(smtp_host, smtp_port)
-            smtp.login(smtp_user, smtp_pass)
-            smtp.sendmail(sender, recipients, msg.as_string())
-            smtp.quit()
-            self.stdout.write(f"结果通知邮件已发送: {', '.join(recipients)}")
-        except SMTPException as exc:
-            self.stderr.write(self.style.WARNING(f"结果通知邮件发送失败: {exc}"))
+        send_alpha_notify_result_email(
+            mail_subject=mail_subject,
+            body=body,
+            log_stdout=self.stdout.write,
+            log_stderr_warn=lambda s: self.stderr.write(self.style.WARNING(s)),
+        )
 
     def handle(self, *args, **options):
         started_at = timezone.now()
@@ -224,6 +146,7 @@ class Command(BaseCommand):
             "total_upsert": 0,
             "success_lines": [],
             "warn_lines": [],
+            "report_dates_tried": "",
         }
         mailbox: imaplib.IMAP4_SSL | None = None
         try:
@@ -240,20 +163,36 @@ class Command(BaseCommand):
                 return
 
             raw_report = (options.get("report_date") or "").strip()
-            if raw_report:
-                report_iso = raw_report[:10]
-                ymd = report_iso.replace("-", "")
+            explicit_date = bool(raw_report)
+            if explicit_date:
+                report_isos_to_try = [raw_report[:10]]
             else:
-                report_iso = prev_trading_day_iso_before(today_iso) or ""
-                if not report_iso:
+                report_isos_to_try = calendar_day_isos_prev_trading_through_run(today_iso)
+                if not report_isos_to_try:
                     report["status"] = "FAILED"
-                    report["message"] = "无法解析前一交易日，请指定 --report-date"
+                    report["message"] = "无法解析交易日列表，请检查 trade_calendar 是否已导入。"
                     self.stderr.write(self.style.ERROR(report["message"]))
                     return
-                ymd = report_iso.replace("-", "")
 
-            report["report_date"] = report_iso
-            report["ymd"] = ymd
+            report["report_dates_tried"] = ", ".join(report_isos_to_try)
+
+            oldest = report_isos_to_try[-1]
+            max_span = (
+                max_mail_job_trading_day_span()
+                if explicit_date
+                else max(5, max_mail_job_trading_day_span())
+            )
+            span_err = validate_mail_job_query_span(
+                query_iso=oldest,
+                run_iso=today_iso,
+                force=force,
+                max_inclusive_trading_days=max_span,
+            )
+            if span_err:
+                report["status"] = "FAILED"
+                report["message"] = span_err
+                self.stderr.write(self.style.ERROR(span_err))
+                return
 
             subject_prefixes = ZXDW_NAV_MAIL_FUND_KEY_PHRASES
             if not subject_prefixes:
@@ -261,34 +200,69 @@ class Command(BaseCommand):
                 report["message"] = "ZXDW_NAV_MAIL_FUND_KEY_PHRASES 为空，请在本文件顶部配置"
                 self.stderr.write(self.style.ERROR(report["message"]))
                 return
-            target_subjects = [f"{prefix}{ymd}" for prefix in subject_prefixes]
 
             user, pwd, host, port = _resolve_imap_credentials_from_env_v1()
             try:
-                mailbox = imaplib.IMAP4_SSL(host, port)
-                mailbox.login(user, pwd)
-                st, _ = mailbox.select("INBOX", readonly=True)
-                if st != "OK":
+                mailbox = imap_open_inbox(user, pwd, host, port)
+
+                self.stdout.write(
+                    "按完整主题精确匹配（非模糊）；"
+                    + (
+                        "未指定 --report-date：从 T-1 到今天的每个自然日（含周末等非交易日）"
+                        f"依次尝试，共 {len(report_isos_to_try)} 个 ymd。"
+                        if not explicit_date
+                        else "已指定 --report-date，仅尝试该日。"
+                    )
+                )
+                self.stdout.write(
+                    "检索 IMAP 时仅搜索报告日前后一段日期范围内的邮件，避免全箱扫描（大邮箱仍需数秒至数十秒）。"
+                )
+
+                mail_id: str | None = None
+                matched_subject = ""
+                report_iso = ""
+                ymd = ""
+
+                for cand_iso in report_isos_to_try:
+                    cand_ymd = cand_iso.replace("-", "")
+                    target_subjects = [f"{prefix}{cand_ymd}" for prefix in subject_prefixes]
+                    self.stdout.write(
+                        f"---- 尝试报告日 {cand_iso}（主题后缀 {cand_ymd}）----"
+                    )
+                    for sub in target_subjects:
+                        self.stdout.write(f"  目标主题：{sub}")
+                    since_days = max_mail_job_trading_day_span()
+                    since_dt = date.fromisoformat(cand_iso) - timedelta(days=since_days)
+                    self.stdout.write(
+                        f"  正在检索（SINCE {since_dt.isoformat()}，较报告日向前 {since_days} 个自然日，"
+                        f"由 MAIL_JOB_MAX_TRADING_DAY_SPAN 控制，默认 3）..."
+                    )
+                    for sub in target_subjects:
+                        mail_id = find_latest_mail_id_by_exact_subject(
+                            mailbox,
+                            sub,
+                            since_calendar_date=since_dt,
+                        )
+                        if mail_id:
+                            matched_subject = sub
+                            report_iso = cand_iso
+                            ymd = cand_ymd
+                            break
+                    if mail_id:
+                        break
+
+                if not mail_id:
                     report["status"] = "FAILED"
-                    report["message"] = "无法打开 INBOX"
+                    report["message"] = (
+                        "未找到完整主题精确匹配的邮件。"
+                    )
+                    report["report_date"] = report_isos_to_try[0]
+                    report["ymd"] = report_isos_to_try[0].replace("-", "")
                     self.stderr.write(self.style.ERROR(report["message"]))
                     return
 
-                self.stdout.write("按完整主题精确匹配邮件（非模糊匹配）...")
-                for sub in target_subjects:
-                    self.stdout.write(f"目标主题：{sub}")
-                mail_id = None
-                matched_subject = ""
-                for sub in target_subjects:
-                    mail_id = _find_first_mail_id_by_exact_subject(mailbox, sub)
-                    if mail_id:
-                        matched_subject = sub
-                        break
-                if not mail_id:
-                    report["status"] = "FAILED"
-                    report["message"] = "未找到完整主题精确匹配的邮件"
-                    self.stderr.write(self.style.ERROR(report["message"]))
-                    return
+                report["report_date"] = report_iso
+                report["ymd"] = ymd
                 self.stdout.write(self.style.SUCCESS(f"已命中主题：{matched_subject}"))
 
                 st, msg_data = mailbox.fetch(mail_id, "(RFC822)")
@@ -307,7 +281,7 @@ class Command(BaseCommand):
                     )
                 )
                 day_dir = save_root / ymd
-                files = _save_excel_attachments_from_mail(msg_bytes, day_dir)
+                files = save_excel_attachments_from_rfc822(msg_bytes, day_dir)
                 if not files:
                     report["status"] = "FAILED"
                     report["message"] = "邮件中无 Excel 附件（.xlsx/.xls/.xlsm）"
@@ -358,11 +332,7 @@ class Command(BaseCommand):
                     report["message"] = f"完成，累计 {total_upsert} 条"
                     self.stdout.write(self.style.SUCCESS(report["message"]))
             finally:
-                if mailbox is not None:
-                    try:
-                        mailbox.logout()
-                    except Exception:
-                        pass
+                imap_logout_safe(mailbox)
         except Exception as exc:
             report["status"] = "FAILED"
             report["error"] = str(exc)

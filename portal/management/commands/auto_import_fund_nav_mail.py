@@ -13,14 +13,10 @@ T+1 早晨拉取「博士一号」真实净值邮件中的 Excel 附件（.xlsx 
 """
 from __future__ import annotations
 
-import email
 import imaplib
 import os
 from datetime import timedelta
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from pathlib import Path
-from smtplib import SMTPException, SMTP_SSL
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -29,53 +25,18 @@ from django.utils import timezone
 from portal.config.mail_imap import resolve_imap_credentials
 from portal.data.fund_nav_real_config import FUND_NAV_PRODUCTS, build_fund_nav_mail_subject
 from portal.services.fund_nav_real_service import parse_fund_nav_excel, upsert_fund_nav_doc
-from portal.services.imap_common import (
-    decode_mime_header,
-    find_latest_mail_id_by_exact_subject,
-    normalize_attachment_filename,
+from portal.services.imap_common import find_latest_mail_id_by_exact_subject
+from portal.services.mail_import_common import (
+    imap_logout_safe,
+    imap_open_inbox,
+    save_excel_attachments_from_rfc822,
+    send_alpha_notify_result_email,
+    validate_mail_job_query_span,
 )
 from portal.services.trade_calendar_service import (
     is_trade_date_iso,
     prev_trading_day_iso_before,
 )
-
-
-def _excel_ext_ok(filename: str) -> bool:
-    """识别 .xlsx / .xlsm / .xls（注意：不能用 endswith('.xls')，否则 .xlsx 会误判）。"""
-    _, ext = os.path.splitext((filename or "").lower())
-    return ext in (".xlsx", ".xls", ".xlsm")
-
-
-def _save_excel_attachments_from_mail(msg_bytes: bytes, save_dir: Path) -> list[Path]:
-    msg = email.message_from_bytes(msg_bytes)
-    save_dir.mkdir(parents=True, exist_ok=True)
-    saved: list[Path] = []
-    for part in msg.walk():
-        disp = str(part.get("Content-Disposition", ""))
-        if "attachment" not in disp.lower():
-            continue
-        filename_raw = part.get_filename()
-        filename = normalize_attachment_filename(
-            decode_mime_header(filename_raw) if filename_raw else ""
-        )
-        if not _excel_ext_ok(filename):
-            continue
-        payload = part.get_payload(decode=True)
-        if payload is None:
-            continue
-        output = save_dir / filename
-        if output.exists():
-            stem, ext = output.stem, output.suffix
-            i = 1
-            while True:
-                candidate = save_dir / f"{stem}_{i}{ext}"
-                if not candidate.exists():
-                    output = candidate
-                    break
-                i += 1
-        output.write_bytes(payload)
-        saved.append(output)
-    return saved
 
 
 class Command(BaseCommand):
@@ -104,30 +65,13 @@ class Command(BaseCommand):
         ended_at,
         base_url: str,
     ) -> None:
-        """与 auto_import_alpha_mail 相同：ALPHA_NOTIFY_* / SMTP_SSL。"""
-        to_raw = os.getenv("ALPHA_NOTIFY_TO", "")
-        recipients = [x.strip() for x in to_raw.split(",") if x.strip()]
-        smtp_host = os.getenv("ALPHA_NOTIFY_SMTP_HOST", "").strip()
-        smtp_port = int(os.getenv("ALPHA_NOTIFY_SMTP_PORT", "465"))
-        smtp_user = os.getenv("ALPHA_NOTIFY_USER", "").strip()
-        smtp_pass = os.getenv("ALPHA_NOTIFY_PASS", "").strip()
-        sender = os.getenv("ALPHA_NOTIFY_FROM", smtp_user).strip()
-
-        if not recipients:
-            self.stdout.write("未配置 ALPHA_NOTIFY_TO，跳过结果通知邮件。")
-            return
-        if not (smtp_host and smtp_user and smtp_pass and sender):
-            self.stdout.write("通知邮箱 SMTP 配置不完整，跳过结果通知邮件。")
-            return
-
         duration = ended_at - started_at
         if isinstance(duration, timedelta):
             duration_sec = round(duration.total_seconds(), 3)
         else:
             duration_sec = 0.0
-
         status = str(report.get("status") or "UNKNOWN")
-        subject = (
+        mail_subject = (
             f"[{status}] 博士一号真实净值导入 "
             f"{timezone.localdate().strftime('%Y-%m-%d')}"
         )
@@ -141,6 +85,7 @@ class Command(BaseCommand):
                 f"开始时间: {timezone.localtime(started_at).strftime('%Y-%m-%d %H:%M:%S')}",
                 f"结束时间: {timezone.localtime(ended_at).strftime('%Y-%m-%d %H:%M:%S')}",
                 f"运行时长(秒): {duration_sec}",
+                f"服务地址: {base_url or '-'}",
                 f"目标净值日(nav_date): {report.get('nav_date') or '-'}",
                 f"运行日为交易日: {report.get('run_day_is_trading')}",
                 f"nav_date 为交易日: {report.get('nav_date_is_trading')}",
@@ -155,20 +100,12 @@ class Command(BaseCommand):
                 *(fail_lines if isinstance(fail_lines, list) and fail_lines else ["- 无"]),
             ]
         )
-
-        msg = MIMEMultipart()
-        msg["Subject"] = subject
-        msg["From"] = sender
-        msg["To"] = ";".join(recipients)
-        msg.attach(MIMEText(body, "plain", "utf-8"))
-        try:
-            smtp = SMTP_SSL(smtp_host, smtp_port)
-            smtp.login(smtp_user, smtp_pass)
-            smtp.sendmail(sender, recipients, msg.as_string())
-            smtp.quit()
-            self.stdout.write(f"结果通知邮件已发送: {', '.join(recipients)}")
-        except SMTPException as exc:
-            self.stderr.write(self.style.WARNING(f"结果通知邮件发送失败: {exc}"))
+        send_alpha_notify_result_email(
+            mail_subject=mail_subject,
+            body=body,
+            log_stdout=self.stdout.write,
+            log_stderr_warn=lambda s: self.stderr.write(self.style.WARNING(s)),
+        )
 
     def handle(self, *args, **options):
         started_at = timezone.now()
@@ -226,6 +163,17 @@ class Command(BaseCommand):
 
             self.stdout.write(f"目标净值日(nav_date): {nav_iso}")
 
+            span_err = validate_mail_job_query_span(
+                query_iso=nav_iso,
+                run_iso=run_iso,
+                force=bool(options["force"]),
+            )
+            if span_err:
+                report["status"] = "FAILED"
+                report["message"] = span_err
+                self.stderr.write(self.style.ERROR(span_err))
+                return
+
             if nav_raw and not options["force"] and not report["nav_date_is_trading"]:
                 report["status"] = "SKIPPED"
                 report["message"] = (
@@ -247,11 +195,9 @@ class Command(BaseCommand):
 
             mailbox: imaplib.IMAP4_SSL | None = None
             try:
-                mailbox = imaplib.IMAP4_SSL(imap_server, imap_port)
-                mailbox.login(email_user, email_pass)
-                status, _ = mailbox.select("INBOX", readonly=True)
-                if status != "OK":
-                    raise RuntimeError("无法打开 INBOX")
+                mailbox = imap_open_inbox(
+                    email_user, email_pass, imap_server, imap_port
+                )
 
                 for fund in FUND_NAV_PRODUCTS:
                     subj = build_fund_nav_mail_subject(fund, nav_iso)
@@ -277,7 +223,7 @@ class Command(BaseCommand):
                         report_fail.append(msg)
                         continue
 
-                    files = _save_excel_attachments_from_mail(raw, save_root)
+                    files = save_excel_attachments_from_rfc822(raw, save_root)
                     if not files:
                         msg = f"[{fund['product_key']}] 邮件中无 Excel 附件（.xlsx/.xls/.xlsm）"
                         self.stdout.write(self.style.WARNING(msg))
@@ -316,11 +262,7 @@ class Command(BaseCommand):
                     )
                     report_ok += 1
             finally:
-                if mailbox is not None:
-                    try:
-                        mailbox.logout()
-                    except Exception:
-                        pass
+                imap_logout_safe(mailbox)
 
             report["ok_count"] = report_ok
             report["success_lines"] = success_lines

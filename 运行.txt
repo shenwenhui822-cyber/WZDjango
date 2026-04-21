@@ -1,105 +1,144 @@
-在 **`\WZDjango`** 下按顺序执行即可：
+================================================================================
+  WZDjango 本地 / 服务器运行说明
+  项目根目录：<项目>/WZDjango（Windows 示例 G:\github\WZDjango）
+================================================================================
 
-### 1. 进入目录并安装依赖（首次或换环境时）
-```powershell
-source venv/bin/activate
-cd G:\github\WZDjango
-pip install -r requirements.txt
-```
-查看端口
-ss -tulnp
-### 2. 数据库迁移（首次）
-```powershell
-python manage.py migrate
-```
+【前提】
+  - Python 3.x，建议使用项目内 venv
+  - MongoDB 默认 localhost:27017（导入类命令需要）
+  - 项目根目录配置 .env（由 Django 加载）
 
-### 3. 创建登录账号（若还没有用户）
-```powershell
-python manage.py createsuperuser
-```
-按提示输入用户名和密码。
+--------------------------------------------------------------------------------
+一、进入目录并安装依赖（首次或换环境）
+--------------------------------------------------------------------------------
 
-### 4. 启动开发服务器（外部可访问）
-```powershell
-python manage.py runserver 0.0.0.0:7443
-```
+  Windows（PowerShell）示例：
+    cd G:\github\WZDjango
+    .\venv\Scripts\activate
+    pip install -r requirements.txt
 
-默认地址：**http://127.0.0.1:7443/**  
-- 未登录：打开首页会看到登录页  
-- 登录后：访问 **http://127.0.0.1:7443/home/** 进入首页  
+  Linux / macOS 示例：
+    cd /home/Django/WZDjango
+    source venv/bin/activate
+    pip install -r requirements.txt
 
-### 可选：指定端口
-```powershell
-python manage.py runserver 0.0.0.0:8080
-```
+--------------------------------------------------------------------------------
+二、数据库迁移（首次或模型变更后）
+--------------------------------------------------------------------------------
 
-### 可选：把 Alphadata 里的 xlsx 导入 MongoDB
-先保证本机 **MongoDB** 在 `localhost:27017` 已启动，再执行：
-```powershell
-python manage.py import_alphadata_xlsx
-```
+    python manage.py migrate
 
-### API（curl 调用）
-查询数据：
-```powershell
-curl "http://127.0.0.1:7443/api/alpha/daily/?date_from=2026-01-01&date_to=2026-01-31&limit=100"
-```
+--------------------------------------------------------------------------------
+三、管理员账号（若还没有）
+--------------------------------------------------------------------------------
 
-上传导入：
-```powershell
-curl -X POST -F "file=@G:/github/WZDjango/Alphadata/Alpha产品表现汇总_20220921.xlsx" "http://127.0.0.1:7443/api/alpha/import/"
-```
+    python manage.py createsuperuser
 
-### 导入交易日 CSV → MongoDB（alpha_product.trade_calendar）
-默认读取项目内 `trade_dates_all/trade_dates_all.csv`：
-```powershell
-python manage.py import_trade_dates_csv
-```
-清空后全量导入：
-```powershell
-python manage.py import_trade_dates_csv --clear
-```
+--------------------------------------------------------------------------------
+四、启动开发服务器（局域网可访问）
+--------------------------------------------------------------------------------
 
-### 净值曲线 API
-`product_name` 必填。最近 N 个交易日：`recent=5|10|15`（默认 5）；或区间：`date_from` / `date_to`（与 `recent` 二选一，优先 `recent`）。
-```powershell
-curl "http://127.0.0.1:7443/api/nav/curve/?product_name=产品名称&recent=5&only_trading_days=1"
-```
-```powershell
-curl "http://127.0.0.1:7443/api/nav/curve/?product_name=产品名称&date_from=2024-01-01&date_to=2024-12-31&only_trading_days=1"
-```
-浏览器页面：**http://127.0.0.1:7443/nav/curve/**（需登录）
+    python manage.py runserver 0.0.0.0:7443
 
-### Alpha 日报邮件自动导入（交易日 17:30）
-先保证 `trade_calendar` 已导入。配置在项目根目录 **`.env`**：
-- IMAP 收件：`ALPHA_MAIL_USER` / `ALPHA_MAIL_PASS` / `ALPHA_IMAP_SERVER` / `ALPHA_IMAP_PORT`
-- 结果通知（发到 shenwenhui@wonderwiz.cn、15525171170@163.com）：`ALPHA_NOTIFY_*`、`ALPHA_NOTIFY_TO`
-- Mongo：`MONGODB_URI`
-```powershell
-python manage.py auto_import_alpha_mail
-```
-Windows 计划任务每日 17:30：程序 `python`，参数 `manage.py auto_import_alpha_mail`，起始于 `G:\github\WZDjango`。详见 `scheduler/README.md`。
-按今天日期（并走交易日判断）
-python manage.py auto_import_alpha_mail
-忽略交易日判断强制执行
-python manage.py auto_import_alpha_mail --force
-指定某天主题并强制执行
-python manage.py auto_import_alpha_mail --force --subject-date 20260415
+  浏览器：
+    - 未登录：首页会跳转登录
+    - 登录后首页：http://127.0.0.1:7443/home/
 
-### 自动启动定时器（随 Django runserver 启动）
-默认已开启：启动 Django 即自动后台进入定时循环（无需手动执行额外命令），按每天 `17:30` 触发。
+  换端口示例：
+    python manage.py runserver 0.0.0.0:8080
 
+--------------------------------------------------------------------------------
+五、查看端口占用（可选）
+--------------------------------------------------------------------------------
 
-  python manage.py auto_import_fund_nav_mail
-  python manage.py auto_import_fund_nav_mail --force
-  python manage.py auto_import_fund_nav_mail --nav-date 2026-04-02
+  Linux：
+    ss -tulnp | grep 7443
 
-### 本地下载目录多行净值表（xls/xlsx）导入 fund_nav_real
-默认读取项目根目录 `downloaded_attachments_boshiyihao`：
-```powershell
-python manage.py import_fund_nav_local
-```
-指定目录：
-```powershell
-python manage.py import_fund_nav_local --dir G:\github\WZDjango\downloaded_attachments_boshiyihao
-```
+  Windows（PowerShell）：
+    netstat -ano | findstr 7443
+
+--------------------------------------------------------------------------------
+六、数据导入（按需）
+--------------------------------------------------------------------------------
+
+  6.1 Alphadata xlsx → MongoDB（需 Mongo 已启动）
+      python manage.py import_alphadata_xlsx
+
+  6.2 交易日 CSV → MongoDB（alpha_product.trade_calendar）
+      默认读取项目内 trade_dates_all/trade_dates_all.csv
+      python manage.py import_trade_dates_csv
+      清空后全量：
+      python manage.py import_trade_dates_csv --clear
+
+  6.3 本地下载目录多行净值表 → fund_nav_real（博士一号等）
+      默认目录：项目根 downloaded_attachments_boshiyihao
+      python manage.py import_fund_nav_local
+      指定目录：
+      python manage.py import_fund_nav_local --dir <目录路径>
+
+--------------------------------------------------------------------------------
+七、HTTP API（curl 示例，端口按实际修改）
+--------------------------------------------------------------------------------
+
+  查询 Alpha 日数据：
+    curl "http://127.0.0.1:7443/api/alpha/daily/?date_from=2026-01-01&date_to=2026-01-31&limit=100"
+
+  上传 Alpha xlsx：
+    curl -X POST -F "file=@<本地xlsx路径>" "http://127.0.0.1:7443/api/alpha/import/"
+
+  净值曲线 API（product_name 必填）
+    最近 N 个交易日（recent=5|10|15，默认 5）：
+    curl "http://127.0.0.1:7443/api/nav/curve/?product_name=产品名称&recent=5&only_trading_days=1"
+    日期区间（与 recent 二选一，优先 recent）：
+    curl "http://127.0.0.1:7443/api/nav/curve/?product_name=产品名称&date_from=2024-01-01&date_to=2024-12-31&only_trading_days=1"
+
+  净值曲线页面（需登录）：
+    http://127.0.0.1:7443/nav/curve/
+
+--------------------------------------------------------------------------------
+八、邮件自动导入管理命令（手动执行）
+--------------------------------------------------------------------------------
+
+  说明：交易日历需已导入（import_trade_dates_csv），否则“是否交易日”判断可能异常。
+
+  --- Alpha 日报（IMAP 用 .env：ALPHA_MAIL_USER / ALPHA_MAIL_PASS 等）---
+    python manage.py auto_import_alpha_mail
+    python manage.py auto_import_alpha_mail --force
+    python manage.py auto_import_alpha_mail --force --subject-date 20260415
+
+  --- 博士一号真实净值（同上 ALPHA_MAIL_*）---
+    python manage.py auto_import_fund_nav_mail
+    python manage.py auto_import_fund_nav_mail --force
+    python manage.py auto_import_fund_nav_mail --nav-date 2026-04-02
+
+  --- 泽鑫多维 ZXDW 净值邮件（IMAP 用 .env：FARPORT_MAIL_USER_v1 / FARPORT_MAIL_PASS_v1）---
+    可选：FARPORT_IMAP_SERVER_v1、FARPORT_IMAP_PORT_v1（默认 imap.exmail.qq.com:993）
+    python manage.py auto_import_zxdw_nav_mail
+    python manage.py auto_import_zxdw_nav_mail --force
+    python manage.py auto_import_zxdw_nav_mail --report-date 2026-04-17
+
+  Alpha 结果通知邮件（SMTP）：.env 中 ALPHA_NOTIFY_*、ALPHA_NOTIFY_TO
+
+--------------------------------------------------------------------------------
+九、内置定时任务（随 Django 进程启动，见 portal.scheduler.alpha_mail_scheduler）
+--------------------------------------------------------------------------------
+
+  默认排期（本地时区，可通过环境变量关闭单项任务，见代码内 *_SCHEDULER_ENABLED）：
+    09:30  update_rq_bench
+    09:31  auto_import_fund_nav_mail
+    12:00  auto_import_zxdw_nav_mail
+    17:30  auto_import_alpha_mail
+
+  说明：使用 runserver 或部署 ASGI/WSGI 且加载了该 scheduler 时，后台线程按上述时间
+        调用对应 manage.py 命令。若仅需要“手动跑任务”，可直接执行第八节命令。
+
+--------------------------------------------------------------------------------
+十、Windows 计划任务示例（不依赖 Django 常驻时）
+--------------------------------------------------------------------------------
+
+  程序：python（或 venv 内 python.exe）
+  参数：manage.py auto_import_alpha_mail
+  起始于：项目根目录（如 G:\github\WZDjango）
+  触发：每日 17:30（与业务约定一致时）
+
+================================================================================

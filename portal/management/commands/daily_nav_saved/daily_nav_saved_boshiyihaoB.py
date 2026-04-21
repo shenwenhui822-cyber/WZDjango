@@ -4,7 +4,6 @@ import os
 import sys
 from datetime import datetime, timedelta
 from email.header import decode_header
-from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -53,40 +52,12 @@ def normalize_filename(name: str) -> str:
     return cleaned
 
 
-def select_latest_match(mailbox: imaplib.IMAP4_SSL, ids: list[bytes]) -> Optional[str]:
-    latest_id = None
-    latest_dt = None
-    for raw_id in ids:
-        mail_id = raw_id.decode()
-        status, msg_data = mailbox.fetch(mail_id, "(BODY[HEADER.FIELDS (DATE)])")
-        if status != "OK" or not msg_data or not msg_data[0]:
-            continue
-        header_bytes = msg_data[0][1]
-        msg = email.message_from_bytes(header_bytes)
-        raw_date = msg.get("Date", "")
-        try:
-            dt = parsedate_to_datetime(raw_date)
-        except Exception:
-            dt = None
-
-        if latest_id is None:
-            latest_id = mail_id
-            latest_dt = dt
-            continue
-
-        if dt is not None and (latest_dt is None or dt > latest_dt):
-            latest_id = mail_id
-            latest_dt = dt
-    return latest_id
-
-
 def find_target_mail_id(mailbox: imaplib.IMAP4_SSL, target_subject: str) -> Optional[str]:
     status, data = mailbox.search(None, "ALL")
-    if status != "OK":
+    if status != "OK" or not data or not data[0]:
         return None
 
-    matched_ids: list[bytes] = []
-    for raw_id in data[0].split():
+    for raw_id in reversed(data[0].split()):
         mail_id = raw_id.decode()
         status, msg_data = mailbox.fetch(mail_id, "(BODY[HEADER.FIELDS (SUBJECT)])")
         if status != "OK" or not msg_data or not msg_data[0]:
@@ -95,11 +66,8 @@ def find_target_mail_id(mailbox: imaplib.IMAP4_SSL, target_subject: str) -> Opti
         msg = email.message_from_bytes(header_bytes)
         subject = decode_mime_header(msg.get("Subject", "")).strip()
         if subject == target_subject:
-            matched_ids.append(raw_id)
-
-    if not matched_ids:
-        return None
-    return select_latest_match(mailbox, matched_ids)
+            return mail_id
+    return None
 
 
 def save_attachments(mailbox: imaplib.IMAP4_SSL, mail_id: str, save_dir: Path) -> int:
