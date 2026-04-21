@@ -117,13 +117,25 @@
     python manage.py auto_import_zxdw_nav_mail --force
     python manage.py auto_import_zxdw_nav_mail --report-date 2026-04-17
 
-  --- 吾矿期货结算单（IMAP 用 .env：FARPORT_MAIL_USER / FARPORT_MAIL_PASS）---
+  --- 五矿期货结算单（IMAP 用 .env：FARPORT_MAIL_USER / FARPORT_MAIL_PASS）---
     python manage.py auto_import_wkqh_settle_mail
     python manage.py auto_import_wkqh_settle_mail --subject-date 2026-04-20
     python manage.py auto_import_wkqh_settle_mail --subject-date 2026-04-20 --days 7
     兼容命令（等价）：
     python manage.py wkqh_settle_service
     python manage.py wkqh_settle_service --subject-date 2026-04-20
+
+  --- 长江期货结算单（IMAP 用 .env：FARPORT_MAIL_USER / FARPORT_MAIL_PASS）---
+    主题格式：81801575-吾执泽鑫多维-长江期货-YYYYMMDD
+    附件格式：81801575-吾执泽鑫多维-YYYYMMDD.rar
+    落库配置在 settings：
+    MONGODB_CJQH_SETTLE_DB / MONGODB_CJQH_SETTLE_COLLECTION
+    python manage.py auto_import_cjqh_settle_mail
+    python manage.py auto_import_cjqh_settle_mail --subject-date 2026-04-17
+    python manage.py auto_import_cjqh_settle_mail --subject-date 2026-04-17 --days 7
+    兼容命令（等价）：
+    python manage.py cjqh_settle_service
+    python manage.py cjqh_settle_service --subject-date 2026-04-17
 
   结果通知邮件（SMTP）：.env 中 ALPHA_NOTIFY_*、ALPHA_NOTIFY_TO
 
@@ -137,6 +149,7 @@
     12:00  auto_import_zxdw_nav_mail
     17:30  auto_import_alpha_mail
     18:00  auto_import_wkqh_settle_mail
+    18:00  auto_import_cjqh_settle_mail
 
   说明：使用 runserver 或部署 ASGI/WSGI 且加载了该 scheduler 时，后台线程按上述时间
         调用对应 manage.py 命令。若仅需要“手动跑任务”，可直接执行第八节命令。

@@ -22,10 +22,11 @@ from portal.services.mail_import_common import (
     imap_open_inbox,
     send_alpha_notify_result_email,
 )
-from portal.services.wkqh_settle_service import extract_settle_record_from_rar
+from portal.services.cjqh_settle_service import extract_cjqh_record_from_rar
 
-DEFAULT_ACCOUNT_ID = "66601123"
-SUBJECT_PREFIX = "吾执套利多维一号私募证券投资基金-"
+DEFAULT_ACCOUNT_ID = "81801575"
+SUBJECT_PREFIX = "81801575-吾执泽鑫多维-长江期货-"
+RAR_NAME_TEMPLATE = "{account_id}-吾执泽鑫多维-{ymd}.rar"
 
 
 def _resolve_farport_imap_credentials() -> tuple[str, str, str, int]:
@@ -72,8 +73,12 @@ def _save_target_rar_attachment(
 
     msg = email.message_from_bytes(msg_data[0][1])
     output_dir.mkdir(parents=True, exist_ok=True)
-    exact_pattern = re.compile(rf"^{re.escape(account_id)}{re.escape(ymd)}\.rar$", re.IGNORECASE)
-    loose_pattern = re.compile(rf"^{re.escape(account_id)}\d{{8}}\.rar$", re.IGNORECASE)
+    exact_name = RAR_NAME_TEMPLATE.format(account_id=account_id, ymd=ymd)
+    exact_pattern = re.compile(rf"^{re.escape(exact_name)}$", re.IGNORECASE)
+    loose_pattern = re.compile(
+        rf"^{re.escape(account_id)}-吾执泽鑫多维-\d{{8}}\.rar$",
+        re.IGNORECASE,
+    )
 
     candidate_name = ""
     candidate_payload: bytes | None = None
@@ -99,7 +104,7 @@ def _save_target_rar_attachment(
         save_path = _safe_output_path(output_dir, candidate_name)
         save_path.write_bytes(candidate_payload)
         return save_path
-    raise RuntimeError(f"邮件中未找到目标 RAR 附件（{account_id}{ymd}.rar）。")
+    raise RuntimeError(f"邮件中未找到目标 RAR 附件（{exact_name}）。")
 
 
 def _ymd_to_iso(ymd: str) -> str:
@@ -112,7 +117,7 @@ def _ascii_safe_name(name: str) -> str:
 
 
 class Command(BaseCommand):
-    help = "按主题下载五矿期货结算 RAR，解析 Account Summary 并写入 future_settle_real.WKQH_66601123"
+    help = "按主题下载长江期货结算 RAR，解析 Account Summary 并写入 future_settle_real.CJQH_81801575"
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -129,7 +134,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--account-id",
             default=DEFAULT_ACCOUNT_ID,
-            help="账号前缀（默认 66601123）。",
+            help="账号（默认 81801575）。",
         )
 
     def _send_result_email(self, report: dict[str, object], started_at, ended_at, base_url: str) -> None:
@@ -139,10 +144,10 @@ class Command(BaseCommand):
         else:
             duration_sec = 0.0
         status = str(report.get("status") or "UNKNOWN")
-        subject = f"[{status}] 五矿期货结算单入库 {timezone.localdate().strftime('%Y-%m-%d')}"
+        subject = f"[{status}] 长江期货结算单入库 {timezone.localdate().strftime('%Y-%m-%d')}"
         body = "\n".join(
             [
-                "五矿期货结算单自动入库执行结果",
+                "长江期货结算单自动入库执行结果",
                 "",
                 f"状态: {status}",
                 f"开始时间: {timezone.localtime(started_at).strftime('%Y-%m-%d %H:%M:%S')}",
@@ -210,8 +215,8 @@ class Command(BaseCommand):
                 attach_root = Path(
                     getattr(
                         settings,
-                        "WKQH_SETTLE_ATTACH_DIR",
-                        settings.BASE_DIR / "downloaded_attachments_wkqh",
+                        "CJQH_SETTLE_ATTACH_DIR",
+                        settings.BASE_DIR / "downloaded_attachments_cjqh",
                     )
                 )
                 attach_dir = attach_root / ymd
@@ -225,7 +230,7 @@ class Command(BaseCommand):
                 report["source_rar_file"] = rar_path.name
                 self.stdout.write(self.style.SUCCESS(f"已下载目标 RAR: {rar_path}"))
 
-                parsed = extract_settle_record_from_rar(
+                parsed = extract_cjqh_record_from_rar(
                     rar_path,
                     account_id=account_id,
                     ymd=ymd,
@@ -248,8 +253,8 @@ class Command(BaseCommand):
 
                 client = get_mongo_client()
                 try:
-                    db_name = getattr(settings, "MONGODB_WKQH_SETTLE_DB", "future_settle_real")
-                    coll_name = getattr(settings, "MONGODB_WKQH_SETTLE_COLLECTION", "WKQH_66601123")
+                    db_name = getattr(settings, "MONGODB_CJQH_SETTLE_DB", "future_settle_real")
+                    coll_name = getattr(settings, "MONGODB_CJQH_SETTLE_COLLECTION", "CJQH_81801575")
                     coll = client[db_name][coll_name]
                     coll.create_index(
                         [("trade_date", 1), ("account_id", 1)],

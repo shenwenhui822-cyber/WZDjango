@@ -134,6 +134,18 @@ ZXDW_NAV_IMPORT_DIR = BASE_DIR / "WZ_ZXDW_MASTER"
 # ZXDW 净值邮件附件落盘目录；主题关键词见 auto_import_zxdw_nav_mail.ZXDW_NAV_MAIL_FUND_KEY_PHRASES
 ZXDW_NAV_MAIL_ATTACH_DIR = BASE_DIR / "downloaded_attachments_zxdw_nav"
 
+# 期货结算单（长江）落库配置：库/集合由命令 auto_import_cjqh_settle_mail 使用
+MONGODB_CJQH_SETTLE_DB = "future_settle_real"
+MONGODB_CJQH_SETTLE_COLLECTION = "CJQH_81801575"
+# 长江期货结算单邮件附件落盘目录
+CJQH_SETTLE_ATTACH_DIR = BASE_DIR / "downloaded_attachments_cjqh"
+
+# 期货结算单（五矿）落库配置：库/集合由命令 auto_import_wkqh_settle_mail 使用
+MONGODB_WKQH_SETTLE_DB = "future_settle_real"
+MONGODB_WKQH_SETTLE_COLLECTION = "WKQH_66601123"
+# 五矿期货结算单邮件附件落盘目录
+WKQH_SETTLE_ATTACH_DIR = BASE_DIR / "downloaded_attachments_wkqh"
+
 # alpha产品表现页面的指标口径配置
 # A 股日频年化因子，默认 252；若改为 244/245，需全站统一
 NAV_ANNUALIZATION_FACTOR = 252
