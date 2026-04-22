@@ -7,6 +7,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from portal.services.positions_summary_parser import parse_positions_summary
+
 
 # 长江期货结算单（81801575）字段映射：英文键 -> 结算单英文标签（支持别名）
 CJQH_FIELD_SPECS: tuple[tuple[str, tuple[str, ...], bool], ...] = (
@@ -157,9 +159,11 @@ def extract_cjqh_record_from_rar(
     statement_ymd = _extract_first(text, r"\bDate[:：]\s*(\d{8})") or ymd
     client_id = _extract_first(text, r"\bClient ID[:：]\s*(\d+)")
     metrics = _extract_account_summary_metrics(text)
+    positions = parse_positions_summary(text)
     return {
         "statement_ymd": statement_ymd,
         "client_id": client_id or account_id,
         "txt_file_name": txt_path.name,
         "metrics": metrics,
+        "positions": positions,
     }

@@ -243,6 +243,7 @@ class Command(BaseCommand):
                     "source_rar_file": rar_path.name,
                     "source_txt_file_ascii": source_txt_file_ascii,
                     "metrics": parsed["metrics"],
+                    "Positions": parsed.get("positions") or {"rows": [], "total": None},
                     "updated_at": timezone.now().isoformat(),
                 }
 

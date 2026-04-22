@@ -7,6 +7,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from portal.services.positions_summary_parser import parse_positions_summary
+
 
 ACCOUNT_SUMMARY_FIELDS: tuple[tuple[str, str, bool], ...] = (
     ("balance_bf", "Balance b/f", False),
@@ -134,9 +136,11 @@ def extract_settle_record_from_rar(
     statement_ymd = _extract_first(text, r"\bDate[:：]\s*(\d{8})") or ymd
     client_id = _extract_first(text, r"\bClient ID[:：]\s*(\d+)")
     metrics = parse_account_summary_metrics(text)
+    positions = parse_positions_summary(text)
     return {
         "statement_ymd": statement_ymd,
         "client_id": client_id or account_id,
         "txt_file_name": txt_path.name,
         "metrics": metrics,
+        "positions": positions,
     }
