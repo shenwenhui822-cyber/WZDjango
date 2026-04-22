@@ -40,6 +40,7 @@ _BENCH_COMPARE_GROUP_PREFIXES: list[str] = [
 
 _FUND_NAV_GROUP_PREFIXES: list[str] = [
     "吾执博士一号私募证券投资基金",
+    # "吾执泽鑫多维私募证券投资基金",
 ]
 
 
@@ -183,7 +184,8 @@ def _parse_compare_recent_window(request) -> tuple[int, str]:
         return int(raw), raw
     if raw == "all":
         return 0, "all"
-    return 252, "252"
+    # 默认近 3 个月（约 63 个交易日）
+    return 63, "63"
 
 
 def _slice_compare_rows(rows: list[dict], recent_window: int) -> list[dict]:
@@ -472,7 +474,7 @@ def nav_curve(request):
 
 @login_required(login_url="/")
 def raw_nav(request):
-    """基金净值页：展示 fund_nav_real 下 WZ_BSYH_MASTER / WZ_BSYH_B 净值表数据。"""
+    """基金净值页：展示 fund_nav_real 下博士一号与泽鑫多维净值表数据。"""
     try:
         limit = int(request.GET.get("limit") or 200)
     except ValueError:
@@ -489,12 +491,15 @@ def raw_nav(request):
     show_debug = fund_nav_debug_enabled and request.GET.get("debug") == "1"
 
     form_submitted = (request.GET.get("nav_q") or "").strip() == "1"
-    product_keys = fund_nav_product_keys_from_request(request.GET, form_submitted=form_submitted)
-
-    if product_keys is None:
-        fund_nav_selection = None
+    if form_submitted:
+        product_keys = fund_nav_product_keys_from_request(
+            request.GET, form_submitted=True
+        )
     else:
-        fund_nav_selection = frozenset(product_keys)
+        # 首次进入：仅默认选中博士一号主份额，不全选
+        product_keys = [settings.NAV_REAL_WZ_BSYH_MASTER]
+
+    fund_nav_selection = frozenset(product_keys)
 
     fund_nav_empty_product_pick = (
         form_submitted and product_keys is not None and len(product_keys) == 0
@@ -571,6 +576,9 @@ def raw_nav(request):
         "fund_nav_mongo_db": settings.MONGODB_FUND_NAV_REAL_DB,
         "fund_nav_coll_master": settings.NAV_REAL_WZ_BSYH_MASTER,
         "fund_nav_coll_b": settings.NAV_REAL_WZ_BSYH_B,
+        "fund_nav_zxdw_collections": getattr(
+            settings, "MONGODB_ZXDW_NAV_COLLECTIONS", ()
+        ),
         "chart_json": json.dumps(chart_data, ensure_ascii=False),
     }
     is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"

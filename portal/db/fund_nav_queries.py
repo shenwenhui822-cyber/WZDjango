@@ -1,4 +1,4 @@
-"""博士一号真实净值（fund_nav_real）门户列表查询。"""
+"""真实净值 fund_nav_real 门户列表查询（博士一号 WZ_BSYH_* + 泽鑫多维 WZ_ZXDW_*）。"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -7,7 +7,7 @@ from typing import Any
 from django.conf import settings
 
 from portal.data.fund_nav_real_config import FUND_NAV_PRODUCTS, FundNavProduct
-from portal.db.mongo import get_fund_nav_collection
+from portal.db.mongo import get_fund_nav_collection, get_fund_nav_zxdw_nav_collection
 
 
 def _parse_iso_day(s: str) -> datetime:
@@ -71,16 +71,18 @@ def build_fund_nav_mongo_query(
 
 
 def _allowed_product_keys() -> frozenset[str]:
-    return frozenset(
+    zxdw = frozenset(getattr(settings, "MONGODB_ZXDW_NAV_COLLECTIONS", ()))
+    bsyh = frozenset(
         {
             settings.NAV_REAL_WZ_BSYH_MASTER,
             settings.NAV_REAL_WZ_BSYH_B,
         }
     )
+    return bsyh | zxdw
 
 
 def normalize_fund_nav_product_key_params(raw_keys: list[str]) -> list[str]:
-    """只保留允许的 NAV_REAL_* 逻辑编码，去重保序。"""
+    """只保留允许的 NAV_REAL_* 与 ZXDW 集合名，去重保序。"""
     allowed = _allowed_product_keys()
     out: list[str] = []
     for k in raw_keys:
@@ -88,6 +90,23 @@ def normalize_fund_nav_product_key_params(raw_keys: list[str]) -> list[str]:
         if s in allowed and s not in out:
             out.append(s)
     return out
+
+
+def _zxdw_product_keys() -> frozenset[str]:
+    return frozenset(getattr(settings, "MONGODB_ZXDW_NAV_COLLECTIONS", ()))
+
+
+def _normalize_zxdw_nav_doc(doc: dict[str, Any], fund: FundNavProduct) -> dict[str, Any]:
+    """五列净值表字段 -> 门户表格字段（与博士一号列一致）。"""
+    row = dict(doc)
+    row.pop("_id", None)
+    row["asset_code"] = str(row.get("product_code") or "").strip()
+    row["asset_name"] = str(row.get("product_name") or "").strip()
+    if row.get("cumulative_unit_nav") is None and row.get("cumulative_nav") is not None:
+        row["cumulative_unit_nav"] = row.get("cumulative_nav")
+    row["product_key"] = fund["product_key"]
+    row["product_label"] = fund["name_prefix"]
+    return row
 
 
 def _funds_for_filter(product_keys: list[str] | None) -> list[FundNavProduct]:
@@ -105,7 +124,7 @@ def fund_nav_product_keys_from_request(
 ) -> list[str] | None:
     """
     解析 GET 中的 product_key 多选。
-    form_submitted 为 False（首次进入页面）：未传 nav_q 时返回 None，表示两个产品都查。
+    form_submitted 为 False（首次进入页面）：未传 nav_q 时返回 None，表示查询全部已配置产品。
     form_submitted 为 True：若未勾选任何产品则返回 []；否则返回规范化后的编码列表。
     """
     raw = [x for x in get.getlist("product_key") if (x or "").strip()]
@@ -124,7 +143,7 @@ def fetch_fund_nav_portal_documents(
     product_keys: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """
-    从 WZ_BSYH_MASTER / WZ_BSYH_B 集合读取净值行，合并后按净值日倒序截断 limit。
+    从博士一号集合（WZ_BSYH_*）与泽鑫多维集合（WZ_ZXDW_*）读取净值行，合并后按净值日倒序截断 limit。
     """
     funds = _funds_for_filter(product_keys)
     if not funds:
@@ -132,20 +151,29 @@ def fetch_fund_nav_portal_documents(
     base_q = build_fund_nav_mongo_query(date_from, date_to)
     cap = max(1, min(limit, 10000))
     has_nav_date_filter = _nav_date_range_clause(date_from, date_to) is not None
+    zxdw_keys = _zxdw_product_keys()
 
     merged: list[dict[str, Any]] = []
     for fund in funds:
-        coll = get_fund_nav_collection(fund["product_key"])
-        cursor = coll.find(base_q).sort([("nav_date", -1), ("asset_code", 1)])
+        pk = fund["product_key"]
+        if pk in zxdw_keys:
+            coll = get_fund_nav_zxdw_nav_collection(pk)
+            cursor = coll.find(base_q).sort([("nav_date", -1), ("product_code", 1)])
+        else:
+            coll = get_fund_nav_collection(pk)
+            cursor = coll.find(base_q).sort([("nav_date", -1), ("asset_code", 1)])
         # 无净值日条件时避免全表扫描（数据量极大时仍建议在页面选择净值日区间）
         if not has_nav_date_filter:
             cursor = cursor.limit(min(5000, max(500, cap * 3)))
         for doc in cursor:
-            doc = dict(doc)
-            doc.pop("_id", None)
-            doc["product_key"] = fund["product_key"]
-            doc["product_label"] = fund["name_prefix"]
-            merged.append(doc)
+            if pk in zxdw_keys:
+                merged.append(_normalize_zxdw_nav_doc(doc, fund))
+            else:
+                doc = dict(doc)
+                doc.pop("_id", None)
+                doc["product_key"] = fund["product_key"]
+                doc["product_label"] = fund["name_prefix"]
+                merged.append(doc)
 
     def sort_key(d: dict[str, Any]) -> tuple[str, str]:
         nd = d.get("nav_date")

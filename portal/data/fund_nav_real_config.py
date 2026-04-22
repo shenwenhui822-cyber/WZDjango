@@ -1,4 +1,4 @@
-"""博士一号真实净值：产品与邮件主题约定；落库库名见 settings.MONGODB_FUND_NAV_REAL_DB，集合名见 settings.NAV_REAL_*。"""
+"""真实净值门户产品列表：博士一号（NAV_REAL_*）与泽鑫多维（MONGODB_ZXDW_NAV_COLLECTIONS）；库名 settings.MONGODB_FUND_NAV_REAL_DB。"""
 from __future__ import annotations
 
 from typing import TypedDict
@@ -13,7 +13,32 @@ class FundNavProduct(TypedDict):
 
 
 # 与净值表文件名/邮件主题一致：{name_prefix}_{asset_code}_基金每日净值表YYYY-MM-DD
-# product_key 与 wzproject/settings.py 中 NAV_REAL_* 保持一致
+# product_key：博士一号为 NAV_REAL_*；泽鑫多维为 settings.MONGODB_ZXDW_NAV_COLLECTIONS 集合名
+_ZXDW_NAV_TITLE_SUFFIX: dict[str, str] = {
+    "WZ_ZXDW_MASTER": "",
+    "WZ_ZXDW_A": "A类",
+    "WZ_ZXDW_B": "B类",
+    "WZ_ZXDW_C": "C类",
+}
+
+_ZXDW_BASE_TITLE = "吾执泽鑫多维私募证券投资基金"
+
+
+def _build_zxdw_fund_nav_products() -> list[FundNavProduct]:
+    out: list[FundNavProduct] = []
+    for coll in getattr(settings, "MONGODB_ZXDW_NAV_COLLECTIONS", ()):
+        suf = _ZXDW_NAV_TITLE_SUFFIX.get(coll, "")
+        name_prefix = _ZXDW_BASE_TITLE + suf if suf else _ZXDW_BASE_TITLE
+        out.append(
+            {
+                "product_key": coll,
+                "name_prefix": name_prefix,
+                "asset_code": f"__ZXDW__{coll}",
+            }
+        )
+    return out
+
+
 FUND_NAV_PRODUCTS: list[FundNavProduct] = [
     {
         "product_key": settings.NAV_REAL_WZ_BSYH_MASTER,
@@ -25,6 +50,7 @@ FUND_NAV_PRODUCTS: list[FundNavProduct] = [
         "name_prefix": "吾执博士一号私募证券投资基金B类",
         "asset_code": "BJP80B",
     },
+    # *_build_zxdw_fund_nav_products(),
 ]
 
 

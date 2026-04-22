@@ -88,7 +88,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # 登录/登出跳转
 LOGIN_URL = "/"
-LOGIN_REDIRECT_URL = "/nav/bench-compare/"
+LOGIN_REDIRECT_URL = "/nav/raw/"
 LOGOUT_REDIRECT_URL = "/"
 
 # 跨域与 CSRF（便于前端通过 http://<host>:7443 访问）
@@ -145,7 +145,10 @@ MONGODB_WKQH_SETTLE_DB = "future_settle_real"
 MONGODB_WKQH_SETTLE_COLLECTION = "WKQH_66601123"
 # 五矿期货结算单邮件附件落盘目录
 WKQH_SETTLE_ATTACH_DIR = BASE_DIR / "downloaded_attachments_wkqh"
-
+# 国海证券17190083
+GHZQ_17190083_SETTLE_DB = "future_settle_real"
+GHZQ_17190083_SETTLE_COLLECTION = "GHZQ_17190083"
+GHZQ_17190083_SETTLE_ATTACH_DIR = BASE_DIR / "downloaded_attachments_ghzq"
 # alpha产品表现页面的指标口径配置
 # A 股日频年化因子，默认 252；若改为 244/245，需全站统一
 NAV_ANNUALIZATION_FACTOR = 252

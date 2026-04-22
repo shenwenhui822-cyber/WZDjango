@@ -7,7 +7,7 @@
 用法：
   python manage.py update_rq_bench
   python manage.py update_rq_bench --force
-  python manage.py update_rq_bench --trade-day 2026-04-14
+  python3 manage.py update_rq_bench --trade-day 2026-04-21
 """
 from __future__ import annotations
 

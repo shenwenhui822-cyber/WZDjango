@@ -131,11 +131,11 @@
                         <div class="btn-group btn-group-sm" role="group" aria-label="区间选择">
                             <input type="radio" class="btn-check cmp-recent" name="recent" id="cmp_r1m" value="21" {% if recent == "21" %}checked{% endif %}>
                             <label class="btn btn-outline-primary" for="cmp_r1m">近1月</label>
-                            <input type="radio" class="btn-check cmp-recent" name="recent" id="cmp_r3m" value="63" {% if recent == "63" %}checked{% endif %}>
+                            <input type="radio" class="btn-check cmp-recent" name="recent" id="cmp_r3m" value="63" {% if recent == "63" or not recent %}checked{% endif %}>
                             <label class="btn btn-outline-primary" for="cmp_r3m">近3月</label>
                             <input type="radio" class="btn-check cmp-recent" name="recent" id="cmp_r6m" value="126" {% if recent == "126" %}checked{% endif %}>
                             <label class="btn btn-outline-primary" for="cmp_r6m">近6月</label>
-                            <input type="radio" class="btn-check cmp-recent" name="recent" id="cmp_r1y" value="252" {% if recent == "252" or not recent %}checked{% endif %}>
+                            <input type="radio" class="btn-check cmp-recent" name="recent" id="cmp_r1y" value="252" {% if recent == "252" %}checked{% endif %}>
                             <label class="btn btn-outline-primary" for="cmp_r1y">近1年</label>
                             <input type="radio" class="btn-check cmp-recent" name="recent" id="cmp_rall" value="all" {% if recent == "all" %}checked{% endif %}>
                             <label class="btn btn-outline-primary" for="cmp_rall">成立以来</label>

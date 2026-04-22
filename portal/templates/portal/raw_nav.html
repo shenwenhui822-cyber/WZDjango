@@ -118,7 +118,7 @@
                                 <label class="form-check fund-nav-group-item mb-0" for="fund_pk_{{ fund.product_key }}">
                                     <input class="form-check-input" type="checkbox" name="product_key" value="{{ fund.product_key }}"
                                            id="fund_pk_{{ fund.product_key }}"
-                                           {% if fund_nav_selection is None %}checked{% elif fund.product_key in fund_nav_selection %}checked{% endif %}>
+                                           {% if fund.product_key in fund_nav_selection %}checked{% endif %}>
                                     <span class="form-check-label small">{{ fund.name_prefix }}</span>
                                 </label>
                                 {% endfor %}
@@ -137,11 +137,11 @@
                             <div class="btn-group btn-group-sm" role="group" aria-label="区间选择">
                                 <input type="radio" class="btn-check fund-nav-recent" name="recent" id="fund_nav_r1m" value="21" {% if recent == "21" %}checked{% endif %}>
                                 <label class="btn btn-outline-primary" for="fund_nav_r1m">近1月</label>
-                                <input type="radio" class="btn-check fund-nav-recent" name="recent" id="fund_nav_r3m" value="63" {% if recent == "63" %}checked{% endif %}>
+                                <input type="radio" class="btn-check fund-nav-recent" name="recent" id="fund_nav_r3m" value="63" {% if recent == "63" or not recent %}checked{% endif %}>
                                 <label class="btn btn-outline-primary" for="fund_nav_r3m">近3月</label>
                                 <input type="radio" class="btn-check fund-nav-recent" name="recent" id="fund_nav_r6m" value="126" {% if recent == "126" %}checked{% endif %}>
                                 <label class="btn btn-outline-primary" for="fund_nav_r6m">近6月</label>
-                                <input type="radio" class="btn-check fund-nav-recent" name="recent" id="fund_nav_r1y" value="252" {% if recent == "252" or not recent %}checked{% endif %}>
+                                <input type="radio" class="btn-check fund-nav-recent" name="recent" id="fund_nav_r1y" value="252" {% if recent == "252" %}checked{% endif %}>
                                 <label class="btn btn-outline-primary" for="fund_nav_r1y">近1年</label>
                                 <input type="radio" class="btn-check fund-nav-recent" name="recent" id="fund_nav_rall" value="all" {% if recent == "all" %}checked{% endif %}>
                                 <label class="btn btn-outline-primary" for="fund_nav_rall">成立以来</label>
