@@ -8,10 +8,13 @@ code_rq='399317.XSHE'，与既有 load_data 查询兼容。
 依赖：rqdatac 已 init。
 
 传入的交易日即拉取并写入 Mongo，无额外日期门槛。
+股指部分固定见 BENCH_CODE_TO_RQ；中金所股指期货 IF/IH/IC/IM 各取米筐当日
+`futures.get_contracts` 前 4 个可交易合约（随交割月自动滚动）。
 
 用法（项目根，PYTHONPATH=.）:
   python update_rq_bench_17.py              # 未写日期时默认本年 4 月 14 日
   python update_rq_bench_17.py 2025-12-01
+  python update_rq_bench_17.py 2026-04-21 --dry-run   # 只拉行情并打印，不落库、不建索引
   python -c "from update_rq_bench_17 import update_rq_bench; update_rq_bench('2025-12-01')"
 """
 
@@ -85,6 +88,25 @@ BENCH_CODE_TO_RQ: list[tuple[str, str]] = [
 
 # 使用代用米筐合约的行情、但 code 仍为左侧业务码的集合
 _SUBSTITUTE_BENCH_CODES = {"881001.WI"}
+
+# 中金所股指期货：各品种当日可交易合约（通常 4 个），由米筐按到期剔除/挂牌
+_CFFEX_STOCK_INDEX_UNDERLYINGS: tuple[str, ...] = ("IF", "IH", "IC", "IM")
+
+
+def cffex_futures_bench_pairs(trade_day: str) -> list[tuple[str, str]]:
+    """IF/IH/IC/IM：`(code, code_rq)` 均用合约 order_book_id；合约列表随交易日滚动。"""
+    trade_day = _norm_day(trade_day)
+    out: list[tuple[str, str]] = []
+    for sym in _CFFEX_STOCK_INDEX_UNDERLYINGS:
+        ids = rq.futures.get_contracts(sym, trade_day) or []
+        for oid in ids[:4]:
+            out.append((oid, oid))
+    return out
+
+
+def bench_pairs_for_day(trade_day: str) -> list[tuple[str, str]]:
+    """静态股指 + 当日中金所股指期货合约。"""
+    return list(BENCH_CODE_TO_RQ) + cffex_futures_bench_pairs(trade_day)
 
 
 def _rq_close_series(rq_id: str, end_day: str, lookback_days: int = 45) -> pd.Series | None:
@@ -160,14 +182,18 @@ def update_rq_bench(
     *,
     mongo_db: str = "basic_rq",
     target_coll: str = "rq_bench",
+    dry_run: bool = False,
 ) -> bool:
     pre_trade_day = _norm_day(pre_trade_day)
     print(f"[INFO] 使用交易日: {pre_trade_day}")
 
-    client = get_client()
-    table = client[mongo_db][target_coll]
+    pairs = bench_pairs_for_day(pre_trade_day)
+    n_idx = len(BENCH_CODE_TO_RQ)
+    n_fut = len(pairs) - n_idx
+    print(f"[INFO] 标的: 指数 {n_idx} + 股指期货 {n_fut} = {len(pairs)}")
+
     rows = []
-    for bench_code, rq_id in BENCH_CODE_TO_RQ:
+    for bench_code, rq_id in pairs:
         r = _bench_row(bench_code, rq_id, pre_trade_day)
         if r:
             rows.append(_df_nan_to_none(pd.DataFrame([r])).to_dict("records")[0])
@@ -181,10 +207,23 @@ def update_rq_bench(
         )
         return False
 
+    if dry_run:
+        fut_list = [p[0] for p in pairs[n_idx:]]
+        print(f"[DRY-RUN] 股指期货合约: {fut_list}")
+        print(f"[DRY-RUN] 拉取成功 {len(rows)} / {len(pairs)} 条（以下摘要，不落库）")
+        for rec in rows:
+            print(
+                f"  {rec.get('code')}\tclose={rec.get('close')}\t"
+                f"pct_chg={rec.get('pct_chg')}\tcode_rq={rec.get('code_rq')}"
+            )
+        return True
+
+    client = get_client()
+    table = client[mongo_db][target_coll]
     for dv in _day_variants(pre_trade_day):
         table.delete_many({"date": dv})
     table.insert_many(rows, ordered=False)
-    print(f"[OK] {target_coll} 写入 {len(rows)} 条 (date={pre_trade_day})")
+    print(f"[OK] {mongo_db}.{target_coll} 写入 {len(rows)} 条 (date={pre_trade_day})")
     return True
 
 
@@ -209,13 +248,17 @@ if __name__ == "__main__":
     )
     p.add_argument("--db", default="basic_rq", help="数据库名")
     p.add_argument("--index", action="store_true", help="仅建索引，不写数")
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="只拉行情并打印摘要，不写 Mongo、不建索引",
+    )
     args = p.parse_args()
 
     if args.index:
         create_indexes_rq_bench(mongo_db=args.db)
         print("[OK] rq_bench 索引已处理")
     else:
-        create_indexes_rq_bench(mongo_db=args.db)
         if args.pre_trade_day is not None:
             day = args.pre_trade_day
         elif os.environ.get("RQ_BENCH_PRE_DAY"):
@@ -225,4 +268,9 @@ if __name__ == "__main__":
             y = date.today().year
             day = date(y, 4, 14).strftime("%Y-%m-%d")
             print(f"ℹ️ 未传日期参数：使用本年 4 月 14 日作为交易日（{day}）")
-        update_rq_bench(day, mongo_db=args.db)
+
+        if args.dry_run:
+            update_rq_bench(day, mongo_db=args.db, dry_run=True)
+        else:
+            create_indexes_rq_bench(mongo_db=args.db)
+            update_rq_bench(day, mongo_db=args.db, dry_run=False)
