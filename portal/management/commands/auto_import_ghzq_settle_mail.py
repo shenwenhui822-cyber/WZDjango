@@ -23,6 +23,7 @@ from portal.services.mail_import_common import (
     send_alpha_notify_result_email,
 )
 from portal.services.ghzq_settle_service import extract_ghzq_statement_from_xlsx
+from portal.services.trade_calendar_service import prev_trading_day_iso_before
 
 # 邮件主题：账户对账单_{subject_fund_code}_吾执九五号_{YYYYMMDD}_融资融券账户对账单
 DEFAULT_SUBJECT_FUND_CODE = "37208761"
@@ -138,7 +139,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--subject-date",
             default="",
-            help="主题中的日期 YYYYMMDD 或 YYYY-MM-DD；默认今天（Asia/Shanghai）。",
+            help="主题中的日期 YYYYMMDD 或 YYYY-MM-DD；省略则按交易日历取运行日的前一交易日（需已导入 trade_calendar）。",
         )
         parser.add_argument(
             "--days",
@@ -165,6 +166,8 @@ class Command(BaseCommand):
                 "国海证券吾执九五号对账单自动入库执行结果",
                 "",
                 f"状态: {status}",
+                f"运行日: {report.get('run_date') or '-'}",
+                f"主题对账单日期: {report.get('statement_ymd') or '-'}",
                 f"开始时间: {timezone.localtime(started_at).strftime('%Y-%m-%d %H:%M:%S')}",
                 f"结束时间: {timezone.localtime(ended_at).strftime('%Y-%m-%d %H:%M:%S')}",
                 f"运行时长(秒): {duration_sec}",
@@ -189,6 +192,8 @@ class Command(BaseCommand):
         base_url = getattr(settings, "PORTAL_RUN_ADDRESS", "")
         report: dict[str, object] = {
             "status": "UNKNOWN",
+            "run_date": timezone.localdate().isoformat(),
+            "statement_ymd": "",
             "target_subject": "",
             "trade_date": "",
             "fund_account_id": "",
@@ -197,10 +202,24 @@ class Command(BaseCommand):
             "error": "",
             "notify": True,
         }
-        ymd = _normalize_ymd(
-            (options.get("subject_date") or "").strip()
-            or timezone.localdate().strftime("%Y%m%d")
-        )
+        raw_subject = (options.get("subject_date") or "").strip()
+        if raw_subject:
+            ymd = _normalize_ymd(raw_subject)
+        else:
+            today_iso = timezone.localdate().isoformat()
+            prev_iso = prev_trading_day_iso_before(today_iso)
+            if not prev_iso:
+                raise RuntimeError(
+                    "未指定 --subject-date 时需按前一交易日查询对账单，但无法从 trade_calendar "
+                    "解析前一交易日（请先 python manage.py import_trade_dates_csv）。"
+                )
+            ymd = prev_iso.replace("-", "")
+            self.stdout.write(
+                self.style.WARNING(
+                    f"未指定 --subject-date：使用运行日前一交易日主题日 {ymd}（运行日 {today_iso}）。"
+                )
+            )
+        report["statement_ymd"] = ymd
         subject_fund_code = str(options.get("subject_fund_code") or DEFAULT_SUBJECT_FUND_CODE).strip()
         lookback_days = max(1, int(options.get("days") or 7))
         target_subject = (

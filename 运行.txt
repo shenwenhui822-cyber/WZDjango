@@ -109,7 +109,7 @@
   --- 博士一号真实净值（同上 ALPHA_MAIL_*）---
     python manage.py auto_import_fund_nav_mail
     python manage.py auto_import_fund_nav_mail --force
-    python3 manage.py auto_import_fund_nav_mail --nav-date 2026-04-21
+    python3 manage.py auto_import_fund_nav_mail --nav-date 2026-04-22
 
   --- 泽鑫多维 ZXDW 净值邮件（IMAP 用 .env：FARPORT_MAIL_USER / FARPORT_MAIL_PASS）---
     可选：ALPHA_IMAP_SERVER、ALPHA_IMAP_PORT（默认 imap.exmail.qq.com:993）
@@ -119,7 +119,7 @@
 
   --- 五矿期货结算单（IMAP 用 .env：FARPORT_MAIL_USER / FARPORT_MAIL_PASS）---
     python manage.py auto_import_wkqh_settle_mail
-    python manage.py auto_import_wkqh_settle_mail --subject-date 2026-04-20
+    python3 manage.py auto_import_wkqh_settle_mail --subject-date 2026-04-20
     python manage.py auto_import_wkqh_settle_mail --subject-date 2026-04-20 --days 7
     兼容命令（等价）：
     python manage.py wkqh_settle_service
@@ -141,6 +141,7 @@
     主题格式：账户对账单_37208761_吾执九五号_YYYYMMDD_融资融券账户对账单
     附件示例：37208761_吾执九五号_YYYYMMDD_融资融券账户对账单.xlsx
     落库配置在 settings：GHZQ_17190083_SETTLE_DB / GHZQ_17190083_SETTLE_COLLECTION / GHZQ_17190083_SETTLE_ATTACH_DIR
+    未传 --subject-date：按 trade_calendar 取运行日的前一交易日作为主题日期并落库（补跑某日请显式 --subject-date）
     python manage.py auto_import_ghzq_settle_mail
     python manage.py auto_import_ghzq_settle_mail --subject-date 2026-04-21
     python manage.py auto_import_ghzq_settle_mail --subject-date 2026-04-21 --days 10
