@@ -4,8 +4,8 @@
 
 调度：portal.scheduler.alpha_mail_scheduler 默认 12:00（环境变量 ZXDW_NAV_MAIL_SCHEDULER_ENABLED）。
 
-业务约定：未指定 --report-date 时，从前一交易日（T-1）到「今天」之间**每一个自然日**（含周末等非交易日）
-依次尝试主题（固定前缀+该日 ymd）；指定单日则只查该日。
+业务约定：未指定 --report-date 时，默认按运行日的前一交易日（T-1）查询并导入；
+指定单日则只查该日。
 邮箱登录账号从 .env 读取 FARPORT_MAIL_USER / FARPORT_MAIL_PASS。
 任务结束后按 ALPHA_NOTIFY_* 发送结果邮件（非交易日跳过时不发）。
 
@@ -35,8 +35,8 @@ from portal.services.mail_import_common import (
     validate_mail_job_query_span,
 )
 from portal.services.trade_calendar_service import (
-    calendar_day_isos_prev_trading_through_run,
     is_trade_date_iso,
+    prev_trading_day_iso_before,
 )
 from portal.services.zxdw_fund_nav_service import import_zxdw_excel_routed_by_product_code
 
@@ -76,7 +76,7 @@ class Command(BaseCommand):
             "--report-date",
             default="",
             help=(
-                "报告日期 YYYY-MM-DD；未指定时从 T-1 到今天的每个自然日（含中间全部非交易日）依次尝试主题。"
+                "报告日期 YYYY-MM-DD；未指定时按交易日历取运行日的前一交易日（T-1）。"
             ),
         )
 
@@ -167,12 +167,16 @@ class Command(BaseCommand):
             if explicit_date:
                 report_isos_to_try = [raw_report[:10]]
             else:
-                report_isos_to_try = calendar_day_isos_prev_trading_through_run(today_iso)
-                if not report_isos_to_try:
+                prev_iso = prev_trading_day_iso_before(today_iso)
+                if not prev_iso:
                     report["status"] = "FAILED"
-                    report["message"] = "无法解析交易日列表，请检查 trade_calendar 是否已导入。"
+                    report["message"] = (
+                        "未指定 --report-date 时需按前一交易日查询，"
+                        "但无法从 trade_calendar 解析前一交易日。"
+                    )
                     self.stderr.write(self.style.ERROR(report["message"]))
                     return
+                report_isos_to_try = [prev_iso]
 
             report["report_dates_tried"] = ", ".join(report_isos_to_try)
 
@@ -208,8 +212,7 @@ class Command(BaseCommand):
                 self.stdout.write(
                     "按完整主题精确匹配（非模糊）；"
                     + (
-                        "未指定 --report-date：从 T-1 到今天的每个自然日（含周末等非交易日）"
-                        f"依次尝试，共 {len(report_isos_to_try)} 个 ymd。"
+                        "未指定 --report-date：仅使用运行日的前一交易日（T-1）尝试主题。"
                         if not explicit_date
                         else "已指定 --report-date，仅尝试该日。"
                     )

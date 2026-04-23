@@ -113,6 +113,7 @@
 
   --- 泽鑫多维 ZXDW 净值邮件（IMAP 用 .env：FARPORT_MAIL_USER / FARPORT_MAIL_PASS）---
     可选：ALPHA_IMAP_SERVER、ALPHA_IMAP_PORT（默认 imap.exmail.qq.com:993）
+    未传 --report-date：按 trade_calendar 取运行日的前一交易日（T-1）作为导入报告日
     python manage.py auto_import_zxdw_nav_mail
     python manage.py auto_import_zxdw_nav_mail --force
     python manage.py auto_import_zxdw_nav_mail --report-date 2026-04-17
