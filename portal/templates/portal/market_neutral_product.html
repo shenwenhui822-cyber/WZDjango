@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}{{ page_title }} - 吾执产品平台{% endblock %}
+{% block extra_css %}
+<style>
+    .mn-table td, .mn-table th {
+        white-space: normal;
+        word-break: break-word;
+        vertical-align: middle;
+    }
+</style>
+{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'portal:home' %}">首页</a></li>
+        <li class="breadcrumb-item active" aria-current="page">{{ breadcrumb_label|default:page_title }}</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">{{ page_title }}</h1>
+    <span class="text-muted small">页面时间：{{ generated_at }}</span>
+</div>
+
+<!-- <div class="card border-0 shadow-sm mb-3">
+    <div class="card-body">
+        <h2 class="h6 mb-3">四大股指期货 "1点值多少钱"</h2>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>品种代码</th>
+                        <th>对应指数</th>
+                        <th>合约乘数（1点价值）</th>
+                        <th>备注</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td>IF</td><td>沪深300</td><td>300 元</td><td>大盘蓝筹，合约价值最大</td></tr>
+                    <tr><td>IH</td><td>上证50</td><td>300 元</td><td>金融权重，同 IF 规格</td></tr>
+                    <tr><td>IC</td><td>中证500</td><td>200 元</td><td>中盘股，与 IM 一致</td></tr>
+                    <tr><td>IM</td><td>中证1000</td><td>200 元</td><td>小盘股，波动弹性大</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div> -->
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body">
+        <table
+            class="table table-bordered align-middle mb-0 small mn-table"
+            style="table-layout: fixed; width: 100%;"
+        >
+            <thead class="table-light">
+                <tr>
+                    <th style="width: 13%;">账号</th>
+                    <th style="width: 12%;">市值</th>
+                    <th style="width: 12%;">可用资金</th>
+                    <th style="width: 8%;">对冲比例</th>
+                    <th style="width: 7%;">目标对冲比例</th>
+                    <th style="width: 8%;">误差</th>
+                    <th style="width: 40%;">备注</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>{{ stock_row.account }}</td>
+                    <td>{{ stock_row.market_value }}</td>
+                    <td>{{ stock_row.available_funds }}</td>
+                    <td rowspan="2" class="text-center align-middle">
+                        <span class="text-success">{{ future_row.hedge_ratio|default:"-" }}</span>
+                    </td>
+                    <td rowspan="2" class="text-center align-middle">
+                        {{ future_row.target_hedge_ratio|default:"100%" }}
+                    </td>
+                    <td rowspan="2" class="align-middle">{{ future_row.error|default:"-" }}</td>
+                    <td>{{ stock_row.remark|linebreaksbr }}</td>
+                </tr>
+                <tr>
+                    <td>{{ future_row.account }}</td>
+                    <td>{{ future_row.market_value }}</td>
+                    <td>{{ future_row.available_funds }}</td>
+                    <td>{{ future_row.remark }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+    setTimeout(function () {
+        window.location.reload();
+    }, 15000);
+</script>
+{% endblock %}
