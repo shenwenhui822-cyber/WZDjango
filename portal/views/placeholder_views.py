@@ -113,12 +113,20 @@ def _extract_latest_market_neutral_snapshot() -> dict[str, Any]:
         future_ratio = None
 
     target_ratio = 100.0
-    ratio_error = None
+    ratio_deviation = None
+    ratio_deviation_abs = None
+    ratio_color = "text-muted"
     try:
         if future_ratio is not None:
-            ratio_error = abs(float(future_ratio) - target_ratio)
+            ratio_deviation = float(future_ratio) - target_ratio
+            ratio_deviation_abs = abs(ratio_deviation)
+            if ratio_deviation > 0:
+                ratio_color = "text-danger"
+            elif ratio_deviation < 0:
+                ratio_color = "text-success"
     except Exception:
-        ratio_error = None
+        ratio_deviation = None
+        ratio_deviation_abs = None
 
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     return {
@@ -145,7 +153,8 @@ def _extract_latest_market_neutral_snapshot() -> dict[str, Any]:
             "hedge_ratio": _fmt_pct(future_ratio),
             "appendix": future_appendix,
             "target_hedge_ratio": _fmt_pct(target_ratio),
-            "error": _fmt_pct(ratio_error) if ratio_error is not None else "-",
+            "hedge_deviation": _fmt_pct(ratio_deviation_abs) if ratio_deviation_abs is not None else "-",
+            "ratio_color": ratio_color,
             "snapshot_ts": future_ts,
         },
     }

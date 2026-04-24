@@ -54,27 +54,35 @@
         >
             <thead class="table-light">
                 <tr>
-                    <th style="width: 13%;">账号</th>
-                    <th style="width: 12%;">市值</th>
-                    <th style="width: 12%;">可用资金</th>
-                    <th style="width: 8%;">对冲比例</th>
-                    <th style="width: 7%;">目标对冲比例</th>
-                    <th style="width: 8%;">误差</th>
-                    <th style="width: 40%;">备注</th>
+                    <th class="text-center" style="width: 9%;">产品名称</th>
+                    <th class="text-center" style="width: 12%;">账号</th>
+                    <th class="text-center" style="width: 11%;">市值</th>
+                    <th class="text-center" style="width: 11%;">可用资金</th>
+                    <th class="text-center" style="width: 8%;">对冲比例</th>
+                    <th class="text-center" style="width: 9%;">目标对冲比例</th>
+                    <th class="text-center" style="width: 8%;">对冲偏差</th>
+                    <th class="text-center" style="width: 42%;">备注</th>
                 </tr>
             </thead>
             <tbody>
                 <tr>
+                    <td rowspan="2" class="text-center align-middle">模拟盘一号</td>
                     <td>{{ stock_row.account }}</td>
                     <td>{{ stock_row.market_value }}</td>
                     <td>{{ stock_row.available_funds }}</td>
                     <td rowspan="2" class="text-center align-middle">
-                        <span class="text-success">{{ future_row.hedge_ratio|default:"-" }}</span>
+                        <span class="{{ future_row.ratio_color|default:'text-muted' }}">
+                            {{ future_row.hedge_ratio|default:"-" }}
+                        </span>
                     </td>
                     <td rowspan="2" class="text-center align-middle">
                         {{ future_row.target_hedge_ratio|default:"100%" }}
                     </td>
-                    <td rowspan="2" class="align-middle">{{ future_row.error|default:"-" }}</td>
+                    <td rowspan="2" class="align-middle">
+                        <span class="{{ future_row.ratio_color|default:'text-muted' }}">
+                            {{ future_row.hedge_deviation|default:"-" }}
+                        </span>
+                    </td>
                     <td>{{ stock_row.remark|linebreaksbr }}</td>
                 </tr>
                 <tr>
