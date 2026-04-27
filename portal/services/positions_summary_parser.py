@@ -44,6 +44,64 @@ def _to_float_or_none(v: str) -> float | None:
         return None
 
 
+def _is_header_row(parts: list[str]) -> bool:
+    p0 = (parts[0] if parts else "").strip().lower()
+    p1 = (parts[1] if len(parts) > 1 else "").strip().lower()
+    p2 = (parts[2] if len(parts) > 2 else "").strip().lower()
+    p3 = (parts[3] if len(parts) > 3 else "").strip().lower()
+    header_tokens = {
+        "投资单元",
+        "investunit",
+        "交易编码",
+        "tradingcode",
+        "品种",
+        "product",
+        "合约",
+        "instrument",
+        "买持",
+        "long pos.",
+    }
+    return (p0 in header_tokens) or (p1 in header_tokens) or (p2 in header_tokens) or (p3 in header_tokens)
+
+
+def _normalize_parts(parts: list[str]) -> list[str]:
+    first = (parts[0] if parts else "").strip()
+    # 华泰/部分期货结算单是 16 列（前两列为投资单元、交易编码），需投影到统一 13 列结构。
+    if len(parts) >= 15:
+        if first.startswith("共"):
+            return [
+                parts[0],  # product
+                "",  # instrument
+                parts[4],  # long_pos
+                parts[5],  # avg_buy_price
+                parts[6],  # short_pos
+                parts[7],  # avg_sell_price
+                parts[8],  # prev_sttl
+                parts[9],  # sttl_today
+                parts[10],  # mtm_pl
+                parts[11],  # margin_occupied
+                parts[12],  # s_h
+                parts[13],  # market_value_long
+                parts[14],  # market_value_short
+            ]
+        return [
+            parts[2],  # product
+            parts[3],  # instrument
+            parts[4],  # long_pos
+            parts[5],  # avg_buy_price
+            parts[6],  # short_pos
+            parts[7],  # avg_sell_price
+            parts[8],  # prev_sttl
+            parts[9],  # sttl_today
+            parts[10],  # mtm_pl
+            parts[11],  # margin_occupied
+            parts[12],  # s_h
+            parts[13],  # market_value_long
+            parts[14],  # market_value_short
+        ]
+    return parts
+
+
 def parse_positions_summary(
     text: str,
     *,
@@ -74,15 +132,17 @@ def parse_positions_summary(
         if len(parts) < 2:
             continue
         first = parts[0]
-        if first in ("品种", "Product") or first.startswith("Exchange"):
+        if _is_header_row(parts):
             continue
         if all((not x) for x in parts):
             continue
+        parts = _normalize_parts(parts)
         if len(parts) < len(POSITIONS_COLS):
             parts.extend([""] * (len(POSITIONS_COLS) - len(parts)))
         elif len(parts) > len(POSITIONS_COLS):
             parts = parts[: len(POSITIONS_COLS)]
 
+        first = parts[0] if parts else ""
         row: dict[str, Any] = {}
         for k, val in zip(POSITIONS_COLS, parts):
             if k in POSITION_NUM_COLS:

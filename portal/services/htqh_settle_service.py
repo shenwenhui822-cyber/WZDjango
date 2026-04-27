@@ -84,25 +84,44 @@ def _extract_account_summary_metrics(text: str) -> dict[str, float | None]:
     return out
 
 
-def _pick_target_txt(root: Path, account_id: str) -> Path:
+def _pick_target_txt_candidates(root: Path, account_id: str) -> list[Path]:
     txt_files = sorted(
         [p for p in root.rglob("*") if p.is_file() and p.suffix.lower() == ".txt"]
     )
     if not txt_files:
         raise RuntimeError("ZIP 解压后未找到 txt 文件。")
+    # 账号优先
+    account_hits = [p for p in txt_files if account_id in p.name]
+    return account_hits or txt_files
 
-    # 华泰压缩包通常存在 otherfund/trddata，优先 otherfund
-    for p in txt_files:
-        low = p.name.lower()
-        if account_id in low and "otherfund" in low:
-            return p
 
-    for p in txt_files:
-        low = p.name.lower()
-        if account_id in low and "trddata" not in low:
-            return p
+def _pick_best_txt(root: Path, account_id: str) -> tuple[Path, str]:
+    best_path: Path | None = None
+    best_text = ""
+    best_score = -1
+    candidates = _pick_target_txt_candidates(root, account_id=account_id)
 
-    return txt_files[0]
+    for p in candidates:
+        try:
+            text = _read_text_with_fallbacks(p)
+        except Exception:
+            continue
+
+        metrics = _extract_account_summary_metrics(text)
+        metric_hits = sum(1 for v in metrics.values() if v is not None)
+        low_name = p.name.lower()
+        # 同分时偏向 otherfund，回避 trddata
+        name_bonus = 2 if "otherfund" in low_name else 0
+        name_penalty = -1 if "trddata" in low_name else 0
+        score = metric_hits + name_bonus + name_penalty
+        if score > best_score:
+            best_score = score
+            best_path = p
+            best_text = text
+
+    if not best_path:
+        raise RuntimeError("ZIP 解压后的 txt 文件读取失败。")
+    return best_path, best_text
 
 
 def extract_htqh_record_from_zip(
@@ -115,8 +134,7 @@ def extract_htqh_record_from_zip(
         root = Path(tmp_dir)
         with zipfile.ZipFile(zip_path, "r") as zf:
             zf.extractall(root)
-        txt_path = _pick_target_txt(root, account_id=account_id)
-        text = _read_text_with_fallbacks(txt_path)
+        txt_path, text = _pick_best_txt(root, account_id=account_id)
 
     statement_ymd = _extract_first(text, r"\bDate[:：]\s*(\d{8})") or ymd
     client_id = _extract_first(text, r"\bClient ID[:：]\s*(\d+)")
