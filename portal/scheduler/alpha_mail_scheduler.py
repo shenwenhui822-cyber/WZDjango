@@ -8,6 +8,8 @@ from datetime import datetime
 from django.core.management import call_command
 from django.utils import timezone
 
+from portal.services.trade_calendar_service import is_trade_date_iso
+
 _scheduler_started = False
 
 # (HH:MM, management command name, kwargs)
@@ -20,6 +22,7 @@ _DEFAULT_SCHEDULES: list[tuple[str, str, dict]] = [
     ("17:30", "auto_import_alpha_mail", {}),
     ("18:00", "auto_import_wkqh_settle_mail", {}),
     ("18:05", "auto_import_cjqh_settle_mail", {}),
+    ("19:00", "auto_import_htqh_settle_mail", {}),
 ]
 
 
@@ -71,6 +74,14 @@ def _ghzq_settle_mail_enabled() -> bool:
     )
 
 
+def _htqh_settle_mail_enabled() -> bool:
+    return os.getenv("HTQH_SETTLE_MAIL_SCHEDULER_ENABLED", "1").strip() not in (
+        "0",
+        "false",
+        "False",
+    )
+
+
 def _schedules() -> list[tuple[str, str, dict]]:
     s = list(_DEFAULT_SCHEDULES)
     if not _fund_nav_enabled():
@@ -85,6 +96,8 @@ def _schedules() -> list[tuple[str, str, dict]]:
         s = [x for x in s if x[1] != "auto_import_cjqh_settle_mail"]
     if not _ghzq_settle_mail_enabled():
         s = [x for x in s if x[1] != "auto_import_ghzq_settle_mail"]
+    if not _htqh_settle_mail_enabled():
+        s = [x for x in s if x[1] != "auto_import_htqh_settle_mail"]
     return s
 
 
@@ -117,6 +130,16 @@ def _dispatch_job_async(command_name: str, *, force: bool, extra_kwargs: dict | 
     t.start()
 
 
+def _should_skip_for_non_trading_day(command_name: str, *, today_iso: str) -> bool:
+    if is_trade_date_iso(today_iso):
+        return False
+    ts = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
+    print(
+        f"[alpha-scheduler] [{ts}] {today_iso} 非交易日，跳过 {command_name} 调度执行。"
+    )
+    return True
+
+
 def run_scheduler_loop(
     *,
     poll_seconds: int,
@@ -139,6 +162,9 @@ def run_scheduler_loop(
 
     if run_now:
         for target, cmd_name, job_kwargs in schedules:
+            today_iso = timezone.localdate().isoformat()
+            if _should_skip_for_non_trading_day(cmd_name, today_iso=today_iso):
+                continue
             _dispatch_job_async(cmd_name, force=force, extra_kwargs=job_kwargs)
             last_run_date[f"{cmd_name}@{target}"] = timezone.localdate().isoformat()
 
@@ -149,6 +175,9 @@ def run_scheduler_loop(
         for target, cmd_name, job_kwargs in schedules:
             key = f"{cmd_name}@{target}"
             if hm == target and last_run_date.get(key) != today:
+                if _should_skip_for_non_trading_day(cmd_name, today_iso=today):
+                    last_run_date[key] = today
+                    continue
                 _dispatch_job_async(cmd_name, force=force, extra_kwargs=job_kwargs)
                 last_run_date[key] = today
         time.sleep(max(5, int(poll_seconds)))

@@ -138,6 +138,15 @@
     python manage.py cjqh_settle_service
     python manage.py cjqh_settle_service --subject-date 2026-04-17
 
+  --- 华泰期货结算单（IMAP 用 .env：FARPORT_MAIL_USER / FARPORT_MAIL_PASS）---
+    主题格式：80017209华泰期货结算数据YYYYMMDD
+    附件格式：80017209-YYYYMMDD.zip
+    落库配置在 settings：
+    MONGODB_HTQH_SETTLE_DB / MONGODB_HTQH_SETTLE_COLLECTION / HTQH_SETTLE_ATTACH_DIR
+    python manage.py auto_import_htqh_settle_mail
+    python manage.py auto_import_htqh_settle_mail --subject-date 2026-04-20
+    python manage.py auto_import_htqh_settle_mail --subject-date 2026-04-20 --days 7
+
   --- 国海证券吾执九五号融资融券对账单（IMAP 用 .env：FARPORT_MAIL_USER / FARPORT_MAIL_PASS）---
     主题格式：账户对账单_37208761_吾执九五号_YYYYMMDD_融资融券账户对账单
     附件示例：37208761_吾执九五号_YYYYMMDD_融资融券账户对账单.xlsx
@@ -162,6 +171,7 @@
     17:30  auto_import_alpha_mail
     18:00  auto_import_wkqh_settle_mail
     18:05  auto_import_cjqh_settle_mail
+    19:00  auto_import_htqh_settle_mail
 
   说明：使用 runserver 或部署 ASGI/WSGI 且加载了该 scheduler 时，后台线程按上述时间
         调用对应 manage.py 命令。若仅需要“手动跑任务”，可直接执行第八节命令。

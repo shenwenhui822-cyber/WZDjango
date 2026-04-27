@@ -140,6 +140,12 @@ MONGODB_CJQH_SETTLE_COLLECTION = "CJQH_81801575"
 # 长江期货结算单邮件附件落盘目录
 CJQH_SETTLE_ATTACH_DIR = BASE_DIR / "downloaded_attachments_cjqh"
 
+# 期货结算单（华泰）落库配置：库/集合由命令 auto_import_htqh_settle_mail 使用
+MONGODB_HTQH_SETTLE_DB = "future_settle_real"
+MONGODB_HTQH_SETTLE_COLLECTION = "HTQH_80017209"
+# 华泰期货结算单邮件附件落盘目录
+HTQH_SETTLE_ATTACH_DIR = BASE_DIR / "downloaded_attachments_htqh"
+
 # 期货结算单（五矿）落库配置：库/集合由命令 auto_import_wkqh_settle_mail 使用
 MONGODB_WKQH_SETTLE_DB = "future_settle_real"
 MONGODB_WKQH_SETTLE_COLLECTION = "WKQH_66601123"
