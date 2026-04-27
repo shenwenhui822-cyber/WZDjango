@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Sequence
 
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
@@ -37,26 +37,26 @@ def _fmt_pct(v: Any, digits: int = 2) -> str:
         return "-"
 
 
-def _extract_latest_market_neutral_snapshot() -> dict[str, Any]:
-    client = get_mongo_client()
-    try:
-        future_doc = (
-            client["rt_future"]["simnow_094287"]
-            .find({}, {"_id": 0})
-            .sort([("timestamp", -1), ("_id", -1)])
-            .limit(1)
-        )
-        future_latest = next(iter(future_doc), {})
+def _normalize_future_collections(future_collections: str | Sequence[str]) -> list[str]:
+    if isinstance(future_collections, str):
+        return [future_collections]
+    return list(future_collections)
 
-        stock_doc = (
-            client["rt_stock"]["GJZQ_86014577"]
-            .find({}, {"_id": 0})
-            .sort([("ts", -1), ("date", -1), ("time", -1), ("_id", -1)])
-            .limit(1)
-        )
-        stock_latest = next(iter(stock_doc), {})
-    finally:
-        client.close()
+
+def _build_market_neutral_pair(
+    future_collections: str | Sequence[str],
+    stock_collection: str,
+    client: Any,
+) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any]]:
+    cols = _normalize_future_collections(future_collections)
+
+    stock_doc = (
+        client["rt_stock"][stock_collection]
+        .find({}, {"_id": 0})
+        .sort([("ts", -1), ("date", -1), ("time", -1), ("_id", -1)])
+        .limit(1)
+    )
+    stock_latest = next(iter(stock_doc), {})
 
     stock_market_value = (
         stock_latest.get("stock_market_value")
@@ -76,35 +76,68 @@ def _extract_latest_market_neutral_snapshot() -> dict[str, Any]:
         else "-"
     )
 
-    positions = future_latest.get("positions") or []
-    pos_lines: list[str] = []
-    formula_terms: list[str] = []
-    future_notional_value = 0.0
-    for p in positions[:10]:
-        contract = p.get("contract") or "-"
-        direction = p.get("direction") or "-"
-        total_position = int(p.get("total_position") or 0)
-        avg_px_raw = p.get("average_opening_price") or 0
-        avg_price = _fmt_num(avg_px_raw, digits=2)
-        contract_upper = str(contract).upper()
-        prefix = "".join(ch for ch in contract_upper if ch.isalpha())[:2]
-        multi = FUTURE_POINT_MULTIPLIER.get(prefix)
-        if multi and avg_px_raw:
-            term_value = abs(float(avg_px_raw)) * abs(total_position) * multi
-            future_notional_value += term_value
-            formula_terms.append(
-                f"{contract}({direction}) {total_position}*{_fmt_num(avg_px_raw, 2)}*{multi}"
-            )
-        pos_lines.append(f"{contract} {direction} {total_position}手 @ {avg_price}")
-    if len(positions) > 10:
-        pos_lines.append(f"... 其余 {len(positions) - 10} 条持仓")
-    future_appendix = "；".join(pos_lines) if pos_lines else "-"
+    future_market_value_total = 0.0
+    future_rows: list[dict[str, Any]] = []
+    timestamps: list[str] = []
 
-    future_market_value = future_notional_value if future_notional_value > 0 else (
-        future_latest.get("margin_used") or 0
-    )
-    future_available_cash = future_latest.get("available_funds")
-    future_ts = future_latest.get("timestamp") or "-"
+    for coll in cols:
+        future_doc = (
+            client["rt_future"][coll]
+            .find({}, {"_id": 0})
+            .sort([("timestamp", -1), ("_id", -1)])
+            .limit(1)
+        )
+        future_latest = next(iter(future_doc), {})
+
+        positions = future_latest.get("positions") or []
+        formula_terms: list[str] = []
+        future_notional_value = 0.0
+        for p in positions[:10]:
+            contract = p.get("contract") or "-"
+            direction = p.get("direction") or "-"
+            total_position = int(p.get("total_position") or 0)
+            avg_px_raw = p.get("average_opening_price") or 0
+            contract_upper = str(contract).upper()
+            prefix = "".join(ch for ch in contract_upper if ch.isalpha())[:2]
+            multi = FUTURE_POINT_MULTIPLIER.get(prefix)
+            if multi and avg_px_raw:
+                term_value = abs(float(avg_px_raw)) * abs(total_position) * multi
+                future_notional_value += term_value
+                formula_terms.append(
+                    f"{contract}({direction}) {total_position}*{_fmt_num(avg_px_raw, 2)}*{multi}"
+                )
+
+        contrib = (
+            future_notional_value
+            if future_notional_value > 0
+            else float(future_latest.get("margin_used") or 0)
+        )
+        future_market_value_total += contrib
+        try:
+            avail = float(future_latest.get("available_funds") or 0)
+        except (TypeError, ValueError):
+            avail = 0.0
+
+        ts = future_latest.get("timestamp")
+        if ts is not None:
+            timestamps.append(str(ts))
+
+        if formula_terms:
+            row_remark = "总市值 = " + " + ".join(formula_terms)
+        else:
+            row_remark = f"保证金占用 {_fmt_num(future_latest.get('margin_used'))}"
+
+        future_rows.append(
+            {
+                "account": coll,
+                "market_value": _fmt_num(contrib),
+                "available_funds": _fmt_num(avail),
+                "remark": row_remark,
+            }
+        )
+
+    future_ts = "；".join(timestamps) if timestamps else "-"
+    future_market_value = future_market_value_total
     future_ratio = None
     try:
         if stock_market_value and float(stock_market_value) > 0:
@@ -115,49 +148,78 @@ def _extract_latest_market_neutral_snapshot() -> dict[str, Any]:
     target_ratio = 100.0
     ratio_deviation = None
     ratio_deviation_abs = None
-    ratio_color = "text-muted"
+    # 对冲比例：与目标比较，低于目标绿、高于目标红。
+    hedge_ratio_class = "mn-hedge-neutral"
+    # 对冲偏差：与当前对冲比例比较，偏差大于比例红、小于比例绿（同为百分比数值）。
+    hedge_deviation_class = "mn-hedge-neutral"
     try:
         if future_ratio is not None:
             ratio_deviation = float(future_ratio) - target_ratio
             ratio_deviation_abs = abs(ratio_deviation)
-            if ratio_deviation > 0:
-                ratio_color = "text-danger"
-            elif ratio_deviation < 0:
-                ratio_color = "text-success"
+            if ratio_deviation > 1e-9:
+                hedge_ratio_class = "mn-hedge-above-target"
+            elif ratio_deviation < -1e-9:
+                hedge_ratio_class = "mn-hedge-below-target"
+            dev = float(ratio_deviation_abs)
+            rat = float(future_ratio)
+            if dev > rat + 1e-9:
+                hedge_deviation_class = "mn-hedge-above-target"
+            elif dev < rat - 1e-9:
+                hedge_deviation_class = "mn-hedge-below-target"
     except Exception:
         ratio_deviation = None
         ratio_deviation_abs = None
 
-    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    return {
-        "generated_at": generated_at,
-        "stock_row": {
-            "account": f"GJZQ_{stock_latest.get('account_id') or '86014577'}",
-            "market_value": _fmt_num(stock_market_value),
-            "available_funds": _fmt_num(stock_available_cash),
-            "remark": stock_remark,
-            "hedge_ratio": "-",
-            "appendix": f"采集时间: {stock_ts}",
-            "target_hedge_ratio": _fmt_pct(target_ratio),
-            "error": "-",
-        },
-        "future_row": {
-            "account": "simnow_094287",
-            "market_value": _fmt_num(future_market_value),
-            "available_funds": _fmt_num(future_available_cash),
-            "remark": (
-                "总市值 = " + " + ".join(formula_terms)
-                if formula_terms
-                else f"保证金占用 {_fmt_num(future_latest.get('margin_used'))}"
-            ),
-            "hedge_ratio": _fmt_pct(future_ratio),
-            "appendix": future_appendix,
-            "target_hedge_ratio": _fmt_pct(target_ratio),
-            "hedge_deviation": _fmt_pct(ratio_deviation_abs) if ratio_deviation_abs is not None else "-",
-            "ratio_color": ratio_color,
-            "snapshot_ts": future_ts,
-        },
+    stock_row = {
+        "account": stock_collection,
+        "market_value": _fmt_num(stock_market_value),
+        "available_funds": _fmt_num(stock_available_cash),
+        "remark": stock_remark,
+        "hedge_ratio": "-",
+        "appendix": f"采集时间: {stock_ts}",
+        "target_hedge_ratio": _fmt_pct(target_ratio),
+        "error": "-",
     }
+    hedge_meta = {
+        "hedge_ratio": _fmt_pct(future_ratio),
+        "target_hedge_ratio": _fmt_pct(target_ratio),
+        "hedge_deviation": _fmt_pct(ratio_deviation_abs) if ratio_deviation_abs is not None else "-",
+        "hedge_ratio_class": hedge_ratio_class,
+        "hedge_deviation_class": hedge_deviation_class,
+        "snapshot_ts": future_ts,
+    }
+    return stock_row, future_rows, hedge_meta
+
+
+def _extract_latest_market_neutral_snapshot() -> dict[str, Any]:
+    client = get_mongo_client()
+    try:
+        products: list[dict[str, Any]] = []
+        for name, fut_coll, stk_coll in (
+            (
+                "吾执十三号",
+                ("GTQH_8010101721", "WKQH_66601096"),
+                "ZSZQ_911600210",
+            ),
+            ("模拟盘一号", "simnow_094287", "GJZQ_86014577"),
+        ):
+            stock_row, future_rows, hedge_meta = _build_market_neutral_pair(
+                fut_coll, stk_coll, client
+            )
+            products.append(
+                {
+                    "name": name,
+                    "body_rowspan": 1 + len(future_rows),
+                    "stock_row": stock_row,
+                    "future_rows": future_rows,
+                    **hedge_meta,
+                }
+            )
+    finally:
+        client.close()
+
+    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return {"generated_at": generated_at, "products": products}
 
 
 @login_required(login_url="/")

@@ -7,6 +7,10 @@
         word-break: break-word;
         vertical-align: middle;
     }
+    /* 对冲比例：相对目标；对冲偏差：相对当前比例（见视图逻辑） */
+    .mn-hedge-below-target { color: #198754; font-weight: 600; }
+    .mn-hedge-above-target { color: #dc3545; font-weight: 600; }
+    .mn-hedge-neutral { color: #6c757d; }
 </style>
 {% endblock %}
 {% block content %}
@@ -55,9 +59,9 @@
             <thead class="table-light">
                 <tr>
                     <th class="text-center" style="width: 9%;">产品名称</th>
-                    <th class="text-center" style="width: 12%;">账号</th>
-                    <th class="text-center" style="width: 11%;">市值</th>
-                    <th class="text-center" style="width: 11%;">可用资金</th>
+                    <th class="text-center" style="width: 14%;">账号</th>
+                    <th class="text-center" style="width: 10%;">市值</th>
+                    <th class="text-center" style="width: 10%;">可用资金</th>
                     <th class="text-center" style="width: 8%;">对冲比例</th>
                     <th class="text-center" style="width: 9%;">目标对冲比例</th>
                     <th class="text-center" style="width: 8%;">对冲偏差</th>
@@ -65,32 +69,36 @@
                 </tr>
             </thead>
             <tbody>
+                {% for product in products %}
                 <tr>
-                    <td rowspan="2" class="text-center align-middle">模拟盘一号</td>
-                    <td>{{ stock_row.account }}</td>
-                    <td>{{ stock_row.market_value }}</td>
-                    <td>{{ stock_row.available_funds }}</td>
-                    <td rowspan="2" class="text-center align-middle">
-                        <span class="{{ future_row.ratio_color|default:'text-muted' }}">
-                            {{ future_row.hedge_ratio|default:"-" }}
+                    <td rowspan="{{ product.body_rowspan }}" class="text-center align-middle">{{ product.name }}</td>
+                    <td>{{ product.stock_row.account }}</td>
+                    <td>{{ product.stock_row.market_value }}</td>
+                    <td>{{ product.stock_row.available_funds }}</td>
+                    <td rowspan="{{ product.body_rowspan }}" class="text-center align-middle">
+                        <span class="{{ product.hedge_ratio_class|default:'mn-hedge-neutral' }}">
+                            {{ product.hedge_ratio|default:"-" }}
                         </span>
                     </td>
-                    <td rowspan="2" class="text-center align-middle">
-                        {{ future_row.target_hedge_ratio|default:"100%" }}
+                    <td rowspan="{{ product.body_rowspan }}" class="text-center align-middle">
+                        {{ product.target_hedge_ratio|default:"100%" }}
                     </td>
-                    <td rowspan="2" class="align-middle">
-                        <span class="{{ future_row.ratio_color|default:'text-muted' }}">
-                            {{ future_row.hedge_deviation|default:"-" }}
+                    <td rowspan="{{ product.body_rowspan }}" class="align-middle">
+                        <span class="{{ product.hedge_deviation_class|default:'mn-hedge-neutral' }}">
+                            {{ product.hedge_deviation|default:"-" }}
                         </span>
                     </td>
-                    <td>{{ stock_row.remark|linebreaksbr }}</td>
+                    <td>{{ product.stock_row.remark|linebreaksbr }}</td>
                 </tr>
+                {% for fr in product.future_rows %}
                 <tr>
-                    <td>{{ future_row.account }}</td>
-                    <td>{{ future_row.market_value }}</td>
-                    <td>{{ future_row.available_funds }}</td>
-                    <td>{{ future_row.remark }}</td>
+                    <td>{{ fr.account }}</td>
+                    <td>{{ fr.market_value }}</td>
+                    <td>{{ fr.available_funds }}</td>
+                    <td>{{ fr.remark }}</td>
                 </tr>
+                {% endfor %}
+                {% endfor %}
             </tbody>
         </table>
     </div>

@@ -9,3 +9,7 @@ venv/
 # 忽略 Alphadata 目录下的所有 .xlsx 文件
 /Alphadata/
 /downloaded_attachments_zxdw_nav/
+/downloaded_attachments_cjqh/
+/downloaded_attachments_htqh/
+/downloaded_attachments_ghzq/
+/downloaded_attachments_wkqh/
