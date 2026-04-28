@@ -18,6 +18,16 @@ FUTURE_POINT_MULTIPLIER: dict[str, int] = {
 }
 
 
+def _future_direction_sign(direction: str | None) -> int:
+    """期货方向：buy 计为空头为负、sell 为正（与空头市值口径一致）。"""
+    d = (direction or "").strip().lower()
+    if d in ("buy", "long", "b", "买", "多"):
+        return -1
+    if d in ("sell", "short", "s", "卖", "空"):
+        return 1
+    return 1
+
+
 def _fmt_num(v: Any, digits: int = 2) -> str:
     try:
         if v is None:
@@ -96,22 +106,29 @@ def _build_market_neutral_pair(
             contract = p.get("contract") or "-"
             direction = p.get("direction") or "-"
             total_position = int(p.get("total_position") or 0)
+            lots = abs(total_position)
             avg_px_raw = p.get("average_opening_price") or 0
             contract_upper = str(contract).upper()
             prefix = "".join(ch for ch in contract_upper if ch.isalpha())[:2]
             multi = FUTURE_POINT_MULTIPLIER.get(prefix)
-            if multi and avg_px_raw:
-                term_value = abs(float(avg_px_raw)) * abs(total_position) * multi
+            if multi and avg_px_raw and lots:
+                sign = _future_direction_sign(direction)
+                px = abs(float(avg_px_raw))
+                term_value = sign * px * lots * multi
                 future_notional_value += term_value
-                formula_terms.append(
-                    f"{contract}({direction}) {total_position}*{_fmt_num(avg_px_raw, 2)}*{multi}"
-                )
+                if sign < 0:
+                    formula_terms.append(
+                        f"(-1)*{contract}({direction}) {lots}*{_fmt_num(avg_px_raw, 2)}*{multi}"
+                    )
+                else:
+                    formula_terms.append(
+                        f"{contract}({direction}) {lots}*{_fmt_num(avg_px_raw, 2)}*{multi}"
+                    )
 
-        contrib = (
-            future_notional_value
-            if future_notional_value > 0
-            else float(future_latest.get("margin_used") or 0)
-        )
+        if formula_terms:
+            contrib = float(future_notional_value)
+        else:
+            contrib = float(future_latest.get("margin_used") or 0)
         future_market_value_total += contrib
         try:
             avail = float(future_latest.get("available_funds") or 0)
@@ -123,7 +140,7 @@ def _build_market_neutral_pair(
             timestamps.append(str(ts))
 
         if formula_terms:
-            row_remark = "总市值 = " + " + ".join(formula_terms)
+            row_remark = "空头市值 = " + " + ".join(formula_terms)
         else:
             row_remark = f"保证金占用 {_fmt_num(future_latest.get('margin_used'))}"
 
@@ -197,7 +214,7 @@ def _extract_latest_market_neutral_snapshot() -> dict[str, Any]:
         products: list[dict[str, Any]] = []
         for name, fut_coll, stk_coll in (
             (
-                "吾执十三号",
+                "吾执一三号",
                 ("GTQH_8010101721", "WKQH_66601096"),
                 "ZSZQ_911600210",
             ),

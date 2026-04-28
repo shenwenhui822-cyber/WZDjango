@@ -177,21 +177,42 @@ def sync_t0_from_ftp() -> SyncResult:
     return SyncResult(files_processed, rows_upserted, errors)
 
 
-def fetch_performance_rows(limit: int = 2000) -> list[dict[str, Any]]:
-    """供页面展示的最近若干条记录（trade_date/account 降序）。"""
+def fetch_performance_rows(
+    limit: int = 2500,
+    account_name_filter: str | None = None,
+) -> list[dict[str, Any]]:
+    """按账户名升序、日期降序。不包含 source_file / imported_at。"""
     client = get_mongo_client()
     try:
         coll = client[settings.MONGODB_T0_PERFORMANCE_DB][
             settings.MONGODB_T0_PERFORMANCE_COLLECTION
         ]
-        cursor = coll.find({}, {"imported_at": 0, "_id": 0}).sort(
-            [("trade_date", -1), ("account_name", 1)]
-        )
+        q: dict[str, Any] = {}
+        if account_name_filter and account_name_filter.strip():
+            q["account_name"] = account_name_filter.strip()
+        cursor = coll.find(
+            q,
+            {"imported_at": 0, "_id": 0, "source_file": 0},
+        ).sort([("account_name", 1), ("trade_date", -1)])
         items: list[dict[str, Any]] = []
         for doc in cursor:
             items.append(doc)
             if len(items) >= limit:
                 break
         return items
+    finally:
+        client.close()
+
+
+def distinct_performance_account_names() -> list[str]:
+    client = get_mongo_client()
+    try:
+        coll = client[settings.MONGODB_T0_PERFORMANCE_DB][
+            settings.MONGODB_T0_PERFORMANCE_COLLECTION
+        ]
+        raw = coll.distinct("account_name")
+        return sorted(
+            str(x).strip() for x in raw if x is not None and str(x).strip()
+        )
     finally:
         client.close()

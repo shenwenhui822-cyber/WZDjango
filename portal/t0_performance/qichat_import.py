@@ -147,16 +147,23 @@ def import_qichat_csv_dir(
     return QichatImportResult(files_processed, rows_upserted, errors)
 
 
-def fetch_t0_order_rows(limit: int = 2000) -> list[dict[str, Any]]:
-    """列表展示用；附加 *_display 百分比文案。"""
+def fetch_t0_order_rows(
+    limit: int = 2500,
+    product_name_filter: str | None = None,
+) -> list[dict[str, Any]]:
+    """按产品名称升序、日期降序；附加 *_display 百分比文案。不返回 source_file。"""
     client = get_mongo_client()
     try:
         coll = client[settings.MONGODB_T0_PERFORMANCE_DB][
             settings.MONGODB_T0_ORDER_COLLECTION
         ]
-        cur = coll.find({}, {"imported_at": 0, "_id": 0}).sort(
-            [("trade_date", -1), ("product_name", 1)]
-        )
+        q: dict[str, Any] = {}
+        if product_name_filter and product_name_filter.strip():
+            q["product_name"] = product_name_filter.strip()
+        cur = coll.find(
+            q,
+            {"imported_at": 0, "_id": 0, "source_file": 0},
+        ).sort([("product_name", 1), ("trade_date", -1)])
         items: list[dict[str, Any]] = []
         for doc in cur:
             ar = doc.get("annualized_return")
@@ -171,5 +178,19 @@ def fetch_t0_order_rows(limit: int = 2000) -> list[dict[str, Any]]:
             if len(items) >= limit:
                 break
         return items
+    finally:
+        client.close()
+
+
+def distinct_t0_order_product_names() -> list[str]:
+    client = get_mongo_client()
+    try:
+        coll = client[settings.MONGODB_T0_PERFORMANCE_DB][
+            settings.MONGODB_T0_ORDER_COLLECTION
+        ]
+        raw = coll.distinct("product_name")
+        return sorted(
+            str(x).strip() for x in raw if x is not None and str(x).strip()
+        )
     finally:
         client.close()

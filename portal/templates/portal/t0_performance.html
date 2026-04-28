@@ -2,7 +2,7 @@
 {% block title %}{{ page_title }} - 吾执产品平台{% endblock %}
 {% block extra_css %}
 <style>
-    .t0-table-wrap { overflow-x: auto; max-height: 56vh; }
+    .t0-table-wrap { overflow-x: auto; max-height: 52vh; }
     .t0-table-wrap thead th {
         position: sticky;
         top: 0;
@@ -11,6 +11,9 @@
         white-space: nowrap;
     }
     .t0-table-wrap td.num { white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+    .t0-filter-bar { align-items: center !important; gap: .5rem 1rem; }
+    .t0-filter-inline { display: inline-flex; align-items: center; gap: .5rem; flex-wrap: wrap; flex: 1 1 auto; min-width: min(100%, 32rem); }
+    .t0-filter-inline .form-select { flex: 1 1 14rem; max-width: 22rem; min-width: 10rem; }
 </style>
 {% endblock %}
 {% block content %}
@@ -33,55 +36,85 @@
     <form method="post" action="{% url 'portal:alpha_t0' %}" class="d-inline">
         {% csrf_token %}
         <input type="hidden" name="action" value="sync_qichat">
-        <button type="submit" class="btn btn-primary btn-sm">同步周度 CSV（qichat）</button>
+        <input type="hidden" name="weekly_product" value="{{ weekly_product }}">
+        <input type="hidden" name="intraday_account" value="{{ intraday_account }}">
+        <button type="submit" class="btn btn-primary btn-sm">同步周度 CSV</button>
     </form>
     <form method="post" action="{% url 'portal:alpha_t0' %}" class="d-inline">
         {% csrf_token %}
         <input type="hidden" name="action" value="sync_ftp">
+        <input type="hidden" name="weekly_product" value="{{ weekly_product }}">
+        <input type="hidden" name="intraday_account" value="{{ intraday_account }}">
         <button type="submit" class="btn btn-outline-primary btn-sm">从 FTP 同步日内 xlsx</button>
     </form>
     <span class="text-muted small">周度 {{ order_row_count }} 条 · 日内 {{ performance_row_count }} 条</span>
 </div>
 
 <h2 class="h6 text-secondary mb-2">周度绩效</h2>
+<form method="get" action="{% url 'portal:alpha_t0' %}" class="mb-2 row g-0 t0-filter-bar">
+    <input type="hidden" name="intraday_account" value="{{ intraday_account }}">
+    <div class="t0-filter-inline mb-1">
+        <label for="id_weekly_product" class="small mb-0 text-nowrap">产品筛选</label>
+        <select id="id_weekly_product" name="weekly_product" class="form-select form-select-sm" autocomplete="off" aria-label="产品筛选"
+                onchange="this.form.submit()">
+        <option value="">全部产品</option>
+        {% for p in weekly_product_options %}
+        <option value="{{ p }}" {% if weekly_product == p %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+        </select>
+    </div>
+</form>
+
 <div class="card border-0 shadow-sm mb-4">
     <div class="card-body p-0 t0-table-wrap">
         {% if order_rows %}
         <table class="table table-bordered table-hover table-sm mb-0 small">
             <thead>
                 <tr>
-                    <th class="text-center">日期</th>
                     <th class="text-center">产品名称</th>
+                    <th class="text-center">日期</th>
                     <th class="text-end">总成交金额</th>
                     <th class="text-end">受托资产</th>
                     <th class="text-end">交易盈利</th>
                     <th class="text-end">年化收益率</th>
                     <th class="text-end">换手率</th>
-                    <th>来源文件</th>
                 </tr>
             </thead>
             <tbody>
                 {% for r in order_rows %}
                 <tr>
-                    <td class="text-center">{{ r.trade_date }}</td>
                     <td>{{ r.product_name }}</td>
+                    <td class="text-center">{{ r.trade_date }}</td>
                     <td class="num">{{ r.total_transaction_amount }}</td>
                     <td class="num">{{ r.entrusted_assets }}</td>
                     <td class="num">{{ r.trading_profit }}</td>
                     <td class="num">{{ r.annualized_return_display }}</td>
                     <td class="num">{{ r.turnover_ratio_display }}</td>
-                    <td class="text-break small">{{ r.source_file|default:"—" }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
         {% else %}
-        <div class="text-center text-muted py-4">暂无周度数据。请将 CSV 放入 <code>qichat</code> 后点击「同步周度 CSV」。</div>
+        <div class="text-center text-muted py-4">暂无周度数据。请将 CSV 放入 <code>qichat</code> 后点击「同步周度 CSV」，或清空「产品筛选」重试。</div>
         {% endif %}
     </div>
 </div>
 
 <h2 class="h6 text-secondary mb-2">日内交易汇总</h2>
+<form method="get" action="{% url 'portal:alpha_t0' %}" class="mb-2 row g-0 t0-filter-bar">
+    <input type="hidden" name="weekly_product" value="{{ weekly_product }}">
+    <div class="t0-filter-inline mb-1">
+        <label for="id_intraday_account" class="small mb-0 text-nowrap">账户筛选</label>
+        <select id="id_intraday_account" name="intraday_account" class="form-select form-select-sm" autocomplete="off" aria-label="账户筛选"
+                onchange="this.form.submit()">
+        <option value="">全部账户</option>
+        {% for a in intraday_account_options %}
+        <option value="{{ a }}" {% if intraday_account == a %}selected{% endif %}>{{ a }}</option>
+        {% endfor %}
+        </select>
+    </div>
+</form>
+
 <div class="card border-0 shadow-sm">
     <div class="card-body p-0 t0-table-wrap">
         {% if performance_rows %}
@@ -95,7 +128,6 @@
                     <th class="text-end">日内买卖总额</th>
                     <th class="text-end">日内未平股数</th>
                     <th class="text-end">日内交易总成本</th>
-                    <th>来源文件</th>
                 </tr>
             </thead>
             <tbody>
@@ -108,13 +140,12 @@
                     <td class="num">{{ r.intraday_turnover }}</td>
                     <td class="num">{{ r.intraday_uncovered_shares }}</td>
                     <td class="num">{{ r.intraday_total_cost }}</td>
-                    <td class="text-break small">{{ r.source_file|default:"—" }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
         {% else %}
-        <div class="text-center text-muted py-4">暂无日内数据。请点击「从 FTP 同步日内 xlsx」或执行 <code>python manage.py sync_t0_performance</code>。</div>
+        <div class="text-center text-muted py-4">暂无日内数据。请点击「从 FTP 同步日内 xlsx」，或清空「账户筛选」重试。</div>
         {% endif %}
     </div>
 </div>
