@@ -108,6 +108,18 @@ MONGODB_COLLECTION_NAME = "alpha_sim_nav"
 MONGODB_FUND_NAV_REAL_DB = "fund_nav_real"
 NAV_REAL_WZ_BSYH_MASTER = "WZ_BSYH_MASTER"
 NAV_REAL_WZ_BSYH_B = "WZ_BSYH_B"
+# T0 日内汇总：FTP 拉取 excel 入库（库名/集合可配；密码建议用环境变量覆盖）
+T0_FTP_HOST = os.getenv("T0_FTP_HOST", "47.102.193.151")
+T0_FTP_PORT = int(os.getenv("T0_FTP_PORT", "21"))
+T0_FTP_USER = os.getenv("T0_FTP_USER", "wuzhi")
+T0_FTP_PASSWORD = os.getenv("T0_FTP_PASSWORD", "wuzhi2020")
+T0_FTP_REMOTE_DIR = os.getenv("T0_FTP_REMOTE_DIR", "/daily_report")
+T0_FTP_XLSX_SUFFIX = "_wuzhi_日内交易汇总.xlsx"
+MONGODB_T0_PERFORMANCE_DB = "T0_performance"
+MONGODB_T0_PERFORMANCE_COLLECTION = "daily_report"
+# 周度绩效（qichat CSV）→ 集合 t0_order
+MONGODB_T0_ORDER_COLLECTION = "t0_order"
+T0_QICHAT_IMPORT_DIR = BASE_DIR / "qichat"
 # Alphadata 目录（xlsx 源文件）
 ALPHADATA_DIR = BASE_DIR / "Alphadata"
 

@@ -44,6 +44,20 @@ def get_trade_date_collection() -> Collection:
     return db[settings.MONGODB_TRADE_CALENDAR_COLLECTION]
 
 
+def get_t0_performance_collection() -> Collection:
+    """T0 日内交易汇总：{MONGODB_T0_PERFORMANCE_DB}.daily_report。"""
+    client = get_mongo_client()
+    db = client[getattr(settings, "MONGODB_T0_PERFORMANCE_DB", "T0_performance")]
+    return db[getattr(settings, "MONGODB_T0_PERFORMANCE_COLLECTION", "daily_report")]
+
+
+def get_t0_order_collection() -> Collection:
+    """T0 周度绩效订单/汇总：{MONGODB_T0_PERFORMANCE_DB}.t0_order。"""
+    client = get_mongo_client()
+    db = client[getattr(settings, "MONGODB_T0_PERFORMANCE_DB", "T0_performance")]
+    return db[getattr(settings, "MONGODB_T0_ORDER_COLLECTION", "t0_order")]
+
+
 def get_rq_bench_collection() -> Collection:
     """原始指数行情：{MONGODB_RQ_BENCH_DB}.{MONGODB_RQ_BENCH_COLLECTION}。"""
     client = get_mongo_client()

@@ -1,5 +1,6 @@
 from django.urls import path
 
+from portal.t0_performance import views as t0_views
 from portal.views import (
     alpha_daily_views,
     auth_views,
@@ -18,7 +19,7 @@ web_urlpatterns = [
     ),
     path("nav/curve/", nav_curve_views.nav_curve, name="nav_curve"),
     path("nav/bench-compare/", nav_curve_views.nav_bench_compare, name="nav_bench_compare"),
-    path("alpha/t0/", placeholder_views.placeholder_t0, name="alpha_t0"),
+    path("alpha/t0/", t0_views.t0_performance, name="alpha_t0"),
     path(
         "products/market-neutral/",
         placeholder_views.placeholder_market_neutral,

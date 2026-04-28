@@ -223,15 +223,6 @@ def _extract_latest_market_neutral_snapshot() -> dict[str, Any]:
 
 
 @login_required(login_url="/")
-def placeholder_t0(request):
-    return render(
-        request,
-        "portal/placeholder_page.html",
-        {"page_title": "T0表现", "breadcrumb_label": "T0表现"},
-    )
-
-
-@login_required(login_url="/")
 def placeholder_market_neutral(request):
     snapshot = _extract_latest_market_neutral_snapshot()
     return render(
