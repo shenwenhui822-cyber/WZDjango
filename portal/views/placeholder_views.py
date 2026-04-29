@@ -230,11 +230,11 @@ def _extract_latest_market_neutral_snapshot() -> dict[str, Any]:
     try:
         products: list[dict[str, Any]] = []
         for name, fut_coll, stk_coll in (
-            (
-                "吾执二二号",
-                "GMQH_59000028",
-                "SWZQ_1673088777",
-            ),
+            # (
+            #     "吾执二二号",
+            #     "GMQH_59000028",
+            #     "SWZQ_1673088777",
+            # ),
             (
                 "吾执一三号",
                 ("GTQH_8010101721", "WKQH_66601096"),
