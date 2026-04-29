@@ -65,9 +65,8 @@
                     <th class="text-center" style="width: 10%;">可用资金</th>
                     <th class="text-center" style="width: 8%;">对冲比例</th>
                     <th class="text-center" style="width: 9%;">目标对冲比例</th>
-                    <th class="text-center" style="width: 8%;">对冲偏差</th>
                     <th class="text-center" style="width: 8%;">净敞口比例</th>
-                    <th class="text-center" style="width: 34%;">备注</th>
+                    <th class="text-center" style="width: 42%;">备注</th>
                 </tr>
             </thead>
             <tbody>
@@ -78,17 +77,10 @@
                     <td>{{ product.stock_row.market_value }}</td>
                     <td>{{ product.stock_row.available_funds }}</td>
                     <td rowspan="{{ product.body_rowspan }}" class="text-center align-middle">
-                        <span class="{{ product.hedge_ratio_class|default:'mn-hedge-neutral' }}">
-                            {{ product.hedge_ratio|default:"-" }}
-                        </span>
+                        {{ product.hedge_ratio|default:"-" }}
                     </td>
                     <td rowspan="{{ product.body_rowspan }}" class="text-center align-middle">
                         {{ product.target_hedge_ratio|default:"100%" }}
-                    </td>
-                    <td rowspan="{{ product.body_rowspan }}" class="align-middle">
-                        <span class="{{ product.hedge_deviation_class|default:'mn-hedge-neutral' }}">
-                            {{ product.hedge_deviation|default:"-" }}
-                        </span>
                     </td>
                     <td rowspan="{{ product.body_rowspan }}" class="align-middle">
                         <span class="{{ product.net_exposure_class|default:'mn-hedge-neutral' }}">
