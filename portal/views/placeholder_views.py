@@ -158,34 +158,49 @@ def _build_market_neutral_pair(
     future_ratio = None
     try:
         if stock_market_value and float(stock_market_value) > 0:
-            future_ratio = float(future_market_value) / float(stock_market_value) * 100.0
+            # 对冲比例口径：空头绝对规模 / 多头规模
+            future_ratio = abs(float(future_market_value)) / float(stock_market_value) * 100.0
     except Exception:
         future_ratio = None
 
     target_ratio = 100.0
     ratio_deviation = None
-    ratio_deviation_abs = None
-    # 对冲比例：与目标比较，低于目标绿、高于目标红。
+    net_exposure_ratio = None
+    # 对冲比例：与目标比较，低于目标绿、高于目标红
     hedge_ratio_class = "mn-hedge-neutral"
-    # 对冲偏差：与当前对冲比例比较，偏差大于比例红、小于比例绿（同为百分比数值）。
+    # 对冲偏差：按绝对值阈值分档
     hedge_deviation_class = "mn-hedge-neutral"
+    # 净敞口比例：正=净多(红)，负=净空(绿)，零=中性(灰)
+    net_exposure_class = "mn-hedge-neutral"
     try:
-        if future_ratio is not None:
+        if (
+            future_ratio is not None
+            and stock_market_value is not None
+            and float(stock_market_value) > 0
+        ):
             ratio_deviation = float(future_ratio) - target_ratio
-            ratio_deviation_abs = abs(ratio_deviation)
             if ratio_deviation > 1e-9:
                 hedge_ratio_class = "mn-hedge-above-target"
             elif ratio_deviation < -1e-9:
                 hedge_ratio_class = "mn-hedge-below-target"
-            dev = float(ratio_deviation_abs)
-            rat = float(future_ratio)
-            if dev > rat + 1e-9:
-                hedge_deviation_class = "mn-hedge-above-target"
-            elif dev < rat - 1e-9:
+            dev_abs = abs(float(ratio_deviation))
+            if dev_abs <= 5.0 + 1e-9:
                 hedge_deviation_class = "mn-hedge-below-target"
+            elif dev_abs <= 15.0 + 1e-9:
+                hedge_deviation_class = "mn-hedge-warn"
+            else:
+                hedge_deviation_class = "mn-hedge-above-target"
+
+            stock_mv = float(stock_market_value)
+            short_mv_abs = abs(float(future_market_value))
+            net_exposure_ratio = (stock_mv - short_mv_abs) / stock_mv * 100.0
+            if net_exposure_ratio > 1e-9:
+                net_exposure_class = "mn-hedge-above-target"
+            elif net_exposure_ratio < -1e-9:
+                net_exposure_class = "mn-hedge-below-target"
     except Exception:
         ratio_deviation = None
-        ratio_deviation_abs = None
+        net_exposure_ratio = None
 
     stock_row = {
         "account": stock_collection,
@@ -200,9 +215,11 @@ def _build_market_neutral_pair(
     hedge_meta = {
         "hedge_ratio": _fmt_pct(future_ratio),
         "target_hedge_ratio": _fmt_pct(target_ratio),
-        "hedge_deviation": _fmt_pct(ratio_deviation_abs) if ratio_deviation_abs is not None else "-",
+        "hedge_deviation": _fmt_pct(ratio_deviation) if ratio_deviation is not None else "-",
+        "net_exposure_ratio": _fmt_pct(net_exposure_ratio) if net_exposure_ratio is not None else "-",
         "hedge_ratio_class": hedge_ratio_class,
         "hedge_deviation_class": hedge_deviation_class,
+        "net_exposure_class": net_exposure_class,
         "snapshot_ts": future_ts,
     }
     return stock_row, future_rows, hedge_meta
