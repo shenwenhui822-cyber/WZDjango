@@ -18,6 +18,12 @@ from portal.services.trade_calendar_service import count_trading_days_inclusive
 
 
 def max_mail_job_trading_day_span() -> int:
+    """读取环境变量 MAIL_JOB_MAX_TRADING_DAY_SPAN（默认 3）。
+
+    语义：交易日个数上限，不是自然日。用于：
+    - `validate_mail_job_query_span`：限制「查询日～运行日」闭区间内交易日个数；
+    - 个别邮件任务（如 ZXDW）的 IMAP SINCE：自报告日向过去数若干个交易日确定检索起点。
+    """
     raw = (os.getenv("MAIL_JOB_MAX_TRADING_DAY_SPAN") or "3").strip()
     try:
         n = int(raw)

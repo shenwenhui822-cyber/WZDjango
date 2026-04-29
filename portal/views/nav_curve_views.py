@@ -40,7 +40,7 @@ _BENCH_COMPARE_GROUP_PREFIXES: list[str] = [
 
 _FUND_NAV_GROUP_PREFIXES: list[str] = [
     "吾执博士一号私募证券投资基金",
-    # "吾执泽鑫多维私募证券投资基金",
+    "吾执泽鑫多维私募证券投资基金",
 ]
 
 

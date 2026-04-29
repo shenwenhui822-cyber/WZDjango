@@ -36,6 +36,7 @@ from portal.services.mail_import_common import (
 )
 from portal.services.trade_calendar_service import (
     is_trade_date_iso,
+    last_n_prev_trading_day_isos,
     prev_trading_day_iso_before,
 )
 from portal.services.zxdw_fund_nav_service import import_zxdw_excel_routed_by_product_code
@@ -234,11 +235,16 @@ class Command(BaseCommand):
                     )
                     for sub in target_subjects:
                         self.stdout.write(f"  目标主题：{sub}")
-                    since_days = max_mail_job_trading_day_span()
-                    since_dt = date.fromisoformat(cand_iso) - timedelta(days=since_days)
+                    span_td = max_mail_job_trading_day_span()
+                    prev_trade_isos = last_n_prev_trading_day_isos(cand_iso, span_td)
+                    if prev_trade_isos:
+                        since_dt = date.fromisoformat(prev_trade_isos[-1])
+                    else:
+                        since_dt = date.fromisoformat(cand_iso) - timedelta(days=max(7, span_td * 2))
                     self.stdout.write(
-                        f"  正在检索（SINCE {since_dt.isoformat()}，较报告日向前 {since_days} 个自然日，"
-                        f"由 MAIL_JOB_MAX_TRADING_DAY_SPAN 控制，默认 3）..."
+                        f"  正在检索（IMAP SINCE ≥ {since_dt.isoformat()}："
+                        f"自报告日起向前回溯 {span_td} 个交易日取最远日为检索起点，"
+                        f"对应 MAIL_JOB_MAX_TRADING_DAY_SPAN；非自然日递减）..."
                     )
                     for sub in target_subjects:
                         mail_id = find_latest_mail_id_by_exact_subject(

@@ -50,7 +50,7 @@ FUND_NAV_PRODUCTS: list[FundNavProduct] = [
         "name_prefix": "吾执博士一号私募证券投资基金B类",
         "asset_code": "BJP80B",
     },
-    # *_build_zxdw_fund_nav_products(),
+    *_build_zxdw_fund_nav_products(),
 ]
 
 
