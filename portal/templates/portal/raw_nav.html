@@ -9,19 +9,19 @@
     .fund-nav-chart-wrap { max-width: 100%; height: 360px; }
     .fund-nav-product-panel {
         border: 1px solid #dee2e6;
-        border-radius: 0.5rem;
+        border-radius: 0.75rem;
         background: #fff;
         height: 100%;
     }
     .fund-nav-product-panel-hd {
-        font-weight: 600;
-        padding: 0.6rem 0.8rem;
+        font-weight: 700;
+        padding: 0.65rem 0.85rem;
         border-bottom: 1px solid #eef0f2;
     }
     .fund-nav-product-panel-bd {
         max-height: 420px;
         overflow-y: auto;
-        padding: 0.45rem 0.6rem 0.65rem;
+        padding: 0.5rem 0.5rem 0.65rem;
     }
     .fund-nav-chart-details {
         border: 1px solid #dee2e6;
@@ -50,30 +50,63 @@
     .btn-fund-nav-col-modal { white-space: nowrap; }
     .fund-nav-group {
         border: 1px solid #e9ecef;
-        border-radius: 0.45rem;
+        border-radius: 0.5rem;
         background: #fff;
-        margin-top: 0.35rem;
+        margin-top: 0.45rem;
+        overflow: hidden;
     }
     .fund-nav-group-summary {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 0.5rem;
-        padding: 0.5rem 0.7rem;
+        padding: 0.6rem 0.75rem;
         list-style: none;
         cursor: pointer;
         font-weight: 600;
+        transition: background-color 0.2s ease, color 0.2s ease;
     }
     .fund-nav-group-summary::-webkit-details-marker { display: none; }
+    .fund-nav-group.open .fund-nav-group-summary,
+    .fund-nav-group-summary:hover {
+        background-color: #eaf4ff;
+        color: #4f8cff;
+    }
+    .fund-nav-group-arrow {
+        color: #9aa4b2;
+        font-size: 0.78rem;
+        line-height: 1;
+        transition: transform 0.2s ease, color 0.2s ease;
+    }
+    .fund-nav-group.open .fund-nav-group-arrow {
+        color: #4f8cff;
+        transform: rotate(180deg);
+    }
     .fund-nav-group-body {
         border-top: 1px solid #eef1f4;
-        padding: 0.45rem 0.7rem 0.6rem;
+        padding: 0.45rem 0.55rem 0.55rem 0.85rem;
+        border-left: 2px solid #e6edf5;
+        margin-left: 0.75rem;
     }
     .fund-nav-group-item {
         display: flex;
         align-items: center;
-        gap: 0.45rem;
-        margin: 0.15rem 0;
+        gap: 0;
+        margin: 0.2rem 0;
+        border-radius: 0.4rem;
+        padding: 0.2rem 0.3rem;
+        cursor: pointer;
+        transition: background-color 0.2s ease, color 0.2s ease;
+    }
+    .fund-nav-group-item .form-check-input {
+        display: none;
+    }
+    .fund-nav-group-item:hover {
+        background-color: #f5f9ff;
+    }
+    .fund-nav-group-item.active {
+        background-color: #eaf4ff;
+        color: #4f8cff;
     }
 </style>
 {% endblock %}
@@ -108,18 +141,23 @@
                     <div class="fund-nav-product-panel-hd">产品名称</div>
                     <div class="fund-nav-product-panel-bd">
                         {% for group in fund_nav_product_groups %}
-                        <details class="fund-nav-group" {% if group.open %}open{% endif %}>
+                        <details class="fund-nav-group {% if group.open %}open{% endif %}" data-group-name="{{ group.name|escape }}" {% if group.open %}open{% endif %}>
                             <summary class="fund-nav-group-summary">
                                 <span>{{ group.name }}</span>
-                                <span class="text-muted small">{{ group.products|length }}</span>
+                                <span class="d-inline-flex align-items-center gap-2">
+                                    <span class="text-muted small">{{ group.products|length }}</span>
+                                    <span class="fund-nav-group-arrow">▼</span>
+                                </span>
                             </summary>
                             <div class="fund-nav-group-body">
                                 {% for fund in group.products %}
-                                <label class="form-check fund-nav-group-item mb-0" for="fund_pk_{{ fund.product_key }}">
+                                <label class="fund-nav-group-item mb-0 {% if fund.product_key in fund_nav_selection %}active{% endif %}"
+                                       for="fund_pk_{{ fund.product_key }}"
+                                       data-group-name="{{ group.name|escape }}">
                                     <input class="form-check-input" type="checkbox" name="product_key" value="{{ fund.product_key }}"
                                            id="fund_pk_{{ fund.product_key }}"
                                            {% if fund.product_key in fund_nav_selection %}checked{% endif %}>
-                                    <span class="form-check-label small">{{ fund.name_prefix }}</span>
+                                    <span class="small">{{ fund.name_prefix }}</span>
                                 </label>
                                 {% endfor %}
                             </div>
@@ -413,6 +451,23 @@
 })();
 
 (function () {
+    var groupDetails = document.querySelectorAll(".fund-nav-group");
+    function syncGroupOpenState() {
+        groupDetails.forEach(function (group) {
+            if (group.open) {
+                group.classList.add("open");
+            } else {
+                group.classList.remove("open");
+            }
+        });
+    }
+    groupDetails.forEach(function (group) {
+        group.addEventListener("toggle", syncGroupOpenState);
+    });
+    syncGroupOpenState();
+})();
+
+(function () {
     var form = document.getElementById("fundNavForm");
     var messagesEl = document.getElementById("fundNavMessages");
     var debugWrapEl = document.getElementById("fundNavDebugWrap");
@@ -425,6 +480,8 @@
     var fromEl = document.getElementById("id_nav_date_from");
     var toEl = document.getElementById("id_nav_date_to");
     var displayEl = document.getElementById("nav_date_range");
+    var productLabels = document.querySelectorAll(".fund-nav-group-item");
+    var productChecks = document.querySelectorAll('input[name="product_key"]');
 
     if (!form || !messagesEl || !tableWrapEl || !countEl || typeof fetch === "undefined") return;
 
@@ -564,6 +621,51 @@
             form.dispatchEvent(new Event("submit", { cancelable: true }));
         });
     });
+
+    function refreshProductLabelActive() {
+        productLabels.forEach(function (label) {
+            var input = label.querySelector('input[name="product_key"]');
+            label.classList.toggle("active", !!(input && input.checked));
+        });
+    }
+
+    function clearOtherGroupSelection(groupName) {
+        if (!groupName) return;
+        productLabels.forEach(function (label) {
+            var currentGroup = label.getAttribute("data-group-name") || "";
+            var input = label.querySelector('input[name="product_key"]');
+            if (!input) return;
+            if (currentGroup !== groupName) {
+                input.checked = false;
+            }
+        });
+    }
+
+    productLabels.forEach(function (label) {
+        label.addEventListener("click", function (event) {
+            event.preventDefault();
+            var input = label.querySelector('input[name="product_key"]');
+            if (!input) return;
+            var targetGroup = label.getAttribute("data-group-name") || "";
+            var willCheck = !input.checked;
+            if (willCheck) {
+                clearOtherGroupSelection(targetGroup);
+            }
+            input.checked = willCheck;
+            refreshProductLabelActive();
+            form.dispatchEvent(new Event("submit", { cancelable: true }));
+        });
+    });
+
+    productChecks.forEach(function (input) {
+        input.addEventListener("change", function () {
+            var label = input.closest(".fund-nav-group-item");
+            var targetGroup = label ? (label.getAttribute("data-group-name") || "") : "";
+            if (input.checked) clearOtherGroupSelection(targetGroup);
+            refreshProductLabelActive();
+        });
+    });
+    refreshProductLabelActive();
 
     form.addEventListener("submit", function (event) {
         event.preventDefault();

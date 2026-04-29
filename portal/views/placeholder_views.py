@@ -228,7 +228,10 @@ def _extract_latest_market_neutral_snapshot() -> dict[str, Any]:
                 ("WKQH_66601123", "CJQH_81801575"),
                 "GHZQ_17190083",
             ),
-            ("模拟盘一号", "simnow_094287", "GJZQ_86014577"),
+            ("模拟盘一号", 
+                ("simnow_094287",), 
+                "GJZQ_86014577",
+            ),
         ):
             stock_row, future_rows, hedge_meta = _build_market_neutral_pair(
                 fut_coll, stk_coll, client
