@@ -174,7 +174,7 @@
     09:31  auto_import_fund_nav_mail
     09:33  auto_import_ghzq_settle_mail
     12:00  auto_import_zxdw_nav_mail
-    17:30  auto_import_alpha_mail
+    21:00  auto_import_alpha_mail
     18:00  auto_import_wkqh_settle_mail
     18:05  auto_import_cjqh_settle_mail
     19:00  auto_import_htqh_settle_mail
@@ -189,6 +189,6 @@
   程序：python（或 venv 内 python.exe）
   参数：manage.py auto_import_alpha_mail
   起始于：项目根目录（如 G:\github\WZDjango）
-  触发：每日 17:30（与业务约定一致时）
+  触发：每日 21:00（与业务约定一致时）
 
 ================================================================================

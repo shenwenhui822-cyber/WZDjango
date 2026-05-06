@@ -1,7 +1,7 @@
 """
 交易日自动拉取 alpha 日报邮件（主题 alpha产品日报表YYYYMMDD）中的 xlsx 并导入 MongoDB。
 
-设计为每日 17:30 由系统计划任务执行（仅运行日为交易日时拉取并导入；非交易日不执行、不发结果邮件）：
+设计为每日 21:00 由系统计划任务执行（仅运行日为交易日时拉取并导入；非交易日不执行、不发结果邮件）：
     python manage.py auto_import_alpha_mail
 
 邮件：按主题精确匹配，多封同主题时取 Date 最新一封；仅处理 .xlsx 附件。
@@ -40,7 +40,7 @@ from portal.services.mail_import_common import (
 class Command(BaseCommand):
     help = (
         "仅运行日为交易日时执行：抓取 alpha 日报邮件 xlsx 并导入 MongoDB；"
-        "非交易日不执行且不发送结果邮件（建议每日 17:30 计划任务）"
+        "非交易日不执行且不发送结果邮件（建议每日 21:00 计划任务）"
     )
 
     def add_arguments(self, parser):
