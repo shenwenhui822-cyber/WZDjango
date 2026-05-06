@@ -236,6 +236,11 @@ def _extract_latest_market_neutral_snapshot() -> dict[str, Any]:
             #     "SWZQ_1673088777",
             # ),
             (
+                "博士一号",
+                ("HTQH_80017209",),
+                "HTZQ_666810103835",
+            ),
+            (
                 "吾执一三号",
                 ("GTQH_8010101721", "WKQH_66601096"),
                 "ZSZQ_911600210",

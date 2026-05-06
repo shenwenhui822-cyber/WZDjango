@@ -50,8 +50,23 @@ FUND_NAV_PRODUCTS: list[FundNavProduct] = [
         "name_prefix": "吾执博士一号私募证券投资基金B类",
         "asset_code": "BJP80B",
     },
+    {
+        "product_key": getattr(
+            settings, "NAV_REAL_WZ_BSEE_MASTER", "WZ_BSEE_MASTER"
+        ),
+        "name_prefix": "吾执二二号私募证券投资基金",
+        "asset_code": "STZ053",
+    },
     *_build_zxdw_fund_nav_products(),
 ]
+
+
+def fund_nav_products_for_mail_import() -> list[FundNavProduct]:
+    """博士一号等「基金每日净值表」邮件任务使用；排除 fareport 专用 STZ053 邮件。"""
+    skip = frozenset(
+        {getattr(settings, "NAV_REAL_WZ_BSEE_MASTER", "WZ_BSEE_MASTER")}
+    )
+    return [f for f in FUND_NAV_PRODUCTS if f["product_key"] not in skip]
 
 
 def build_fund_nav_mail_subject(fund: FundNavProduct, nav_date_iso: str) -> str:

@@ -76,6 +76,7 @@ def _allowed_product_keys() -> frozenset[str]:
         {
             settings.NAV_REAL_WZ_BSYH_MASTER,
             settings.NAV_REAL_WZ_BSYH_B,
+            getattr(settings, "NAV_REAL_WZ_BSEE_MASTER", "WZ_BSEE_MASTER"),
         }
     )
     return bsyh | zxdw

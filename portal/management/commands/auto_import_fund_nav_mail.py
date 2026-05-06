@@ -23,7 +23,10 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from portal.config.mail_imap import resolve_imap_credentials
-from portal.data.fund_nav_real_config import FUND_NAV_PRODUCTS, build_fund_nav_mail_subject
+from portal.data.fund_nav_real_config import (
+    build_fund_nav_mail_subject,
+    fund_nav_products_for_mail_import,
+)
 from portal.services.fund_nav_real_service import parse_fund_nav_excel, upsert_fund_nav_doc
 from portal.services.imap_common import find_latest_mail_id_by_exact_subject
 from portal.services.mail_import_common import (
@@ -199,7 +202,7 @@ class Command(BaseCommand):
                     email_user, email_pass, imap_server, imap_port
                 )
 
-                for fund in FUND_NAV_PRODUCTS:
+                for fund in fund_nav_products_for_mail_import():
                     subj = build_fund_nav_mail_subject(fund, nav_iso)
                     self.stdout.write(f"主题: {subj}")
                     mail_id = find_latest_mail_id_by_exact_subject(mailbox, subj)
@@ -267,7 +270,7 @@ class Command(BaseCommand):
             report["ok_count"] = report_ok
             report["success_lines"] = success_lines
             report["failed_lines"] = report_fail
-            n_funds = len(FUND_NAV_PRODUCTS)
+            n_funds = len(fund_nav_products_for_mail_import())
             if report_ok == n_funds and not report_fail:
                 report["status"] = "SUCCESS"
                 report["message"] = f"完成，成功 {report_ok} 条。"
