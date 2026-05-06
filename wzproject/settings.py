@@ -108,8 +108,9 @@ MONGODB_COLLECTION_NAME = "alpha_sim_nav"
 MONGODB_FUND_NAV_REAL_DB = "fund_nav_real"
 NAV_REAL_WZ_BSYH_MASTER = "WZ_BSYH_MASTER"
 NAV_REAL_WZ_BSYH_B = "WZ_BSYH_B"
-# 华泰证券 HT1 普通账单资金情况（吾执博士一号 666810103835）
-NAV_REAL_WZ_BSYH_HTQH_666810103835 = "WZ_BSYH_HTZQ_666810103835"
+# 华泰证券 HT1 普通账单资金情况（吾执博士一号 666810103835）→ auto_import_htzq_ht1_capital_mail
+HTZQ_666810103835_SETTLE_DB = "fstock_settle_real"
+HTZQ_666810103835_SETTLE_COLLECTION = "HTZQ_666810103835"
 # T0 日内汇总：FTP 拉取 excel 入库（库名/集合可配；密码建议用环境变量覆盖）
 T0_FTP_HOST = os.getenv("T0_FTP_HOST", "47.102.193.151")
 T0_FTP_PORT = int(os.getenv("T0_FTP_PORT", "21"))

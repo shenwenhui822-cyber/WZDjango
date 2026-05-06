@@ -2,7 +2,7 @@
 交易日早晨拉取「华泰证券江阴周庄镇西大街对账单吾执博士一号{YYYYMMDD}」邮件，
 IMAP 使用 `.env` 中 FARPORT_MAIL_USER / FARPORT_MAIL_PASS 与 ALPHA_IMAP_SERVER / ALPHA_IMAP_PORT，
 从附件 `666810103835_吾执博士一号_普通账单_HT1_*.xlsx` 首表「资金情况」解析一行数据，
-写入 MongoDB：fund_nav_real.WZ_BSYH_HTQH_666810103835。
+写入 MongoDB：fstock_settle_real.HTZQ_666810103835。
 
 业务约定：运行日 D 为交易日时执行；非交易日不执行、不通知。对账单日期 statement_date
 默认取「运行日之前最近一个交易日」= 与博士一号净值邮件相同的 T-1 口径。
@@ -72,7 +72,7 @@ def _pick_plain_ht1_xlsx(files: list[Path], ymd: str) -> Path | None:
 class Command(BaseCommand):
     help = (
         "仅运行日为交易日时执行：抓取华泰博士一号 HT1 普通账单 xlsx 并写入 "
-        "fund_nav_real.WZ_BSYH_HTQH_666810103835；statement_date 默认为运行日之前最近一个交易日。"
+        "fstock_settle_real.HTZQ_666810103835；statement_date 默认为运行日之前最近一个交易日。"
     )
 
     def add_arguments(self, parser):
@@ -106,7 +106,7 @@ class Command(BaseCommand):
         )
         body = "\n".join(
             [
-                "华泰 HT1 普通账单「资金情况」（fund_nav_real / WZ_BSYH_HTQH_666810103835）",
+                "华泰 HT1 普通账单「资金情况」（fstock_settle_real / HTZQ_666810103835）",
                 "",
                 f"状态: {status}",
                 f"开始时间: {timezone.localtime(started_at).strftime('%Y-%m-%d %H:%M:%S')}",

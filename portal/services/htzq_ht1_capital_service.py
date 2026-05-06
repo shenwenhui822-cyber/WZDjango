@@ -1,4 +1,4 @@
-"""华泰 HT1 普通账单：首表「资金情况」数据行解析，写入 fund_nav_real.{WZ_BSYH_HTQH_666810103835}。"""
+"""华泰 HT1 普通账单：首表「资金情况」数据行解析，写入 fstock_settle_real.HTZQ_666810103835。"""
 from __future__ import annotations
 
 import os

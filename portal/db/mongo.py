@@ -66,15 +66,20 @@ def get_rq_bench_collection() -> Collection:
 
 
 def get_wz_bsyh_htqh_capital_collection() -> Collection:
-    """华泰 HT1 普通账单「资金情况」快照：fund_nav_real.{NAV_REAL_WZ_BSYH_HTQH_666810103835}。"""
-    name = getattr(
+    """华泰 HT1 普通账单「资金情况」快照：fstock_settle_real.HTZQ_666810103835。"""
+    db_name = getattr(
         settings,
-        "NAV_REAL_WZ_BSYH_HTQH_666810103835",
-        "WZ_BSYH_HTQH_666810103835",
+        "HTZQ_666810103835_SETTLE_DB",
+        "fstock_settle_real",
+    )
+    coll_name = getattr(
+        settings,
+        "HTZQ_666810103835_SETTLE_COLLECTION",
+        "HTZQ_666810103835",
     )
     client = get_mongo_client()
-    db = client[settings.MONGODB_FUND_NAV_REAL_DB]
-    return db[name]
+    db = client[db_name]
+    return db[coll_name]
 
 
 def get_fund_nav_zxdw_nav_collection(collection_name: str) -> Collection:
