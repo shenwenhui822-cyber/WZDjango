@@ -157,6 +157,11 @@
     python manage.py auto_import_ghzq_settle_mail --subject-date 2026-04-21 --days 10
     python manage.py auto_import_ghzq_settle_mail --subject-fund-code 37208761
 
+  --- 博士一号华泰证券江阴周庄镇西大街对账单666810103835
+    python manage.py auto_import_htzq_ht1_capital_mail
+    python manage.py auto_import_htzq_ht1_capital_mail --force
+    python manage.py auto_import_htzq_ht1_capital_mail --statement-date 2026-04-21
+
   结果通知邮件（SMTP）：.env 中 ALPHA_NOTIFY_*、ALPHA_NOTIFY_TO
 
 --------------------------------------------------------------------------------
@@ -164,6 +169,7 @@
 --------------------------------------------------------------------------------
 
   默认排期（本地时区，可通过环境变量关闭单项任务，见代码内 *_SCHEDULER_ENABLED）：
+    09:00  auto_import_htzq_ht1_capital_mail
     09:30  update_rq_bench
     09:31  auto_import_fund_nav_mail
     09:33  auto_import_ghzq_settle_mail

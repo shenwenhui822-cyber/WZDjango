@@ -15,6 +15,7 @@ _scheduler_started = False
 # (HH:MM, management command name, kwargs)
 # 邮件类任务在各自命令内校验「查询日～运行日」闭区间交易日个数 ≤ MAIL_JOB_MAX_TRADING_DAY_SPAN（默认 3）。
 _DEFAULT_SCHEDULES: list[tuple[str, str, dict]] = [
+    ("09:00", "auto_import_htzq_ht1_capital_mail", {}),
     ("09:31", "auto_import_fund_nav_mail", {}),
     ("09:33", "auto_import_ghzq_settle_mail", {}),
     ("09:30", "update_rq_bench", {}),
@@ -24,6 +25,14 @@ _DEFAULT_SCHEDULES: list[tuple[str, str, dict]] = [
     ("18:05", "auto_import_cjqh_settle_mail", {}),
     ("19:00", "auto_import_htqh_settle_mail", {}),
 ]
+
+
+def _htzq_ht1_capital_mail_enabled() -> bool:
+    return os.getenv("HTZQ_HT1_CAPITAL_MAIL_SCHEDULER_ENABLED", "1").strip() not in (
+        "0",
+        "false",
+        "False",
+    )
 
 
 def _fund_nav_enabled() -> bool:
@@ -84,6 +93,8 @@ def _htqh_settle_mail_enabled() -> bool:
 
 def _schedules() -> list[tuple[str, str, dict]]:
     s = list(_DEFAULT_SCHEDULES)
+    if not _htzq_ht1_capital_mail_enabled():
+        s = [x for x in s if x[1] != "auto_import_htzq_ht1_capital_mail"]
     if not _fund_nav_enabled():
         s = [x for x in s if x[1] != "auto_import_fund_nav_mail"]
     if not _rq_bench_enabled():

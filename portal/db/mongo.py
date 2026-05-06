@@ -65,6 +65,18 @@ def get_rq_bench_collection() -> Collection:
     return db[settings.MONGODB_RQ_BENCH_COLLECTION]
 
 
+def get_wz_bsyh_htqh_capital_collection() -> Collection:
+    """华泰 HT1 普通账单「资金情况」快照：fund_nav_real.{NAV_REAL_WZ_BSYH_HTQH_666810103835}。"""
+    name = getattr(
+        settings,
+        "NAV_REAL_WZ_BSYH_HTQH_666810103835",
+        "WZ_BSYH_HTQH_666810103835",
+    )
+    client = get_mongo_client()
+    db = client[settings.MONGODB_FUND_NAV_REAL_DB]
+    return db[name]
+
+
 def get_fund_nav_zxdw_nav_collection(collection_name: str) -> Collection:
     """
     五列净值表明细：库 MONGODB_FUND_NAV_REAL_DB（fund_nav_real），集合名为 MONGODB_ZXDW_NAV_COLLECTIONS 之一。
