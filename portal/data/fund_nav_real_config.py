@@ -52,19 +52,29 @@ FUND_NAV_PRODUCTS: list[FundNavProduct] = [
     },
     {
         "product_key": getattr(
-            settings, "NAV_REAL_WZ_BSEE_MASTER", "WZ_BSEE_MASTER"
+            settings, "NAV_REAL_WZ_EEH_MASTER", "WZ_EEH_MASTER"
         ),
         "name_prefix": "吾执二二号私募证券投资基金",
         "asset_code": "STZ053",
+    },
+    {
+        "product_key": getattr(
+            settings, "NAV_REAL_WZ_DYYH_MASTER", "WZ_DYYH_MASTER"
+        ),
+        "name_prefix": "吾执多元一号私募证券投资基金",
+        "asset_code": "SAJM63(总)",
     },
     *_build_zxdw_fund_nav_products(),
 ]
 
 
 def fund_nav_products_for_mail_import() -> list[FundNavProduct]:
-    """博士一号等「基金每日净值表」邮件任务使用；排除 fareport 专用 STZ053 邮件。"""
+    """博士一号等「基金每日净值表」邮件任务使用；排除专用主题邮件（STZ053、多元一号）。"""
     skip = frozenset(
-        {getattr(settings, "NAV_REAL_WZ_BSEE_MASTER", "WZ_BSEE_MASTER")}
+        {
+            getattr(settings, "NAV_REAL_WZ_EEH_MASTER", "WZ_EEH_MASTER"),
+            getattr(settings, "NAV_REAL_WZ_DYYH_MASTER", "WZ_DYYH_MASTER"),
+        }
     )
     return [f for f in FUND_NAV_PRODUCTS if f["product_key"] not in skip]
 
@@ -93,6 +103,8 @@ FUND_NAV_PORTAL_COLUMNS: list[tuple[str, str]] = [
     ("资产净值(元)", "net_asset_value"),
     ("总份额", "total_shares"),
     ("资产总值(元)", "total_asset_value"),
+    ("实收资本(元)", "paid_in_capital"),
+    ("总资产(元)", "total_assets"),
 ]
 
 

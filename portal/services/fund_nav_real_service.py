@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime
 from io import BytesIO
 from typing import Any
@@ -16,22 +17,41 @@ from portal.db.mongo import bson_safe_value, get_fund_nav_collection
 # 表头（与 Excel 列名一致；部分导出带空格）
 _HEADER_KEYS = {
     "日期": "nav_date",
+    "净值日期": "nav_date",
     "资产代码": "asset_code",
+    "产品代码": "asset_code",
     "资产名称": "asset_name",
+    "产品名称": "asset_name",
     "资产份额净值(元)": "unit_nav",
     "资产份额净值 (元)": "unit_nav",
+    "单位净值": "unit_nav",
     "资产份额累计净值(元)": "cumulative_unit_nav",
     "资产份额累计净值 (元)": "cumulative_unit_nav",
+    "累计净值": "cumulative_unit_nav",
     "资产净值(元)": "net_asset_value",
     "资产净值 (元)": "net_asset_value",
+    "基金资产净值": "net_asset_value",
     "总份额": "total_shares",
     "资产总值(元)": "total_asset_value",
     "资产总值 (元)": "total_asset_value",
+    "实收资本(元)": "paid_in_capital",
+    "实收资本 (元)": "paid_in_capital",
+    "总资产(元)": "total_assets",
+    "总资产 (元)": "total_assets",
+    "持有份额": "shares_held",
+    "参考市值(元)": "reference_market_value",
+    "参考市值 (元)": "reference_market_value",
+    # 净值序列导出（列名带「(元)」，单位净值与累计净值可能与上文并存，优先首列）
+    "单位净值 (元)": "unit_nav",
+    "单位净值(元)": "unit_nav",
+    "累计净值 (元)": "cumulative_unit_nav",
+    "累计净值(元)": "cumulative_unit_nav",
 }
 
 
 def _norm_header(h: Any) -> str:
-    return str(h).strip().replace("\n", "")
+    s = str(h).strip().replace("\n", "")
+    return re.sub(r"\s+", " ", s)
 
 
 def _parse_decimal(v: Any) -> float | None:
@@ -75,7 +95,7 @@ def _parse_date_to_iso(v: Any) -> str | None:
 
 
 def _build_col_map(columns: list[Any]) -> dict[str, str]:
-    """canonical_key -> original column label（同义列只保留先出现的）。"""
+    """canonical_key -> DataFrame 列名原样（须与 row[col] / df[col] 一致；匹配用规范化表头）。"""
     out: dict[str, str] = {}
     seen_canon: set[str] = set()
     for c in columns:
@@ -86,7 +106,7 @@ def _build_col_map(columns: list[Any]) -> dict[str, str]:
         if canon in seen_canon:
             continue
         seen_canon.add(canon)
-        out[canon] = label
+        out[canon] = c
     return out
 
 
@@ -99,9 +119,19 @@ def _fund_nav_doc_from_row(
     nav_iso = _parse_date_to_iso(row[col_map["nav_date"]])
     if not nav_iso:
         return None
-    code = str(row[col_map["asset_code"]]).strip()
-    if code != fund["asset_code"]:
-        raise ValueError(f"资产代码 {code} 与期望 {fund['asset_code']} 不一致")
+    raw_code = str(row[col_map["asset_code"]]).strip()
+    expected = str(fund["asset_code"]).strip()
+    if raw_code != expected:
+        short = (
+            expected.replace("(总)", "")
+            .replace("（总）", "")
+            .strip()
+        )
+        if raw_code != short:
+            raise ValueError(
+                f"资产代码 {raw_code} 与期望 {expected}（或简称 {short}）不一致"
+            )
+    code = expected
 
     doc: dict[str, Any] = {
         "nav_date": nav_iso,
@@ -116,6 +146,16 @@ def _fund_nav_doc_from_row(
         doc["total_shares"] = _parse_decimal(row[col_map["total_shares"]])
     if "total_asset_value" in col_map:
         doc["total_asset_value"] = _parse_decimal(row[col_map["total_asset_value"]])
+    if "paid_in_capital" in col_map:
+        doc["paid_in_capital"] = _parse_decimal(row[col_map["paid_in_capital"]])
+    if "total_assets" in col_map:
+        doc["total_assets"] = _parse_decimal(row[col_map["total_assets"]])
+    if "shares_held" in col_map:
+        doc["shares_held"] = _parse_decimal(row[col_map["shares_held"]])
+    if "reference_market_value" in col_map:
+        doc["reference_market_value"] = _parse_decimal(
+            row[col_map["reference_market_value"]]
+        )
 
     for k, v in list(doc.items()):
         doc[k] = bson_safe_value(v)

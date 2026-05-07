@@ -1,4 +1,4 @@
-"""吾执二二号 STZ053：fareport「发送每日净值信息」xls 中图二竖表解析，写入 fund_nav_real.WZ_BSEE_MASTER。"""
+"""吾执二二号 STZ053：fareport「发送每日净值信息」xls 中图二竖表解析，写入 fund_nav_real.WZ_EEH_MASTER。"""
 from __future__ import annotations
 
 import re
@@ -135,11 +135,11 @@ def parse_stz053_figure2_xls(
 
 
 def get_stz053_fund_product() -> FundNavProduct:
-    key = getattr(settings, "NAV_REAL_WZ_BSEE_MASTER", "WZ_BSEE_MASTER")
+    key = getattr(settings, "NAV_REAL_WZ_EEH_MASTER", "WZ_EEH_MASTER")
     for f in FUND_NAV_PRODUCTS:
         if f["product_key"] == key and f.get("asset_code") == "STZ053":
             return f
-    raise RuntimeError("未配置 STZ053 / WZ_BSEE_MASTER 产品")
+    raise RuntimeError("未配置 STZ053 / WZ_EEH_MASTER 产品")
 
 
 def import_stz053_nav_from_bytes(

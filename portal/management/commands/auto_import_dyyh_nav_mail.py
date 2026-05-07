@@ -1,20 +1,20 @@
 """
-交易日 18:10 拉取 fareport 邮箱中主题
-「【净值表】上海吾执投资管理有限公司吾执二二号产品净值表发送-管理人{YYYYMMDD}」
-的邮件，从附件 `STZ053-…年…月…日-发送每日净值信息.xls` 解析「图二」六行竖表，
-写入 fund_nav_real.WZ_EEH_MASTER（与基金净值页博士一号/泽鑫同结构字段）。
+交易日 11:35 拉取 wangkan（ALPHA_MAIL_*）邮箱中主题
+「【基金净值】SAJM63(总)_吾执多元一号私募证券投资基金_{YYYY-MM-DD}」
+的邮件，从附件 xlsx 解析表头行净值表（单位净值、累计净值、资产净值为主；可选实收资本、总资产等），
+写入 fund_nav_real.WZ_DYYH_MASTER。
 
-IMAP：`.env` 中 FARPORT_MAIL_USER / FARPORT_MAIL_PASS、ALPHA_IMAP_SERVER、ALPHA_IMAP_PORT。
+IMAP：`.env` 中 ALPHA_MAIL_USER / ALPHA_MAIL_PASS、ALPHA_IMAP_SERVER、ALPHA_IMAP_PORT。
 
 业务约定：仅运行日为交易日时执行；非交易日不执行、不通知。净值日 nav_date 默认取运行日之前
-最近一个交易日（T-1，与 auto_import_fund_nav_mail 一致）。
+最近一个交易日（T-1）。
 
-调度：alpha_mail_scheduler 默认 18:10（环境变量 STZ053_NAV_MAIL_SCHEDULER_ENABLED）。
+调度：alpha_mail_scheduler 默认 11:35（环境变量 DYYH_NAV_MAIL_SCHEDULER_ENABLED）。
 
 用法：
-  python manage.py auto_import_stz053_nav_mail
-  python manage.py auto_import_stz053_nav_mail --force
-  python manage.py auto_import_stz053_nav_mail --nav-date 2026-04-29
+  python manage.py auto_import_dyyh_nav_mail
+  python manage.py auto_import_dyyh_nav_mail --force
+  python manage.py auto_import_dyyh_nav_mail --nav-date 2026-04-30
 """
 from __future__ import annotations
 
@@ -26,7 +26,12 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from portal.config.mail_imap import resolve_farport_imap_credentials
+from portal.config.mail_imap import resolve_imap_credentials
+from portal.services.dyyh_nav_mail_service import (
+    build_dyyh_nav_mail_subject,
+    get_dyyh_fund_product,
+)
+from portal.services.fund_nav_real_service import parse_fund_nav_excel, upsert_fund_nav_doc
 from portal.services.imap_common import find_latest_mail_id_by_exact_subject
 from portal.services.mail_import_common import (
     imap_logout_safe,
@@ -35,35 +40,40 @@ from portal.services.mail_import_common import (
     send_alpha_notify_result_email,
     validate_mail_job_query_span,
 )
-from portal.services.stz053_daily_nav_service import (
-    build_stz053_nav_mail_subject,
-    import_stz053_nav_from_bytes,
-)
 from portal.services.trade_calendar_service import (
     is_trade_date_iso,
     prev_trading_day_iso_before,
 )
 
 
-def _pick_stz053_daily_nav_file(files: list[Path]) -> Path | None:
-    """选取吾执二二号每日净值 xls（文件名含 STZ053 与 发送每日净值信息）。"""
-    candidates: list[Path] = []
+def _pick_dyyh_nav_xlsx(files: list[Path]) -> Path | None:
+    """优先文件名含 SAJM63 / 吾执多元一号 / 【基金净值】的 Excel。"""
+    if not files:
+        return None
+    scored: list[tuple[int, Path]] = []
     for p in files:
         name = p.name
-        if "STZ053" not in name:
-            continue
-        if "发送每日净值信息" not in name:
-            continue
         lower = name.lower()
-        if lower.endswith(".xls") or lower.endswith(".xlsx") or lower.endswith(".xlsm"):
-            candidates.append(p)
-    return candidates[0] if candidates else None
+        if not lower.endswith((".xlsx", ".xls", ".xlsm")):
+            continue
+        score = 0
+        if "SAJM63" in name:
+            score += 3
+        if "吾执多元一号" in name:
+            score += 3
+        if "基金净值" in name:
+            score += 2
+        scored.append((score, p))
+    scored.sort(key=lambda x: -x[0])
+    if scored and scored[0][0] > 0:
+        return scored[0][1]
+    return files[0]
 
 
 class Command(BaseCommand):
     help = (
-        "仅运行日为交易日时执行：抓取 fareport 吾执二二号 STZ053 净值 xls 并写入 "
-        "fund_nav_real.WZ_EEH_MASTER；nav_date 默认为运行日之前最近一个交易日。"
+        "仅运行日为交易日时执行：抓取多元一号 SAJM63(总) 基金净值邮件 xlsx 并写入 "
+        "fund_nav_real.WZ_DYYH_MASTER；nav_date 默认为运行日之前最近一个交易日。"
     )
 
     def add_arguments(self, parser):
@@ -92,12 +102,12 @@ class Command(BaseCommand):
             duration_sec = 0.0
         status = str(report.get("status") or "UNKNOWN")
         mail_subject = (
-            f"[{status}] 吾执二二号 STZ053 净值邮件导入 "
+            f"[{status}] 吾执多元一号净值邮件导入 "
             f"{timezone.localdate().strftime('%Y-%m-%d')}"
         )
         body = "\n".join(
             [
-                "fareport 吾执二二号净值（fund_nav_real / WZ_EEH_MASTER）自动导入结果",
+                "多元一号 SAJM63(总)（fund_nav_real / WZ_DYYH_MASTER）自动导入结果",
                 "",
                 f"状态: {status}",
                 f"开始时间: {timezone.localtime(started_at).strftime('%Y-%m-%d %H:%M:%S')}",
@@ -164,8 +174,7 @@ class Command(BaseCommand):
 
             report["nav_date"] = nav_iso
             nav_td = is_trade_date_iso(nav_iso)
-            ymd = nav_iso.replace("-", "")
-            target_subject = build_stz053_nav_mail_subject(ymd)
+            target_subject = build_dyyh_nav_mail_subject(nav_iso)
             report["target_subject"] = target_subject
 
             self.stdout.write(f"目标净值日(nav_date): {nav_iso}")
@@ -190,12 +199,12 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.WARNING(report["message"]))
                 return
 
-            email_user, email_pass, imap_server, imap_port = (
-                resolve_farport_imap_credentials()
-            )
+            fund = get_dyyh_fund_product()
+            email_user, email_pass, imap_server, imap_port = resolve_imap_credentials()
             self.stdout.write(f"IMAP: {email_user} @ {imap_server}:{imap_port}")
 
-            save_root = Path(settings.ALPHADATA_DIR) / "stz053_nav_mail" / ymd
+            ymd = nav_iso.replace("-", "")
+            save_root = Path(settings.ALPHADATA_DIR) / "dyyh_nav_mail" / ymd
 
             mailbox: imaplib.IMAP4_SSL | None = None
             try:
@@ -233,19 +242,24 @@ class Command(BaseCommand):
                     self.stderr.write(self.style.ERROR(report["message"]))
                     return
 
-                fp = _pick_stz053_daily_nav_file(files)
+                fp = _pick_dyyh_nav_xlsx(files)
                 if not fp:
                     report["status"] = "FAILED"
-                    report["message"] = "未找到 STZ053 发送每日净值信息附件。"
+                    report["message"] = "未选择到附件。"
                     self.stderr.write(self.style.ERROR(report["message"]))
                     return
 
                 report["source_file"] = fp.name
                 data = fp.read_bytes()
-                doc = import_stz053_nav_from_bytes(
+                doc = parse_fund_nav_excel(
                     data,
                     filename=fp.name,
+                    fund=fund,
                     expected_nav_iso=nav_iso,
+                )
+                upsert_fund_nav_doc(
+                    doc,
+                    fund=fund,
                     source_subject=target_subject,
                 )
                 report["status"] = "SUCCESS"

@@ -161,6 +161,21 @@
     python manage.py auto_import_htzq_ht1_capital_mail
     python manage.py auto_import_htzq_ht1_capital_mail --force
     python manage.py auto_import_htzq_ht1_capital_mail --statement-date 2026-04-21
+  --- 吾执二二号私募证券投资基金（IMAP 用 .env：FARPORT_MAIL_*）
+    python manage.py auto_import_stz053_nav_mail
+    python manage.py auto_import_stz053_nav_mail --nav-date 2026-04-29
+    python manage.py auto_import_stz053_nav_mail --force
+
+  --- 吾执多元一号私募证券投资基金 SAJM63(总)（IMAP 用 .env：ALPHA_MAIL_USER / ALPHA_MAIL_PASS）
+    主题格式：【基金净值】SAJM63(总)_吾执多元一号私募证券投资基金_{YYYY-MM-DD}
+    附件示例：【基金净值】SAJM63(总)_吾执多元一号私募证券投资基金_2026-04-30_1.xlsx
+    落库：fund_nav_real.WZ_DYYH_MASTER（settings.NAV_REAL_WZ_DYYH_MASTER）
+    表头含：资产份额净值(元)、资产份额累计净值(元)、资产净值(元)；扩展：实收资本(元)、总资产(元) 等
+    python manage.py auto_import_dyyh_nav_mail
+    python manage.py auto_import_dyyh_nav_mail --nav-date 2026-04-30
+    python manage.py auto_import_dyyh_nav_mail --force
+    本地净值序列批量导入（列：单位净值 (元)、累计净值 (元)、资产净值 (元) 等）：
+    python manage.py import_dyyh_nav_series --file "净值表excel版 (93).xlsx"
 
   结果通知邮件（SMTP）：.env 中 ALPHA_NOTIFY_*、ALPHA_NOTIFY_TO
 
@@ -173,11 +188,13 @@
     09:30  update_rq_bench
     09:31  auto_import_fund_nav_mail
     09:33  auto_import_ghzq_settle_mail
+    11:35  auto_import_dyyh_nav_mail
     12:00  auto_import_zxdw_nav_mail
     21:00  auto_import_alpha_mail
     18:00  auto_import_wkqh_settle_mail
     18:05  auto_import_cjqh_settle_mail
     19:00  auto_import_htqh_settle_mail
+    18:10  auto_import_stz053_nav_mail
 
   说明：使用 runserver 或部署 ASGI/WSGI 且加载了该 scheduler 时，后台线程按上述时间
         调用对应 manage.py 命令。若仅需要“手动跑任务”，可直接执行第八节命令。
