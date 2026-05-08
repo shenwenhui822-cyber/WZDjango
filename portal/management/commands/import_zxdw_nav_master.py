@@ -10,7 +10,7 @@
         WZ_ZXDW_C/
 
 表头五列：产品名称、产品代码、净值日期、单位净值、累计净值。
-同一集合内按 (product_code, nav_date) upsert。
+同一集合内按 (asset_code, nav_date) upsert。
 
 用法::
 

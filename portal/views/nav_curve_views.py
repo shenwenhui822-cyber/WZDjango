@@ -12,11 +12,15 @@ from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 
 from portal.data.alpha_daily_schema import ALPHA_DAILY_COLUMNS, is_alpha_daily_product_name_excluded
-from portal.data.fund_nav_real_config import FUND_NAV_PORTAL_COLUMNS, FUND_NAV_PRODUCTS
+from portal.data.fund_nav_real_config import (
+    FUND_NAV_PORTAL_COLUMNS,
+    FUND_NAV_PRODUCTS,
+    fund_nav_portal_sidebar_products,
+)
 from portal.db.fund_nav_queries import (
     build_fund_nav_mongo_query,
     fetch_fund_nav_portal_documents,
-    fund_nav_product_keys_from_request,
+    fund_nav_product_keys_from_raw_nav_request,
 )
 from portal.db.queries import fetch_alpha_daily_documents
 from portal.services.benchmark_compare_service import build_and_store_nav_bench_compare
@@ -35,12 +39,6 @@ _BENCH_COMPARE_GROUP_PREFIXES: list[str] = [
     "红利",
     "量化对冲",
     "量化选股",
-]
-
-
-_FUND_NAV_GROUP_PREFIXES: list[str] = [
-    "吾执博士一号私募证券投资基金",
-    "吾执泽鑫多维私募证券投资基金",
 ]
 
 
@@ -64,39 +62,6 @@ def _group_compare_products(products: list[str], selected: str) -> list[dict]:
                 "name": "其他",
                 "products": others,
                 "open": bool(selected and selected in others),
-            }
-        )
-    return grouped
-
-
-def _group_fund_nav_products(
-    selection: frozenset[str] | None,
-) -> list[dict]:
-    grouped: list[dict] = []
-    assigned: set[str] = set()
-    for prefix in _FUND_NAV_GROUP_PREFIXES:
-        children = [f for f in FUND_NAV_PRODUCTS if f["name_prefix"].startswith(prefix)]
-        assigned.update({f["product_key"] for f in children})
-        grouped.append(
-            {
-                "name": prefix,
-                "products": children,
-                "open": bool(
-                    selection is None
-                    or any((f["product_key"] in selection) for f in children)
-                ),
-            }
-        )
-    others = [f for f in FUND_NAV_PRODUCTS if f["product_key"] not in assigned]
-    if others:
-        grouped.append(
-            {
-                "name": "其他",
-                "products": others,
-                "open": bool(
-                    selection is None
-                    or any((f["product_key"] in selection) for f in others)
-                ),
             }
         )
     return grouped
@@ -492,11 +457,11 @@ def raw_nav(request):
 
     form_submitted = (request.GET.get("nav_q") or "").strip() == "1"
     if form_submitted:
-        product_keys = fund_nav_product_keys_from_request(
+        product_keys = fund_nav_product_keys_from_raw_nav_request(
             request.GET, form_submitted=True
         )
     else:
-        # 首次进入：仅默认选中博士一号主份额，不全选
+        # 首次进入：默认博士一号主份额
         product_keys = [settings.NAV_REAL_WZ_BSYH_MASTER]
 
     fund_nav_selection = frozenset(product_keys)
@@ -567,7 +532,7 @@ def raw_nav(request):
         "recent": recent_raw,
         "error_msg": error_msg,
         "fund_nav_products": FUND_NAV_PRODUCTS,
-        "fund_nav_product_groups": _group_fund_nav_products(fund_nav_selection),
+        "fund_nav_sidebar_products": fund_nav_portal_sidebar_products(),
         "fund_nav_selection": fund_nav_selection,
         "fund_nav_empty_product_pick": fund_nav_empty_product_pick,
         "fund_nav_debug_enabled": fund_nav_debug_enabled,

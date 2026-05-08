@@ -7,20 +7,27 @@
     .fund-nav-table-wrap table { font-size: 0.8rem; white-space: nowrap; }
     .fund-nav-table-wrap th { position: sticky; top: 0; background: #e7f1ff; z-index: 1; }
     .fund-nav-chart-wrap { max-width: 100%; height: 360px; }
+    /* 与 alpha 产品表现页一致：侧栏与右侧查询区同高，列表区域内部滚动，底部不留大块空白 */
     .fund-nav-product-panel {
         border: 1px solid #dee2e6;
         border-radius: 0.75rem;
         background: #fff;
-        height: 100%;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        min-height: 0;
     }
     .fund-nav-product-panel-hd {
         font-weight: 700;
         padding: 0.65rem 0.85rem;
         border-bottom: 1px solid #eef0f2;
+        flex-shrink: 0;
     }
     .fund-nav-product-panel-bd {
-        max-height: 420px;
+        flex: 1 1 auto;
+        min-height: 0;
         overflow-y: auto;
+        overflow-x: hidden;
         padding: 0.5rem 0.5rem 0.65rem;
     }
     .fund-nav-chart-details {
@@ -48,63 +55,42 @@
     .fund-nav-col-pick { font-size: 0.8rem; }
     .fund-nav-col-pick .form-check { min-height: 1.15rem; }
     .btn-fund-nav-col-modal { white-space: nowrap; }
-    .fund-nav-group {
+    /* 与改版前分组「一级栏」(.fund-nav-group-summary) 视觉一致：卡片描边 + 字重 + 悬停/选中浅蓝底 */
+    .fund-nav-tier1-row {
         border: 1px solid #e9ecef;
         border-radius: 0.5rem;
         background: #fff;
-        margin-top: 0.45rem;
         overflow: hidden;
     }
-    .fund-nav-group-summary {
+    .fund-nav-tier1-row + .fund-nav-tier1-row {
+        margin-top: 0.45rem;
+    }
+    .fund-nav-tier1-summary {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 0.5rem;
         padding: 0.6rem 0.75rem;
-        list-style: none;
-        cursor: pointer;
         font-weight: 600;
-        transition: background-color 0.2s ease, color 0.2s ease;
-    }
-    .fund-nav-group-summary::-webkit-details-marker { display: none; }
-    .fund-nav-group.open .fund-nav-group-summary,
-    .fund-nav-group-summary:hover {
-        background-color: #eaf4ff;
-        color: #4f8cff;
-    }
-    .fund-nav-group-arrow {
-        color: #9aa4b2;
-        font-size: 0.78rem;
-        line-height: 1;
-        transition: transform 0.2s ease, color 0.2s ease;
-    }
-    .fund-nav-group.open .fund-nav-group-arrow {
-        color: #4f8cff;
-        transform: rotate(180deg);
-    }
-    .fund-nav-group-body {
-        border-top: 1px solid #eef1f4;
-        padding: 0.45rem 0.55rem 0.55rem 0.85rem;
-        border-left: 2px solid #e6edf5;
-        margin-left: 0.75rem;
-    }
-    .fund-nav-group-item {
-        display: flex;
-        align-items: center;
-        gap: 0;
-        margin: 0.2rem 0;
-        border-radius: 0.4rem;
-        padding: 0.2rem 0.3rem;
         cursor: pointer;
+        margin: 0;
         transition: background-color 0.2s ease, color 0.2s ease;
     }
-    .fund-nav-group-item .form-check-input {
-        display: none;
+    .fund-nav-tier1-radio {
+        position: absolute;
+        opacity: 0;
+        width: 0;
+        height: 0;
+        pointer-events: none;
     }
-    .fund-nav-group-item:hover {
-        background-color: #f5f9ff;
+    .fund-nav-tier1-text {
+        flex: 1;
+        min-width: 0;
+        line-height: 1.25;
+        font-size: 0.95rem;
     }
-    .fund-nav-group-item.active {
+    .fund-nav-tier1-row:hover .fund-nav-tier1-summary,
+    .fund-nav-tier1-row.active .fund-nav-tier1-summary {
         background-color: #eaf4ff;
         color: #4f8cff;
     }
@@ -126,7 +112,7 @@
     {% endif %}
 
     {% if fund_nav_empty_product_pick %}
-    <div class="alert alert-warning py-2 mb-2">请至少勾选一个产品后再查询。</div>
+    <div class="alert alert-warning py-2 mb-2">请选择一个产品后再查询。</div>
     {% endif %}
 </div>
 
@@ -135,33 +121,20 @@
     <input type="hidden" name="date_from" id="id_nav_date_from" value="{{ date_from }}">
     <input type="hidden" name="date_to" id="id_nav_date_to" value="{{ date_to }}">
     <div class="col-12">
-        <div class="row g-3 mt-0">
-            <div class="col-12 col-lg-3">
-                <div class="fund-nav-product-panel">
+        <div class="row g-3 mt-0 align-items-stretch">
+            <div class="col-12 col-lg-3 d-flex">
+                <div class="fund-nav-product-panel w-100 h-100">
                     <div class="fund-nav-product-panel-hd">产品名称</div>
                     <div class="fund-nav-product-panel-bd">
-                        {% for group in fund_nav_product_groups %}
-                        <details class="fund-nav-group {% if group.open %}open{% endif %}" data-group-name="{{ group.name|escape }}" {% if group.open %}open{% endif %}>
-                            <summary class="fund-nav-group-summary">
-                                <span>{{ group.name }}</span>
-                                <span class="d-inline-flex align-items-center gap-2">
-                                    <span class="text-muted small">{{ group.products|length }}</span>
-                                    <span class="fund-nav-group-arrow">▼</span>
-                                </span>
-                            </summary>
-                            <div class="fund-nav-group-body">
-                                {% for fund in group.products %}
-                                <label class="fund-nav-group-item mb-0 {% if fund.product_key in fund_nav_selection %}active{% endif %}"
-                                       for="fund_pk_{{ fund.product_key }}"
-                                       data-group-name="{{ group.name|escape }}">
-                                    <input class="form-check-input" type="checkbox" name="product_key" value="{{ fund.product_key }}"
-                                           id="fund_pk_{{ fund.product_key }}"
-                                           {% if fund.product_key in fund_nav_selection %}checked{% endif %}>
-                                    <span class="small">{{ fund.name_prefix }}</span>
-                                </label>
-                                {% endfor %}
-                            </div>
-                        </details>
+                        {% for fund in fund_nav_sidebar_products %}
+                        <div class="fund-nav-tier1-row fund-nav-product-item {% if fund.product_key in fund_nav_selection %}active{% endif %}">
+                            <label class="fund-nav-tier1-summary" for="fund_pk_{{ fund.product_key }}">
+                                <input class="fund-nav-tier1-radio" type="radio" name="product_key" value="{{ fund.product_key }}"
+                                       id="fund_pk_{{ fund.product_key }}"
+                                       {% if fund.product_key in fund_nav_selection %}checked{% endif %}>
+                                <span class="fund-nav-tier1-text">{{ fund.name_prefix }}</span>
+                            </label>
+                        </div>
                         {% endfor %}
                     </div>
                 </div>
@@ -451,23 +424,6 @@
 })();
 
 (function () {
-    var groupDetails = document.querySelectorAll(".fund-nav-group");
-    function syncGroupOpenState() {
-        groupDetails.forEach(function (group) {
-            if (group.open) {
-                group.classList.add("open");
-            } else {
-                group.classList.remove("open");
-            }
-        });
-    }
-    groupDetails.forEach(function (group) {
-        group.addEventListener("toggle", syncGroupOpenState);
-    });
-    syncGroupOpenState();
-})();
-
-(function () {
     var form = document.getElementById("fundNavForm");
     var messagesEl = document.getElementById("fundNavMessages");
     var debugWrapEl = document.getElementById("fundNavDebugWrap");
@@ -480,8 +436,8 @@
     var fromEl = document.getElementById("id_nav_date_from");
     var toEl = document.getElementById("id_nav_date_to");
     var displayEl = document.getElementById("nav_date_range");
-    var productLabels = document.querySelectorAll(".fund-nav-group-item");
-    var productChecks = document.querySelectorAll('input[name="product_key"]');
+    var productItems = document.querySelectorAll(".fund-nav-product-item");
+    var productRadios = document.querySelectorAll('input[name="product_key"]');
 
     if (!form || !messagesEl || !tableWrapEl || !countEl || typeof fetch === "undefined") return;
 
@@ -500,7 +456,7 @@
             html += '<div class="alert alert-danger">' + esc(data.error_msg) + "</div>";
         }
         if (data.fund_nav_empty_product_pick) {
-            html += '<div class="alert alert-warning py-2 mb-2">请至少勾选一个产品后再查询。</div>';
+            html += '<div class="alert alert-warning py-2 mb-2">请选择一个产品后再查询。</div>';
         }
         messagesEl.innerHTML = html;
     }
@@ -623,46 +579,16 @@
     });
 
     function refreshProductLabelActive() {
-        productLabels.forEach(function (label) {
-            var input = label.querySelector('input[name="product_key"]');
-            label.classList.toggle("active", !!(input && input.checked));
+        productItems.forEach(function (item) {
+            var input = item.querySelector('input[name="product_key"]');
+            item.classList.toggle("active", !!(input && input.checked));
         });
     }
 
-    function clearOtherGroupSelection(groupName) {
-        if (!groupName) return;
-        productLabels.forEach(function (label) {
-            var currentGroup = label.getAttribute("data-group-name") || "";
-            var input = label.querySelector('input[name="product_key"]');
-            if (!input) return;
-            if (currentGroup !== groupName) {
-                input.checked = false;
-            }
-        });
-    }
-
-    productLabels.forEach(function (label) {
-        label.addEventListener("click", function (event) {
-            event.preventDefault();
-            var input = label.querySelector('input[name="product_key"]');
-            if (!input) return;
-            var targetGroup = label.getAttribute("data-group-name") || "";
-            var willCheck = !input.checked;
-            if (willCheck) {
-                clearOtherGroupSelection(targetGroup);
-            }
-            input.checked = willCheck;
+    productRadios.forEach(function (input) {
+        input.addEventListener("change", function () {
             refreshProductLabelActive();
             form.dispatchEvent(new Event("submit", { cancelable: true }));
-        });
-    });
-
-    productChecks.forEach(function (input) {
-        input.addEventListener("change", function () {
-            var label = input.closest(".fund-nav-group-item");
-            var targetGroup = label ? (label.getAttribute("data-group-name") || "") : "";
-            if (input.checked) clearOtherGroupSelection(targetGroup);
-            refreshProductLabelActive();
         });
     });
     refreshProductLabelActive();

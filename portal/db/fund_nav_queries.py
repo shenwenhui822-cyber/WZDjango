@@ -6,7 +6,11 @@ from typing import Any
 
 from django.conf import settings
 
-from portal.data.fund_nav_real_config import FUND_NAV_PRODUCTS, FundNavProduct
+from portal.data.fund_nav_real_config import (
+    FUND_NAV_PRODUCTS,
+    FundNavProduct,
+    fund_nav_portal_sidebar_allowed_keys,
+)
 from portal.db.mongo import get_fund_nav_collection, get_fund_nav_zxdw_nav_collection
 
 
@@ -102,7 +106,7 @@ def _normalize_zxdw_nav_doc(doc: dict[str, Any], fund: FundNavProduct) -> dict[s
     """五列净值表字段 -> 门户表格字段（与博士一号列一致）。"""
     row = dict(doc)
     row.pop("_id", None)
-    row["asset_code"] = str(row.get("product_code") or "").strip()
+    row["asset_code"] = str(row.get("asset_code") or "").strip()
     row["asset_name"] = str(row.get("product_name") or "").strip()
     if row.get("cumulative_unit_nav") is None and row.get("cumulative_nav") is not None:
         row["cumulative_unit_nav"] = row.get("cumulative_nav")
@@ -137,6 +141,21 @@ def fund_nav_product_keys_from_request(
     return normalize_fund_nav_product_key_params(raw)
 
 
+def fund_nav_product_keys_from_raw_nav_request(
+    get, *, form_submitted: bool
+) -> list[str] | None:
+    """基金净值页：侧栏单选 product_key，仅允许主份额（不含 A/B/C 类）。"""
+    if not form_submitted:
+        return None
+    raw = (get.get("product_key") or "").strip()
+    if not raw:
+        return []
+    allowed = fund_nav_portal_sidebar_allowed_keys()
+    if raw not in allowed:
+        return []
+    return [raw]
+
+
 def fetch_fund_nav_portal_documents(
     *,
     limit: int = 200,
@@ -160,7 +179,7 @@ def fetch_fund_nav_portal_documents(
         pk = fund["product_key"]
         if pk in zxdw_keys:
             coll = get_fund_nav_zxdw_nav_collection(pk)
-            cursor = coll.find(base_q).sort([("nav_date", -1), ("product_code", 1)])
+            cursor = coll.find(base_q).sort([("nav_date", -1), ("asset_code", 1)])
         else:
             coll = get_fund_nav_collection(pk)
             cursor = coll.find(base_q).sort([("nav_date", -1), ("asset_code", 1)])

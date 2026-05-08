@@ -25,7 +25,7 @@ from portal.db.mongo import bson_safe_value, get_fund_nav_zxdw_nav_collection
 # 中文列名 -> 统一英文字段
 _CANON_HEADERS: dict[str, str] = {
     "产品名称": "product_name",
-    "产品代码": "product_code",
+    "产品代码": "asset_code",
     "净值日期": "nav_date",
     "日期": "nav_date",
     "单位净值": "unit_nav",
@@ -34,9 +34,9 @@ _CANON_HEADERS: dict[str, str] = {
 }
 
 
-def zxdw_collection_for_product_code(product_code: str) -> str:
-    """根据产品代码写入 settings.MONGODB_ZXDW_NAV_COLLECTIONS 中某一集合。"""
-    code = (product_code or "").strip().upper()
+def zxdw_collection_for_asset_code(asset_code: str) -> str:
+    """根据资产代码写入 settings.MONGODB_ZXDW_NAV_COLLECTIONS 中某一集合。"""
+    code = (asset_code or "").strip().upper()
     if not code:
         raise ValueError("产品代码为空")
     allowed = getattr(settings, "MONGODB_ZXDW_NAV_COLLECTIONS", ())
@@ -52,7 +52,8 @@ def zxdw_collection_for_product_code(product_code: str) -> str:
 
 
 def _norm_header(h: Any) -> str:
-    return str(h).strip().replace("\n", "")
+    s = str(h).strip().replace("\n", "")
+    return re.sub(r"\s+", " ", s)
 
 
 def _parse_decimal(v: Any) -> float | None:
@@ -100,7 +101,7 @@ def _parse_date_to_iso(v: Any) -> str | None:
 
 
 def _build_col_map(columns: list[Any]) -> dict[str, str]:
-    """canonical_en -> original column label"""
+    """canonical_en -> DataFrame 列名原样（与 row[col] 一致；匹配用规范化表头）。"""
     out: dict[str, str] = {}
     seen_canon: set[str] = set()
     for c in columns:
@@ -111,7 +112,7 @@ def _build_col_map(columns: list[Any]) -> dict[str, str]:
         if canon in seen_canon:
             continue
         seen_canon.add(canon)
-        out[canon] = label
+        out[canon] = c
     return out
 
 
@@ -119,13 +120,13 @@ def _doc_from_row(row: Any, col_map: dict[str, str]) -> dict[str, Any] | None:
     nav_iso = _parse_date_to_iso(row[col_map["nav_date"]])
     if not nav_iso:
         return None
-    code = str(row[col_map["product_code"]]).strip()
+    code = str(row[col_map["asset_code"]]).strip()
     name = str(row[col_map["product_name"]]).strip()
     if not code:
         raise ValueError("产品代码为空")
     doc: dict[str, Any] = {
         "product_name": name,
-        "product_code": code,
+        "asset_code": code,
         "nav_date": nav_iso,
         "unit_nav": _parse_decimal(row[col_map["unit_nav"]]),
         "cumulative_nav": _parse_decimal(row[col_map["cumulative_nav"]]),
@@ -223,7 +224,7 @@ def _extract_nav_date_iso_from_raw(raw: Any) -> str | None:
     return None
 
 
-def _normalize_product_code(v: Any) -> str:
+def _normalize_sheet_asset_code(v: Any) -> str:
     if v is None:
         return ""
     s = str(v).strip().replace(" ", "")
@@ -257,7 +258,7 @@ def _load_docs_from_wide_announcement(file_bytes: bytes, filename: str) -> list[
 
     docs: list[dict[str, Any]] = []
     for j in range(1, raw.shape[1]):
-        code = _normalize_product_code(raw.iat[row_code, j])
+        code = _normalize_sheet_asset_code(raw.iat[row_code, j])
         if not code:
             continue
         name = ""
@@ -269,7 +270,7 @@ def _load_docs_from_wide_announcement(file_bytes: bytes, filename: str) -> list[
             continue
         doc: dict[str, Any] = {
             "product_name": name,
-            "product_code": code,
+            "asset_code": code,
             "nav_date": nav_iso,
             "unit_nav": unit_val,
             "cumulative_nav": cum_val,
@@ -303,7 +304,7 @@ def import_zxdw_excel_all_rows(
         if df.empty:
             raise ValueError("Excel 无数据行")
         col_map = _build_col_map(list(df.columns))
-        need_keys = ("product_name", "product_code", "nav_date", "unit_nav", "cumulative_nav")
+        need_keys = ("product_name", "asset_code", "nav_date", "unit_nav", "cumulative_nav")
         for k in need_keys:
             if k not in col_map:
                 cn_labels = [cn for cn, en in _CANON_HEADERS.items() if en == k]
@@ -334,7 +335,7 @@ def import_zxdw_excel_all_rows(
     }
 
 
-def import_zxdw_excel_routed_by_product_code(
+def import_zxdw_excel_routed_by_asset_code(
     file_bytes: bytes,
     *,
     filename: str,
@@ -353,7 +354,7 @@ def import_zxdw_excel_routed_by_product_code(
         if df.empty:
             raise ValueError("Excel 无数据行")
         col_map = _build_col_map(list(df.columns))
-        need_keys = ("product_name", "product_code", "nav_date", "unit_nav", "cumulative_nav")
+        need_keys = ("product_name", "asset_code", "nav_date", "unit_nav", "cumulative_nav")
         for k in need_keys:
             if k not in col_map:
                 cn_labels = [cn for cn, en in _CANON_HEADERS.items() if en == k]
@@ -375,7 +376,7 @@ def import_zxdw_excel_routed_by_product_code(
 
     per_coll: dict[str, int] = {}
     for doc in parsed_docs:
-        coll = zxdw_collection_for_product_code(doc["product_code"])
+        coll = zxdw_collection_for_asset_code(doc["asset_code"])
         upsert_zxdw_nav_doc(doc, collection_name=coll, source_subject=source_subject)
         per_coll[coll] = per_coll.get(coll, 0) + 1
     return {
@@ -403,15 +404,15 @@ def upsert_zxdw_nav_doc(
         "updated_at": now,
     }
     coll.update_one(
-        {"product_code": doc["product_code"], "nav_date": doc["nav_date"]},
+        {"asset_code": doc["asset_code"], "nav_date": doc["nav_date"]},
         {"$set": payload},
         upsert=True,
     )
     try:
         coll.create_index(
-            [("product_code", 1), ("nav_date", 1)],
+            [("asset_code", 1), ("nav_date", 1)],
             unique=True,
-            name="uniq_zxdw_product_nav_date",
+            name="uniq_zxdw_asset_nav_date",
         )
     except Exception:
         pass

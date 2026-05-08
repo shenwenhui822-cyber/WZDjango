@@ -39,6 +39,23 @@ def _build_zxdw_fund_nav_products() -> list[FundNavProduct]:
     return out
 
 
+# 侧栏隐藏的子份额：名称中含「A类」「B类」「C类」（博士一号 B、泽鑫多维 A/B/C 等）
+_SHARE_CLASS_MARKERS: tuple[str, ...] = ("A类", "B类", "C类")
+
+
+def is_fund_nav_share_class_product(fund: FundNavProduct) -> bool:
+    return any(m in fund["name_prefix"] for m in _SHARE_CLASS_MARKERS)
+
+
+def fund_nav_portal_sidebar_products() -> list[FundNavProduct]:
+    """基金净值页左侧：仅主份额，单层单选（不含 A/B/C 子份额）。"""
+    return [f for f in FUND_NAV_PRODUCTS if not is_fund_nav_share_class_product(f)]
+
+
+def fund_nav_portal_sidebar_allowed_keys() -> frozenset[str]:
+    return frozenset(f["product_key"] for f in fund_nav_portal_sidebar_products())
+
+
 FUND_NAV_PRODUCTS: list[FundNavProduct] = [
     {
         "product_key": settings.NAV_REAL_WZ_BSYH_MASTER,

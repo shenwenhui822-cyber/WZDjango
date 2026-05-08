@@ -39,7 +39,7 @@ from portal.services.trade_calendar_service import (
     last_n_prev_trading_day_isos,
     prev_trading_day_iso_before,
 )
-from portal.services.zxdw_fund_nav_service import import_zxdw_excel_routed_by_product_code
+from portal.services.zxdw_fund_nav_service import import_zxdw_excel_routed_by_asset_code
 
 # 主题匹配规则：固定前缀 + 报告日 YYYYMMDD
 ZXDW_NAV_MAIL_FUND_KEY_PHRASES: tuple[str, ...] = (
@@ -304,7 +304,7 @@ class Command(BaseCommand):
                 warn_lines: list[str] = []
                 for fp in files:
                     data = fp.read_bytes()
-                    stat = import_zxdw_excel_routed_by_product_code(
+                    stat = import_zxdw_excel_routed_by_asset_code(
                         data,
                         filename=fp.name,
                         source_subject=subj,
