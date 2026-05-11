@@ -41,12 +41,30 @@ _HEADER_KEYS = {
     "持有份额": "shares_held",
     "参考市值(元)": "reference_market_value",
     "参考市值 (元)": "reference_market_value",
+    "考市值(元)": "reference_market_value",
+    "考市值 (元)": "reference_market_value",
+    "考市值": "reference_market_value",
     # 净值序列导出（列名带「(元)」，单位净值与累计净值可能与上文并存，优先首列）
     "单位净值 (元)": "unit_nav",
     "单位净值(元)": "unit_nav",
     "累计净值 (元)": "cumulative_unit_nav",
     "累计净值(元)": "cumulative_unit_nav",
+    "累计单位净值": "cumulative_unit_nav",
+    "产品资产净值": "net_asset_value",
+    "产品总份额": "total_shares",
 }
+
+
+def _row_matches_fund_asset_code(row: Any, col_map: dict[str, str], fund: FundNavProduct) -> bool:
+    """无产品代码列时保持原样（首行即主表）；有列时只处理与 fund 配置一致的那一行（如多份额同表只落库主代码）。"""
+    if "asset_code" not in col_map:
+        return True
+    raw_code = str(row[col_map["asset_code"]]).strip()
+    expected = str(fund["asset_code"]).strip()
+    if raw_code == expected:
+        return True
+    short = expected.replace("(总)", "").replace("（总）", "").strip()
+    return raw_code == short
 
 
 def _norm_header(h: Any) -> str:
@@ -197,11 +215,17 @@ def parse_fund_nav_excel(
                 continue
         except Exception:
             pass
-        if dcell is not None and str(dcell).strip() not in ("", "nan"):
-            row = r
-            break
+        if dcell is None or str(dcell).strip() in ("", "nan"):
+            continue
+        if not _row_matches_fund_asset_code(r, col_map, fund):
+            continue
+        row = r
+        break
     if row is None:
-        raise ValueError("未找到有效数据行")
+        exp_code = str(fund["asset_code"]).strip()
+        raise ValueError(
+            f"未找到有效数据行（需产品代码为 {exp_code} 且日期与目标净值日一致）"
+        )
 
     nav_iso = _parse_date_to_iso(row[col_map["nav_date"]])
     if not nav_iso:
@@ -212,7 +236,7 @@ def parse_fund_nav_excel(
 
     doc = _fund_nav_doc_from_row(row, col_map, fund)
     if doc is None:
-        raise ValueError("无法从首行生成文档")
+        raise ValueError("无法从匹配行生成文档")
     return doc
 
 
@@ -239,6 +263,8 @@ def import_fund_nav_excel_all_rows(
     errors: list[str] = []
     for i in range(len(df)):
         row = df.iloc[i]
+        if not _row_matches_fund_asset_code(row, col_map, fund):
+            continue
         try:
             doc = _fund_nav_doc_from_row(row, col_map, fund)
             if doc is None:

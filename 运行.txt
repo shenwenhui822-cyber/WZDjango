@@ -177,24 +177,65 @@
     本地净值序列批量导入（列：单位净值 (元)、累计净值 (元)、资产净值 (元) 等）：
     python manage.py import_dyyh_nav_series --file "净值表excel版 (93).xlsx"
 
+  --- 吾执三零号私募证券投资基金 SXN031(总)（IMAP 用 .env：ALPHA_MAIL_USER / ALPHA_MAIL_PASS）---
+    主题格式：【基金净值】SXN031(总)_吾执三零号私募证券投资基金_{YYYY-MM-DD}
+    落库：fund_nav_real.WZ_SLH_MASTER（settings.NAV_REAL_WZ_SLH_MASTER）
+    约定：仅运行日为交易日时执行；默认 nav_date=运行日上一交易日；成功/失败发结果通知（同多元一号）
+    附件落盘：Alphadata/slh_nav_mail/YYYYMMDD/
+    python manage.py auto_import_slh_nav_mail
+    python manage.py auto_import_slh_nav_mail --nav-date 2026-05-06
+    python manage.py auto_import_slh_nav_mail --force
+    本地多行序列：
+    python manage.py import_slh_nav_series --file "三零号净值.xlsx"
+    关闭定时：环境变量 SLH_NAV_MAIL_SCHEDULER_ENABLED=0
+
+  --- 吾执多元量选私募证券投资基金 SAJM64(总)（IMAP 用 .env：ALPHA_MAIL_USER / ALPHA_MAIL_PASS）---
+    主题格式：【基金净值】SAJM64(总)_吾执多元量选私募证券投资基金_{YYYY-MM-DD}
+    落库：fund_nav_real.WZ_DYLX_MASTER（settings.NAV_REAL_WZ_DYLX_MASTER）
+    约定：仅运行日为交易日时执行；默认 nav_date=运行日上一交易日；成功/失败发结果通知
+    附件落盘：Alphadata/dylx_nav_mail/YYYYMMDD/
+    python manage.py auto_import_dylx_nav_mail
+    python manage.py auto_import_dylx_nav_mail --nav-date 2026-05-07
+    python manage.py auto_import_dylx_nav_mail --force
+    本地多行序列：
+    python manage.py import_dylx_nav_series --file "多元量选净值.xlsx"
+    关闭定时：环境变量 DYLX_NAV_MAIL_SCHEDULER_ENABLED=0
+
+  --- 吾执一三号私募证券投资基金 SAHK33（IMAP 用 .env：ALPHA_MAIL_USER / ALPHA_MAIL_PASS）---
+    主题格式：资产净值公告_SAHK33_吾执一三号私募证券投资基金_{YYYY-MM-DD}
+    附件可能多行（含 A/B 份额）：仅将产品代码为 SAHK33 的一行落入库
+    落库：fund_nav_real.WZ_YSH_MASTER（settings.NAV_REAL_WZ_YSH_MASTER）
+    表头支持：净值日期、产品代码、产品名称、单位净值、累计单位净值、产品总份额、产品资产净值 等
+    约定：仅运行日为交易日时执行；默认 nav_date=运行日上一交易日；成功/失败发结果通知
+    附件落盘：Alphadata/ysh_nav_mail/YYYYMMDD/
+    python manage.py auto_import_ysh_nav_mail
+    python manage.py auto_import_ysh_nav_mail --nav-date 2026-05-07
+    python manage.py auto_import_ysh_nav_mail --force
+    本地多行序列（仅 SAHK33 行写入）：
+    python manage.py import_ysh_nav_series --file "一三号净值.xlsx"
+    关闭定时：环境变量 YSH_NAV_MAIL_SCHEDULER_ENABLED=0
+
   结果通知邮件（SMTP）：.env 中 ALPHA_NOTIFY_*、ALPHA_NOTIFY_TO
 
 --------------------------------------------------------------------------------
 九、内置定时任务（随 Django 进程启动，见 portal.scheduler.alpha_mail_scheduler）
 --------------------------------------------------------------------------------
 
-  默认排期（本地时区，可通过环境变量关闭单项任务，见代码内 *_SCHEDULER_ENABLED）：
+  默认排期（本地时区，可通过环境变量关闭单项任务，见 portal/scheduler/alpha_mail_scheduler 内 *_SCHEDULER_ENABLED）：
     09:00  auto_import_htzq_ht1_capital_mail
     09:30  update_rq_bench
     09:31  auto_import_fund_nav_mail
     09:33  auto_import_ghzq_settle_mail
+    11:00  auto_import_slh_nav_mail
     11:35  auto_import_dyyh_nav_mail
     12:00  auto_import_zxdw_nav_mail
-    21:00  auto_import_alpha_mail
+    12:10  auto_import_dylx_nav_mail
+    12:10  auto_import_ysh_nav_mail
     18:00  auto_import_wkqh_settle_mail
     18:05  auto_import_cjqh_settle_mail
-    19:00  auto_import_htqh_settle_mail
     18:10  auto_import_stz053_nav_mail
+    19:00  auto_import_htqh_settle_mail
+    21:00  auto_import_alpha_mail
 
   说明：使用 runserver 或部署 ASGI/WSGI 且加载了该 scheduler 时，后台线程按上述时间
         调用对应 manage.py 命令。若仅需要“手动跑任务”，可直接执行第八节命令。

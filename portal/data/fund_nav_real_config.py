@@ -81,16 +81,40 @@ FUND_NAV_PRODUCTS: list[FundNavProduct] = [
         "name_prefix": "吾执多元一号私募证券投资基金",
         "asset_code": "SAJM63(总)",
     },
+    {
+        "product_key": getattr(
+            settings, "NAV_REAL_WZ_SLH_MASTER", "WZ_SLH_MASTER"
+        ),
+        "name_prefix": "吾执三零号私募证券投资基金",
+        "asset_code": "SXN031(总)",
+    },
+    {
+        "product_key": getattr(
+            settings, "NAV_REAL_WZ_DYLX_MASTER", "WZ_DYLX_MASTER"
+        ),
+        "name_prefix": "吾执多元量选私募证券投资基金",
+        "asset_code": "SAJM64(总)",
+    },
+    {
+        "product_key": getattr(
+            settings, "NAV_REAL_WZ_YSH_MASTER", "WZ_YSH_MASTER"
+        ),
+        "name_prefix": "吾执一三号私募证券投资基金",
+        "asset_code": "SAHK33",
+    },
     *_build_zxdw_fund_nav_products(),
 ]
 
 
 def fund_nav_products_for_mail_import() -> list[FundNavProduct]:
-    """博士一号等「基金每日净值表」邮件任务使用；排除专用主题邮件（STZ053、多元一号）。"""
+    """博士一号等「基金每日净值表」邮件任务使用；排除专用主题邮件（STZ053、多元一号、三零号、多元量选等）。"""
     skip = frozenset(
         {
             getattr(settings, "NAV_REAL_WZ_EEH_MASTER", "WZ_EEH_MASTER"),
             getattr(settings, "NAV_REAL_WZ_DYYH_MASTER", "WZ_DYYH_MASTER"),
+            getattr(settings, "NAV_REAL_WZ_SLH_MASTER", "WZ_SLH_MASTER"),
+            getattr(settings, "NAV_REAL_WZ_DYLX_MASTER", "WZ_DYLX_MASTER"),
+            getattr(settings, "NAV_REAL_WZ_YSH_MASTER", "WZ_YSH_MASTER"),
         }
     )
     return [f for f in FUND_NAV_PRODUCTS if f["product_key"] not in skip]

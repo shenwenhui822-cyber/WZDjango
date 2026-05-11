@@ -112,6 +112,12 @@ NAV_REAL_WZ_BSYH_B = "WZ_BSYH_B"
 NAV_REAL_WZ_EEH_MASTER = "WZ_EEH_MASTER"
 # 吾执多元一号 SAJM63(总)：wangkan 邮件「基金净值」→ fund_nav_real.WZ_DYYH_MASTER（auto_import_dyyh_nav_mail）
 NAV_REAL_WZ_DYYH_MASTER = "WZ_DYYH_MASTER"
+# 吾执三零号 SXN031(总)：wangkan 邮件「基金净值」→ fund_nav_real.WZ_SLH_MASTER（auto_import_slh_nav_mail）
+NAV_REAL_WZ_SLH_MASTER = "WZ_SLH_MASTER"
+# 吾执多元量选 SAJM64(总)：wangkan 邮件「基金净值」→ fund_nav_real.WZ_DYLX_MASTER（auto_import_dylx_nav_mail）
+NAV_REAL_WZ_DYLX_MASTER = "WZ_DYLX_MASTER"
+# 吾执一三号主代码 SAHK33：资产净值公告邮件 → fund_nav_real.WZ_YSH_MASTER（auto_import_ysh_nav_mail；同表多份额仅落库 SAHK33）
+NAV_REAL_WZ_YSH_MASTER = "WZ_YSH_MASTER"
 # 华泰证券 HT1 普通账单资金情况（吾执博士一号 666810103835）→ auto_import_htzq_ht1_capital_mail
 HTZQ_666810103835_SETTLE_DB = "fstock_settle_real"
 HTZQ_666810103835_SETTLE_COLLECTION = "HTZQ_666810103835"
