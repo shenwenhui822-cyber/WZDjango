@@ -24,7 +24,7 @@ _DEFAULT_SCHEDULES: list[tuple[str, str, dict]] = [
     ("12:00", "auto_import_zxdw_nav_mail", {}),
     ("12:10", "auto_import_dylx_nav_mail", {}),
     ("11:10", "auto_import_ysh_nav_mail", {}),
-    ("21:00", "auto_import_alpha_mail", {}),
+    ("21:00", "auto_import_alpha_mail", {}),  
     ("18:00", "auto_import_wkqh_settle_mail", {}),
     ("18:05", "auto_import_cjqh_settle_mail", {}),
     ("18:10", "auto_import_stz053_nav_mail", {}),
