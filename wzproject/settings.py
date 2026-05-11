@@ -137,6 +137,10 @@ MONGODB_T0_PERFORMANCE_COLLECTION = "daily_report"
 # 周度绩效（qichat CSV）→ 集合 t0_order
 MONGODB_T0_ORDER_COLLECTION = "t0_order"
 T0_QICHAT_IMPORT_DIR = BASE_DIR / "qichat"
+# 周度绩效邮件主题前缀，完整主题为 {前缀}{起YYYYMMDD}_{止YYYYMMDD}
+T0_QICHAT_MAIL_SUBJECT_PREFIX = (
+    os.getenv("T0_QICHAT_MAIL_SUBJECT_PREFIX") or "吾执_周度绩效_"
+).strip()
 # Alphadata 目录（xlsx 源文件）
 ALPHADATA_DIR = BASE_DIR / "Alphadata"
 

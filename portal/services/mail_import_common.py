@@ -95,6 +95,43 @@ def excel_ext_ok(filename: str) -> bool:
     return ext in (".xlsx", ".xls", ".xlsm")
 
 
+def csv_ext_ok(filename: str) -> bool:
+    return os.path.splitext((filename or "").lower())[1] == ".csv"
+
+
+def save_csv_attachments_from_rfc822(msg_bytes: bytes, save_dir: Path) -> list[Path]:
+    """从整封邮件 RFC822 字节流中保存 .csv 附件（Content-Disposition 含 attachment）。"""
+    msg = email.message_from_bytes(msg_bytes)
+    save_dir.mkdir(parents=True, exist_ok=True)
+    saved: list[Path] = []
+    for part in msg.walk():
+        disp = str(part.get("Content-Disposition", ""))
+        if "attachment" not in disp.lower():
+            continue
+        filename_raw = part.get_filename()
+        filename = normalize_attachment_filename(
+            decode_mime_header(filename_raw) if filename_raw else ""
+        )
+        if not csv_ext_ok(filename):
+            continue
+        payload = part.get_payload(decode=True)
+        if payload is None:
+            continue
+        output = save_dir / filename
+        if output.exists():
+            stem, ext = output.stem, output.suffix
+            i = 1
+            while True:
+                candidate = save_dir / f"{stem}_{i}{ext}"
+                if not candidate.exists():
+                    output = candidate
+                    break
+                i += 1
+        output.write_bytes(payload)
+        saved.append(output)
+    return saved
+
+
 def save_excel_attachments_from_rfc822(msg_bytes: bytes, save_dir: Path) -> list[Path]:
     """从整封邮件 RFC822 字节流中保存 Excel 附件（与博士一号 / ZXDW 邮件任务相同逻辑）。"""
     msg = email.message_from_bytes(msg_bytes)

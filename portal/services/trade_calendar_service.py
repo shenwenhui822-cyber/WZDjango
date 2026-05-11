@@ -82,6 +82,52 @@ def is_trade_date_iso(iso: str) -> bool:
     return coll.find_one({"trade_date": day}, {"_id": 1}) is not None
 
 
+def qichat_prev_iso_week_trading_ymd_pair(ref_iso: str) -> tuple[str, str] | None:
+    """
+    以 ref_iso（通常为运行日）为基准，取「上一自然周（周一至周日）」内最早与最晚交易日，
+    组成主题中的两段日期 YYYYMMDD，例如 吾执_周度绩效_20260420_20260424。
+    """
+    day = (ref_iso or "").strip()[:10]
+    if len(day) != 10:
+        return None
+    ref = date.fromisoformat(day)
+    this_monday = ref - timedelta(days=ref.weekday())
+    prev_week_monday = this_monday - timedelta(days=7)
+    prev_week_sunday = this_monday - timedelta(days=1)
+    trading_days: list[date] = []
+    cur = prev_week_monday
+    while cur <= prev_week_sunday:
+        if is_trade_date_iso(cur.isoformat()):
+            trading_days.append(cur)
+        cur += timedelta(days=1)
+    if not trading_days:
+        return None
+    return (
+        trading_days[0].strftime("%Y%m%d"),
+        trading_days[-1].strftime("%Y%m%d"),
+    )
+
+
+def is_first_trading_day_of_iso_week(iso: str) -> bool:
+    """
+    是否为当前自然周（周一至周日）内的首个交易日。
+    若周一为非交易日，则本周首个交易日为周二等顺延日 —— 仅在这些日期返回 True。
+    """
+    day = (iso or "").strip()[:10]
+    if len(day) != 10:
+        return False
+    if not is_trade_date_iso(day):
+        return False
+    today = date.fromisoformat(day)
+    monday = today - timedelta(days=today.weekday())
+    d = monday
+    while d < today:
+        if is_trade_date_iso(d.isoformat()):
+            return False
+        d += timedelta(days=1)
+    return True
+
+
 def calendar_day_isos_prev_trading_through_run(run_iso: str) -> list[str]:
     """
     从前一交易日（T-1）到 run_iso（通常为运行日「今天」）闭区间内的**每一个**自然日 YYYY-MM-DD，

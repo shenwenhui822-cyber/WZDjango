@@ -89,19 +89,13 @@ class QichatImportResult:
     errors: list[str] = field(default_factory=list)
 
 
-def import_qichat_csv_dir(
-    directory: Path | None = None,
-) -> QichatImportResult:
-    """扫描目录内全部 .csv（吾执周度绩效），写入 t0_order。唯一键：(trade_date, product_name)。"""
-    root = Path(directory or getattr(settings, "T0_QICHAT_IMPORT_DIR", settings.BASE_DIR / "qichat"))
+def _import_qichat_csv_paths(csv_files: list[Path]) -> QichatImportResult:
+    """将给定 CSV 路径列表写入 t0_order。唯一键：(trade_date, product_name)。"""
     errors: list[str] = []
     files_processed = 0
     rows_upserted = 0
-
-    if not root.is_dir():
-        return QichatImportResult(
-            0, 0, [f"目录不存在: {root}"]
-        )
+    if not csv_files:
+        return QichatImportResult(0, 0, errors)
 
     mongo = get_mongo_client()
     try:
@@ -112,12 +106,13 @@ def import_qichat_csv_dir(
             [("trade_date", 1), ("product_name", 1)],
             unique=True,
         )
-
-        csv_files = sorted(root.glob("*.csv"))
         now = datetime.now(tz=dt_timezone.utc)
 
         for p in csv_files:
             try:
+                if not p.is_file():
+                    errors.append(f"{p.name}: 文件不存在")
+                    continue
                 rows = parse_qichat_csv(p)
                 if not rows:
                     files_processed += 1
@@ -145,6 +140,27 @@ def import_qichat_csv_dir(
         mongo.close()
 
     return QichatImportResult(files_processed, rows_upserted, errors)
+
+
+def import_qichat_csv_files(paths: list[Path] | None) -> QichatImportResult:
+    """仅导入指定文件（如邮件新下载的附件），不扫描整个目录。"""
+    if not paths:
+        return QichatImportResult(0, 0, [])
+    unique = sorted({Path(x).resolve() for x in paths})
+    return _import_qichat_csv_paths(unique)
+
+
+def import_qichat_csv_dir(
+    directory: Path | None = None,
+) -> QichatImportResult:
+    """扫描目录内全部 .csv（吾执周度绩效），写入 t0_order。唯一键：(trade_date, product_name)。"""
+    root = Path(directory or getattr(settings, "T0_QICHAT_IMPORT_DIR", settings.BASE_DIR / "qichat"))
+    if not root.is_dir():
+        return QichatImportResult(
+            0, 0, [f"目录不存在: {root}"]
+        )
+    csv_files = sorted(root.glob("*.csv"))
+    return _import_qichat_csv_paths(csv_files)
 
 
 def fetch_t0_order_rows(

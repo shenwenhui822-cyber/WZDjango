@@ -8,13 +8,18 @@ from datetime import datetime
 from django.core.management import call_command
 from django.utils import timezone
 
-from portal.services.trade_calendar_service import is_trade_date_iso
+from portal.services.trade_calendar_service import (
+    is_first_trading_day_of_iso_week,
+    is_trade_date_iso,
+)
 
 _scheduler_started = False
 
 # (HH:MM, management command name, kwargs)
 # 邮件类任务在各自命令内校验「查询日～运行日」闭区间交易日个数 ≤ MAIL_JOB_MAX_TRADING_DAY_SPAN（默认 3）。
+# auto_import_qichat_t0_mail：IMAP 动态主题拉取上周 CSV + 入库（仅调度：每周首个交易日，见 _should_skip_scheduled_job）。
 _DEFAULT_SCHEDULES: list[tuple[str, str, dict]] = [
+    ("08:00", "auto_import_qichat_t0_mail", {}),
     ("09:00", "auto_import_htzq_ht1_capital_mail", {}),
     ("09:31", "auto_import_fund_nav_mail", {}),
     ("09:33", "auto_import_ghzq_settle_mail", {}),
@@ -163,6 +168,14 @@ def _t0_ftp_sync_enabled() -> bool:
     )
 
 
+def _t0_qichat_weekly_sync_enabled() -> bool:
+    return os.getenv("T0_QICHAT_WEEKLY_SCHEDULER_ENABLED", "1").strip() not in (
+        "0",
+        "false",
+        "False",
+    )
+
+
 def _schedules() -> list[tuple[str, str, dict]]:
     s = list(_DEFAULT_SCHEDULES)
     if not _htzq_ht1_capital_mail_enabled():
@@ -197,6 +210,8 @@ def _schedules() -> list[tuple[str, str, dict]]:
         s = [x for x in s if x[1] != "auto_import_ctayh_nav_mail"]
     if not _t0_ftp_sync_enabled():
         s = [x for x in s if x[1] != "sync_t0_performance"]
+    if not _t0_qichat_weekly_sync_enabled():
+        s = [x for x in s if x[1] != "auto_import_qichat_t0_mail"]
     return s
 
 
@@ -229,14 +244,22 @@ def _dispatch_job_async(command_name: str, *, force: bool, extra_kwargs: dict | 
     t.start()
 
 
-def _should_skip_for_non_trading_day(command_name: str, *, today_iso: str) -> bool:
-    if is_trade_date_iso(today_iso):
-        return False
-    ts = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
-    print(
-        f"[alpha-scheduler] [{ts}] {today_iso} 非交易日，跳过 {command_name} 调度执行。"
-    )
-    return True
+def _should_skip_scheduled_job(command_name: str, *, today_iso: str) -> bool:
+    if not is_trade_date_iso(today_iso):
+        ts = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
+        print(
+            f"[alpha-scheduler] [{ts}] {today_iso} 非交易日，跳过 {command_name} 调度执行。"
+        )
+        return True
+    if command_name == "auto_import_qichat_t0_mail":
+        if not is_first_trading_day_of_iso_week(today_iso):
+            ts = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
+            print(
+                f"[alpha-scheduler] [{ts}] {today_iso} 非本周首个交易日，"
+                f"跳过 {command_name}（T0 周度 CSV / 深度秩序）。"
+            )
+            return True
+    return False
 
 
 def run_scheduler_loop(
@@ -262,7 +285,7 @@ def run_scheduler_loop(
     if run_now:
         for target, cmd_name, job_kwargs in schedules:
             today_iso = timezone.localdate().isoformat()
-            if _should_skip_for_non_trading_day(cmd_name, today_iso=today_iso):
+            if _should_skip_scheduled_job(cmd_name, today_iso=today_iso):
                 continue
             _dispatch_job_async(cmd_name, force=force, extra_kwargs=job_kwargs)
             last_run_date[f"{cmd_name}@{target}"] = timezone.localdate().isoformat()
@@ -274,7 +297,7 @@ def run_scheduler_loop(
         for target, cmd_name, job_kwargs in schedules:
             key = f"{cmd_name}@{target}"
             if hm == target and last_run_date.get(key) != today:
-                if _should_skip_for_non_trading_day(cmd_name, today_iso=today):
+                if _should_skip_scheduled_job(cmd_name, today_iso=today):
                     last_run_date[key] = today
                     continue
                 _dispatch_job_async(cmd_name, force=force, extra_kwargs=job_kwargs)
