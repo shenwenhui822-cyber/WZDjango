@@ -19,12 +19,12 @@
 </style>
 {% endblock %}
 {% block content %}
-<nav aria-label="breadcrumb">
-    <ol class="breadcrumb">
+<!-- <nav aria-label="breadcrumb"> -->
+    <!-- <ol class="breadcrumb">
         <li class="breadcrumb-item"><a href="{% url 'portal:home' %}">首页</a></li>
         <li class="breadcrumb-item active" aria-current="page">{{ breadcrumb_label|default:page_title }}</li>
-    </ol>
-</nav>
+    </ol> -->
+<!-- </nav> -->
 
 {% if messages %}
     {% for message in messages %}
@@ -34,8 +34,8 @@
 
 <div class="d-flex flex-wrap t0-toolbar justify-content-between gap-3 mb-3">
     <div class="btn-group btn-group-sm t0-team-switch" role="group" aria-label="团队切换">
-        <a href="{{ t0_url_shendu }}" class="btn btn-outline-primary {% if t0_team == 'shendu' %}active{% endif %}">{{ t0_team_labels.shendu }}</a>
         <a href="{{ t0_url_huizhu }}" class="btn btn-outline-primary {% if t0_team == 'huizhu' %}active{% endif %}">{{ t0_team_labels.huizhu }}</a>
+        <a href="{{ t0_url_shendu }}" class="btn btn-outline-primary {% if t0_team == 'shendu' %}active{% endif %}">{{ t0_team_labels.shendu }}</a>
     </div>
     <div class="d-flex flex-wrap align-items-center gap-2 ms-auto">
         <form method="post" action="{% url 'portal:alpha_t0' %}" class="d-inline">
@@ -61,7 +61,7 @@
 </div>
 
 {% if show_weekly %}
-<h2 class="h6 text-secondary mb-2">周度绩效 <span class="text-muted fw-normal">（{{ t0_team_labels.shendu }}）</span></h2>
+<!-- <h2 class="h6 text-secondary mb-2">周度绩效 <span class="text-muted fw-normal">（{{ t0_team_labels.shendu }}）</span></h2> -->
 <form method="get" action="{% url 'portal:alpha_t0' %}" class="mb-2 row g-0 t0-filter-bar">
     <input type="hidden" name="t0_team" value="{{ t0_team }}">
     <input type="hidden" name="intraday_account" value="{{ intraday_account }}">
@@ -95,13 +95,13 @@
             <tbody>
                 {% for r in order_rows %}
                 <tr>
-                    <td>{{ r.product_name }}</td>
+                    <td class="text-center">{{ r.product_name }}</td>
                     <td class="text-center">{{ r.trade_date }}</td>
-                    <td class="num">{{ r.total_transaction_amount }}</td>
-                    <td class="num">{{ r.entrusted_assets }}</td>
-                    <td class="num">{{ r.trading_profit }}</td>
-                    <td class="num">{{ r.annualized_return_display }}</td>
-                    <td class="num">{{ r.turnover_ratio_display }}</td>
+                    <td class="text-end">{{ r.total_transaction_amount }}</td>
+                    <td class="text-end">{{ r.entrusted_assets }}</td>
+                    <td class="text-end">{{ r.trading_profit }}</td>
+                    <td class="text-end">{{ r.annualized_return_display }}</td>
+                    <td class="text-end">{{ r.turnover_ratio_display }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -114,7 +114,7 @@
 {% endif %}
 
 {% if show_intraday %}
-<h2 class="h6 text-secondary mb-2">日内交易汇总 <span class="text-muted fw-normal">（{{ t0_team_labels.huizhu }}）</span></h2>
+<!-- <h2 class="h6 text-secondary mb-2">日内交易汇总 <span class="text-muted fw-normal">（{{ t0_team_labels.huizhu }}）</span></h2> -->
 <form method="get" action="{% url 'portal:alpha_t0' %}" class="mb-2 row g-0 t0-filter-bar">
     <input type="hidden" name="t0_team" value="{{ t0_team }}">
     <input type="hidden" name="weekly_product" value="{{ weekly_product }}">
@@ -152,7 +152,7 @@
                     <td class="text-center">{{ r.trade_date }}</td>
                     <td class="num">{{ r.market_value }}</td>
                     <td class="num">{% if r.intraday_net_profit is not None %}{{ r.intraday_net_profit|floatformat:2 }}{% else %}—{% endif %}</td>
-                    <td class="num">{{ r.intraday_turnover }}</td>
+                    <td class="num">{% if r.intraday_turnover is not None %}{{ r.intraday_turnover|floatformat:2 }}{% else %}—{% endif %}</td>
                     <td class="num">{{ r.intraday_uncovered_shares }}</td>
                     <td class="num">{% if r.intraday_total_cost is not None %}{{ r.intraday_total_cost|floatformat:2 }}{% else %}—{% endif %}</td>
                 </tr>

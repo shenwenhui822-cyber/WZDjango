@@ -29,13 +29,12 @@ def _flatten_errs(errors: list[str]) -> str:
         return ""
     return "；".join(errors[:5]) + ("…" if len(errors) > 5 else "")
 
-
-T0_TEAM_SHENDU = "shendu"  # 深度秩序 — 周度绩效
 T0_TEAM_HUIZHU = "huizhu"  # 汇祝 — 日内交易汇总
+T0_TEAM_SHENDU = "shendu"  # 深度秩序 — 周度绩效
 T0_TEAM_IDS = (T0_TEAM_SHENDU, T0_TEAM_HUIZHU)
 T0_TEAM_LABELS = {
-    T0_TEAM_SHENDU: "深度秩序团队",
     T0_TEAM_HUIZHU: "汇祝团队",
+    T0_TEAM_SHENDU: "深度秩序团队",
 }
 
 
@@ -73,10 +72,10 @@ def t0_performance(request):
         or ""
     ).strip()
     t0_team_sel = (
-        request.GET.get("t0_team") or request.POST.get("t0_team") or T0_TEAM_SHENDU
+        request.GET.get("t0_team") or request.POST.get("t0_team") or T0_TEAM_HUIZHU
     ).strip()
     if t0_team_sel not in T0_TEAM_IDS:
-        t0_team_sel = T0_TEAM_SHENDU
+        t0_team_sel = T0_TEAM_HUIZHU
 
     weekly_filter_q = weekly_product_sel or None
     intraday_filter_q = intraday_account_sel or None
