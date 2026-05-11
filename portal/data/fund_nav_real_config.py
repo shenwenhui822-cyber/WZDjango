@@ -56,31 +56,9 @@ def fund_nav_portal_sidebar_allowed_keys() -> frozenset[str]:
     return frozenset(f["product_key"] for f in fund_nav_portal_sidebar_products())
 
 
+# 门户/曲线等产品下拉展示顺序（约）：三零号 → 多元量选 → 二二号 → 博士一号 → 多元一号 → 泽鑫多维 → 一三号 → CTA一号 → 九零号。
+# 「量化精选一号/二号」「吾执零零号/零一号/一零号」尚无 NAV_REAL 配置项，待接入时在下列对应位置插入 FundNavProduct。
 FUND_NAV_PRODUCTS: list[FundNavProduct] = [
-    {
-        "product_key": settings.NAV_REAL_WZ_BSYH_MASTER,
-        "name_prefix": "吾执博士一号私募证券投资基金",
-        "asset_code": "SBJP80",
-    },
-    {
-        "product_key": settings.NAV_REAL_WZ_BSYH_B,
-        "name_prefix": "吾执博士一号私募证券投资基金B类",
-        "asset_code": "BJP80B",
-    },
-    {
-        "product_key": getattr(
-            settings, "NAV_REAL_WZ_EEH_MASTER", "WZ_EEH_MASTER"
-        ),
-        "name_prefix": "吾执二二号私募证券投资基金",
-        "asset_code": "STZ053",
-    },
-    {
-        "product_key": getattr(
-            settings, "NAV_REAL_WZ_DYYH_MASTER", "WZ_DYYH_MASTER"
-        ),
-        "name_prefix": "吾执多元一号私募证券投资基金",
-        "asset_code": "SAJM63(总)",
-    },
     {
         "product_key": getattr(
             settings, "NAV_REAL_WZ_SLH_MASTER", "WZ_SLH_MASTER"
@@ -95,6 +73,31 @@ FUND_NAV_PRODUCTS: list[FundNavProduct] = [
         "name_prefix": "吾执多元量选私募证券投资基金",
         "asset_code": "SAJM64(总)",
     },
+    {
+        "product_key": getattr(
+            settings, "NAV_REAL_WZ_EEH_MASTER", "WZ_EEH_MASTER"
+        ),
+        "name_prefix": "吾执二二号私募证券投资基金",
+        "asset_code": "STZ053",
+    },
+    {
+        "product_key": settings.NAV_REAL_WZ_BSYH_MASTER,
+        "name_prefix": "吾执博士一号私募证券投资基金",
+        "asset_code": "SBJP80",
+    },
+    {
+        "product_key": settings.NAV_REAL_WZ_BSYH_B,
+        "name_prefix": "吾执博士一号私募证券投资基金B类",
+        "asset_code": "BJP80B",
+    },
+    {
+        "product_key": getattr(
+            settings, "NAV_REAL_WZ_DYYH_MASTER", "WZ_DYYH_MASTER"
+        ),
+        "name_prefix": "吾执多元一号私募证券投资基金",
+        "asset_code": "SAJM63(总)",
+    },
+    *_build_zxdw_fund_nav_products(),
     {
         "product_key": getattr(
             settings, "NAV_REAL_WZ_YSH_MASTER", "WZ_YSH_MASTER"
@@ -116,7 +119,6 @@ FUND_NAV_PRODUCTS: list[FundNavProduct] = [
         "name_prefix": "吾执CTA一号私募证券投资基金",
         "asset_code": "SNG191",
     },
-    *_build_zxdw_fund_nav_products(),
 ]
 
 

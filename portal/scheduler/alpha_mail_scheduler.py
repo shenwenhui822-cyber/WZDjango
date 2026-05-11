@@ -19,7 +19,6 @@ _scheduler_started = False
 # 邮件类任务在各自命令内校验「查询日～运行日」闭区间交易日个数 ≤ MAIL_JOB_MAX_TRADING_DAY_SPAN（默认 3）。
 # auto_import_qichat_t0_mail：IMAP 动态主题拉取上周 CSV + 入库（仅调度：每周首个交易日，见 _should_skip_scheduled_job）。
 _DEFAULT_SCHEDULES: list[tuple[str, str, dict]] = [
-    ("08:00", "auto_import_qichat_t0_mail", {}),
     ("09:00", "auto_import_htzq_ht1_capital_mail", {}),
     ("09:31", "auto_import_fund_nav_mail", {}),
     ("09:33", "auto_import_ghzq_settle_mail", {}),
@@ -37,6 +36,7 @@ _DEFAULT_SCHEDULES: list[tuple[str, str, dict]] = [
     ("18:05", "auto_import_cjqh_settle_mail", {}),
     ("18:10", "auto_import_stz053_nav_mail", {}),
     ("19:00", "auto_import_htqh_settle_mail", {}),
+    ("20:00", "auto_import_qichat_t0_mail", {}),
 ]
 
 
