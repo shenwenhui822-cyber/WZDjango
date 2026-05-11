@@ -160,6 +160,8 @@ MONGODB_ZXDW_NAV_COLLECTIONS = (
 ZXDW_NAV_IMPORT_DIR = BASE_DIR / "WZ_ZXDW_MASTER"
 # ZXDW 净值邮件附件落盘目录；主题关键词见 auto_import_zxdw_nav_mail.ZXDW_NAV_MAIL_FUND_KEY_PHRASES
 ZXDW_NAV_MAIL_ATTACH_DIR = BASE_DIR / "downloaded_attachments_zxdw_nav"
+# ZXDW 邮件导入：仅写入这些产品代码（逗号分隔；默认 STZ051，跳过 TZ051A/TZ051B 等列）。可用环境变量覆盖。
+ZXDW_NAV_MAIL_IMPORT_ASSET_CODES = os.getenv("ZXDW_NAV_MAIL_IMPORT_ASSET_CODES", "STZ051")
 
 # 期货结算单（长江）落库配置：库/集合由命令 auto_import_cjqh_settle_mail 使用
 MONGODB_CJQH_SETTLE_DB = "future_settle_real"

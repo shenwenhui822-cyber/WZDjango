@@ -1,6 +1,8 @@
 """
 交易日中午前后：按「前一交易日」报告日期匹配邮件主题，下载净值 Excel，
-按产品代码写入 fund_nav_real 下 WZ_ZXDW_MASTER / WZ_ZXDW_A|B|C（见 settings.MONGODB_ZXDW_NAV_COLLECTIONS）。
+按产品代码写入 fund_nav_real 下 WZ_ZXDW_*；邮件任务仅落库 settings.ZXDW_NAV_MAIL_IMPORT_ASSET_CODES
+（默认仅 STZ051，跳过资产净值公告横表中的 TZ051A/TZ051B 等列），并写入完整可用字段
+（含基金资产净值、基金资产份额等，见 portal.services.zxdw_fund_nav_service）。
 
 调度：portal.scheduler.alpha_mail_scheduler 默认 12:00（环境变量 ZXDW_NAV_MAIL_SCHEDULER_ENABLED）。
 
@@ -39,7 +41,10 @@ from portal.services.trade_calendar_service import (
     last_n_prev_trading_day_isos,
     prev_trading_day_iso_before,
 )
-from portal.services.zxdw_fund_nav_service import import_zxdw_excel_routed_by_asset_code
+from portal.services.zxdw_fund_nav_service import (
+    import_zxdw_excel_routed_by_asset_code,
+    mail_import_asset_allowlist,
+)
 
 # 主题匹配规则：固定前缀 + 报告日 YYYYMMDD
 ZXDW_NAV_MAIL_FUND_KEY_PHRASES: tuple[str, ...] = (
@@ -63,8 +68,8 @@ def _resolve_imap_credentials_from_env_v1() -> tuple[str, str, str, int]:
 
 class Command(BaseCommand):
     help = (
-        "交易日执行：IMAP 查找 ZXDW 净值邮件，附件 Excel 按产品代码写入 "
-        "fund_nav_real 下 WZ_ZXDW_* 集合"
+        "交易日执行：IMAP 查找 ZXDW 净值邮件；默认仅将 STZ051 写入 WZ_ZXDW_MASTER"
+        "（可配 ZXDW_NAV_MAIL_IMPORT_ASSET_CODES），含横向公告表中的资产净值/份额等字段"
     )
 
     def add_arguments(self, parser):
@@ -308,6 +313,7 @@ class Command(BaseCommand):
                         data,
                         filename=fp.name,
                         source_subject=subj,
+                        only_asset_codes=mail_import_asset_allowlist(),
                     )
                     errs = stat.get("errors") or []
                     for e in errs[:20]:

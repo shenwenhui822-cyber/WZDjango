@@ -1,12 +1,12 @@
 """
-泽鑫多维等五列净值 Excel（xlsx / xls）解析并写入 fund_nav_real.{WZ_ZXDW_MASTER|WZ_ZXDW_A|WZ_ZXDW_B|WZ_ZXDW_C}。
+泽鑫多维等净值 Excel（xlsx / xls）解析并写入 fund_nav_real.{WZ_ZXDW_MASTER|WZ_ZXDW_A|WZ_ZXDW_B|WZ_ZXDW_C}。
 
-支持两种表头：
-- 净值日期 / 累计净值（简表）
-- 日期 / 累计单位净值（集合计划每日净值表等）
-- 资产净值公告横表（基金代码行为 TZ051B/TZ051A/STZ051，净值在“基金份额净值/基金份额累计净值”行）
+支持表头版式：
+- 竖表：产品名称、产品代码、净值日期、单位净值、累计净值；可选 基金资产净值、基金资产份额（图二）
+- 资产净值公告横表：多列为 TZ051B/TZ051A/STZ051 等，行为基金代码/名称/基金份额净值/基金份额累计净值/
+  基金资产净值/基金资产份额（邮件导入默认仅保留 STZ051，见 mail_import_asset_allowlist）
 
-按产品代码后缀路由：以 A/B/C 结尾 -> 对应分集合；否则 -> WZ_ZXDW_MASTER（如 STZ049）。
+按产品代码后缀路由：以 A/B/C 结尾 -> 对应分集合；否则 -> WZ_ZXDW_MASTER（如 STZ051）。
 """
 from __future__ import annotations
 
@@ -31,7 +31,29 @@ _CANON_HEADERS: dict[str, str] = {
     "单位净值": "unit_nav",
     "累计净值": "cumulative_nav",
     "累计单位净值": "cumulative_nav",
+    "基金资产净值": "net_asset_value",
+    "基金资产份额": "total_shares",
 }
+
+
+def mail_import_asset_allowlist() -> frozenset[str]:
+    """邮件任务 import：仅落库这些产品代码（settings.ZXDW_NAV_MAIL_IMPORT_ASSET_CODES，默认 STZ051）。"""
+    raw = getattr(settings, "ZXDW_NAV_MAIL_IMPORT_ASSET_CODES", "STZ051")
+    parts = [p.strip().upper() for p in str(raw).split(",") if p.strip()]
+    return frozenset(parts) if parts else frozenset({"STZ051"})
+
+
+def _filter_docs_by_asset_codes(
+    docs: list[dict[str, Any]], allowlist: frozenset[str] | None
+) -> list[dict[str, Any]]:
+    if not allowlist:
+        return docs
+    out: list[dict[str, Any]] = []
+    for d in docs:
+        code = _normalize_sheet_asset_code(d.get("asset_code", ""))
+        if code in allowlist:
+            out.append(d)
+    return out
 
 
 def zxdw_collection_for_asset_code(asset_code: str) -> str:
@@ -131,6 +153,10 @@ def _doc_from_row(row: Any, col_map: dict[str, str]) -> dict[str, Any] | None:
         "unit_nav": _parse_decimal(row[col_map["unit_nav"]]),
         "cumulative_nav": _parse_decimal(row[col_map["cumulative_nav"]]),
     }
+    if "net_asset_value" in col_map:
+        doc["net_asset_value"] = _parse_decimal(row[col_map["net_asset_value"]])
+    if "total_shares" in col_map:
+        doc["total_shares"] = _parse_decimal(row[col_map["total_shares"]])
     for k, v in list(doc.items()):
         doc[k] = bson_safe_value(v)
     return doc
@@ -186,7 +212,13 @@ def _read_raw_excel(file_bytes: bytes, filename: str) -> Any:
     return pd.read_excel(buf, header=None, engine=engine)
 
 
-def _find_row_index_contains(raw: Any, keys: tuple[str, ...], max_rows: int = 40) -> int | None:
+def _find_row_index_contains(
+    raw: Any,
+    keys: tuple[str, ...],
+    max_rows: int = 40,
+    *,
+    max_label_cell_len: int | None = None,
+) -> int | None:
     rows = min(max_rows, len(raw))
     cols = raw.shape[1]
     for i in range(rows):
@@ -197,9 +229,45 @@ def _find_row_index_contains(raw: Any, keys: tuple[str, ...], max_rows: int = 40
             s = str(v).strip()
             if not s:
                 continue
+            if max_label_cell_len is not None and len(s) > max_label_cell_len:
+                continue
             if any(k in s for k in keys):
                 return i
     return None
+
+
+def _find_row_index_label(
+    raw: Any,
+    keys: tuple[str, ...],
+    max_rows: int = 40,
+    *,
+    max_label_cell_len: int | None = None,
+) -> int | None:
+    """
+    公告横表通常把行标签放在 A 列；若在全表任意单元格搜子串，标题里「证券投资基金资产净值公告」
+    会误命中「基金资产净值」，从而读到标题行（产品列为空），导致基金资产净值漏导入。
+    因此优先在前两列匹配标签，再回退全表扫描。
+
+    max_label_cell_len：说明性长句里常含「基金资产净值」子串（如“本基金资产净值如下”），
+    会先于真实数据行被匹配到；行标签一般很短，可设上限（如 32）排除长句。
+    """
+    rows = min(max_rows, len(raw))
+    label_cols = min(2, raw.shape[1])
+    for i in range(rows):
+        for j in range(label_cols):
+            v = raw.iat[i, j]
+            if v is None:
+                continue
+            s = str(v).strip()
+            if not s:
+                continue
+            if max_label_cell_len is not None and len(s) > max_label_cell_len:
+                continue
+            if any(k in s for k in keys):
+                return i
+    return _find_row_index_contains(
+        raw, keys, max_rows, max_label_cell_len=max_label_cell_len
+    )
 
 
 def _extract_nav_date_iso_from_raw(raw: Any) -> str | None:
@@ -249,10 +317,16 @@ def _load_docs_from_wide_announcement(file_bytes: bytes, filename: str) -> list[
     if not nav_iso:
         raise ValueError("资产净值公告格式中未识别到净值日期")
 
-    row_code = _find_row_index_contains(raw, ("基金代码", "产品代码"))
-    row_name = _find_row_index_contains(raw, ("基金名称", "产品名称"))
-    row_unit = _find_row_index_contains(raw, ("基金份额净值", "单位净值"))
-    row_cum = _find_row_index_contains(raw, ("基金份额累计净值", "累计单位净值", "累计净值"))
+    row_code = _find_row_index_label(raw, ("基金代码", "产品代码"))
+    row_name = _find_row_index_label(raw, ("基金名称", "产品名称"))
+    row_unit = _find_row_index_label(raw, ("基金份额净值", "单位净值"))
+    row_cum = _find_row_index_label(raw, ("基金份额累计净值", "累计单位净值", "累计净值"))
+    row_fund_nav = _find_row_index_label(
+        raw,
+        ("基金资产净值", "资产净值(元)", "资产净值（元）"),
+        max_label_cell_len=32,
+    )
+    row_fund_shares = _find_row_index_label(raw, ("基金资产份额",))
     if row_code is None or row_cum is None:
         raise ValueError("资产净值公告格式缺少“基金代码/累计净值”关键行")
 
@@ -266,6 +340,14 @@ def _load_docs_from_wide_announcement(file_bytes: bytes, filename: str) -> list[
             name = str(raw.iat[row_name, j] or "").strip()
         unit_val = _parse_decimal(raw.iat[row_unit, j]) if row_unit is not None else None
         cum_val = _parse_decimal(raw.iat[row_cum, j])
+        nav_total = (
+            _parse_decimal(raw.iat[row_fund_nav, j]) if row_fund_nav is not None else None
+        )
+        shares_val = (
+            _parse_decimal(raw.iat[row_fund_shares, j])
+            if row_fund_shares is not None
+            else None
+        )
         if unit_val is None and cum_val is None:
             continue
         doc: dict[str, Any] = {
@@ -275,6 +357,10 @@ def _load_docs_from_wide_announcement(file_bytes: bytes, filename: str) -> list[
             "unit_nav": unit_val,
             "cumulative_nav": cum_val,
         }
+        if nav_total is not None:
+            doc["net_asset_value"] = nav_total
+        if shares_val is not None:
+            doc["total_shares"] = shares_val
         for k, v in list(doc.items()):
             doc[k] = bson_safe_value(v)
         docs.append(doc)
@@ -290,6 +376,7 @@ def import_zxdw_excel_all_rows(
     filename: str,
     collection_name: str,
     source_subject: str,
+    only_asset_codes: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     """多行历史表：逐行 upsert 到指定集合（本地目录导入用）。"""
     parsed_docs: list[dict[str, Any]] = []
@@ -324,6 +411,16 @@ def import_zxdw_excel_all_rows(
         # 回退：支持“资产净值公告”横向格式
         parsed_docs = _load_docs_from_wide_announcement(file_bytes, filename)
 
+    if only_asset_codes:
+        n_before = len(parsed_docs)
+        parsed_docs = _filter_docs_by_asset_codes(parsed_docs, only_asset_codes)
+        if not parsed_docs and n_before > 0:
+            errors.append(
+                "按产品代码过滤后无数据（允许: "
+                + ",".join(sorted(only_asset_codes))
+                + "）"
+            )
+
     upserted = 0
     for doc in parsed_docs:
         upsert_zxdw_nav_doc(doc, collection_name=collection_name, source_subject=source_subject)
@@ -340,6 +437,7 @@ def import_zxdw_excel_routed_by_asset_code(
     *,
     filename: str,
     source_subject: str,
+    only_asset_codes: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     """解析整张表，按产品代码写入 MONGODB_ZXDW_NAV_COLLECTIONS 对应集合（邮件附件用）。"""
     parsed_docs: list[dict[str, Any]] = []
@@ -373,6 +471,16 @@ def import_zxdw_excel_routed_by_asset_code(
     except Exception:
         # 回退：支持“资产净值公告”横向格式
         parsed_docs = _load_docs_from_wide_announcement(file_bytes, filename)
+
+    if only_asset_codes:
+        n_before = len(parsed_docs)
+        parsed_docs = _filter_docs_by_asset_codes(parsed_docs, only_asset_codes)
+        if not parsed_docs and n_before > 0:
+            errors.append(
+                "按产品代码过滤后无数据（允许: "
+                + ",".join(sorted(only_asset_codes))
+                + "）"
+            )
 
     per_coll: dict[str, int] = {}
     for doc in parsed_docs:

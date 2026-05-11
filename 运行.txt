@@ -114,9 +114,17 @@
   --- 泽鑫多维 ZXDW 净值邮件（IMAP 用 .env：FARPORT_MAIL_USER / FARPORT_MAIL_PASS）---
     可选：ALPHA_IMAP_SERVER、ALPHA_IMAP_PORT（默认 imap.exmail.qq.com:993）
     未传 --report-date：按 trade_calendar 取运行日的前一交易日（T-1）作为导入报告日
+    邮件导入默认仅落库母基金 STZ051（跳过附件横表中 TZ051A/TZ051B 列）；字段含单位净值、累计净值、基金资产净值、基金资产份额（若有）。
+    允许列表：settings.ZXDW_NAV_MAIL_IMPORT_ASSET_CODES（环境变量同名，逗号分隔，默认 STZ051）
     python manage.py auto_import_zxdw_nav_mail
     python manage.py auto_import_zxdw_nav_mail --force
     python manage.py auto_import_zxdw_nav_mail --report-date 2026-04-17
+    本地目录批量导入（WZ_ZXDW_MASTER 下四子目录）；横表多列时可仅导 STZ051：
+    python manage.py import_zxdw_nav_master
+    python manage.py import_zxdw_nav_master --only-stz051
+    单个文件（落在 fund_nav_real.WZ_ZXDW_MASTER）：
+    python manage.py import_zxdw_nav_master --file "吾执泽鑫多维私募证券投资基金_净值序列_实盘起始日2026-2-9.xlsx"
+    python manage.py import_zxdw_nav_master -f "./净值序列.xlsx" --only-stz051
 
   --- 五矿期货结算单（IMAP 用 .env：FARPORT_MAIL_USER / FARPORT_MAIL_PASS）---
     python manage.py auto_import_wkqh_settle_mail
