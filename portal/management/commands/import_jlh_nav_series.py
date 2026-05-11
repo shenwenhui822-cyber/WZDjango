@@ -1,9 +1,14 @@
 """
-将吾执一三号 SAHK33「净值序列」Excel（多行；可含 A/B 份额行）导入 MongoDB：fund_nav_real.WZ_YSH_MASTER。
-仅落库产品代码为 SAHK33 的行。支持首行大标题、第二行表头的版式（自动识别表头行）。
+将吾执九零号 SXR194「净值序列」Excel 导入 MongoDB：fund_nav_real.WZ_JLH_MASTER。
+
+支持两种常见版式：
+  - 首行即表头（净值日期、产品代码、…）
+  - 首行为标题「产品基金净值数据」、第二行为表头（图二模板）
+
+仅落库产品代码为 SXR194 的行。
 
 用法：
-  python manage.py import_ysh_nav_series --file "xxx.xlsx"
+  python manage.py import_jlh_nav_series --file "九零号净值.xlsx"
 """
 from __future__ import annotations
 
@@ -13,13 +18,13 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 
 from portal.services.fund_nav_real_service import import_fund_nav_excel_all_rows
-from portal.services.ysh_nav_mail_service import get_ysh_fund_product
+from portal.services.jlh_nav_mail_service import get_jlh_fund_product
 
 
 class Command(BaseCommand):
     help = (
-        "导入吾执一三号 SAHK33 净值序列 Excel 到 fund_nav_real，"
-        "集合为 settings.NAV_REAL_WZ_YSH_MASTER（默认 WZ_YSH_MASTER）；忽略非 SAHK33 行。"
+        "导入吾执九零号 SXR194 净值序列 Excel 到 fund_nav_real，"
+        "集合为 settings.NAV_REAL_WZ_JLH_MASTER（默认 WZ_JLH_MASTER）；忽略非 SXR194 行。"
     )
 
     def add_arguments(self, parser):
@@ -46,7 +51,7 @@ class Command(BaseCommand):
                 self.stderr.write(self.style.ERROR(f"文件不存在: {raw}"))
                 return
 
-        fund = get_ysh_fund_product()
+        fund = get_jlh_fund_product()
         data = path.read_bytes()
         source_subject = f"local:{path.name}"
 

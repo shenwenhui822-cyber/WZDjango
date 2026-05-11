@@ -24,6 +24,7 @@ _DEFAULT_SCHEDULES: list[tuple[str, str, dict]] = [
     ("12:00", "auto_import_zxdw_nav_mail", {}),
     ("12:10", "auto_import_dylx_nav_mail", {}),
     ("11:10", "auto_import_ysh_nav_mail", {}),
+    ("11:40", "auto_import_jlh_nav_mail", {}),
     ("21:00", "auto_import_alpha_mail", {}),  
     ("18:00", "auto_import_wkqh_settle_mail", {}),
     ("18:05", "auto_import_cjqh_settle_mail", {}),
@@ -136,6 +137,14 @@ def _ysh_nav_mail_enabled() -> bool:
     )
 
 
+def _jlh_nav_mail_enabled() -> bool:
+    return os.getenv("JLH_NAV_MAIL_SCHEDULER_ENABLED", "1").strip() not in (
+        "0",
+        "false",
+        "False",
+    )
+
+
 def _schedules() -> list[tuple[str, str, dict]]:
     s = list(_DEFAULT_SCHEDULES)
     if not _htzq_ht1_capital_mail_enabled():
@@ -164,6 +173,8 @@ def _schedules() -> list[tuple[str, str, dict]]:
         s = [x for x in s if x[1] != "auto_import_dylx_nav_mail"]
     if not _ysh_nav_mail_enabled():
         s = [x for x in s if x[1] != "auto_import_ysh_nav_mail"]
+    if not _jlh_nav_mail_enabled():
+        s = [x for x in s if x[1] != "auto_import_jlh_nav_mail"]
     return s
 
 

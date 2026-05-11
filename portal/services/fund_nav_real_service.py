@@ -50,6 +50,8 @@ _HEADER_KEYS = {
     "累计净值 (元)": "cumulative_unit_nav",
     "累计净值(元)": "cumulative_unit_nav",
     "累计单位净值": "cumulative_unit_nav",
+    "单位净值(元/份)": "unit_nav",
+    "累计单位净值(元/份)": "cumulative_unit_nav",
     "产品资产净值": "net_asset_value",
     "产品总份额": "total_shares",
 }
@@ -181,12 +183,41 @@ def _fund_nav_doc_from_row(
 
 
 def _read_fund_nav_dataframe(file_bytes: bytes, filename: str) -> Any:
-    """按扩展名选择引擎：.xls 用 xlrd，其余用 openpyxl。"""
+    """
+    读取净值表：默认尝试多行作为表头起始行（兼容首行为「产品基金净值数据」等合并标题，
+    真实列名在第二行；亦兼容标准首行即表头）。
+    """
     _, ext = os.path.splitext((filename or "").lower())
     buf = BytesIO(file_bytes)
-    if ext == ".xls":
-        return pd.read_excel(buf, header=0, engine="xlrd")
-    return pd.read_excel(buf, header=0, engine="openpyxl")
+    engine = "xlrd" if ext == ".xls" else "openpyxl"
+    best_df: Any | None = None
+    best_score = -1
+    last_exc: Exception | None = None
+    for header_idx in range(0, 12):
+        buf.seek(0)
+        try:
+            df_try = pd.read_excel(buf, header=header_idx, engine=engine)
+        except Exception as exc:
+            last_exc = exc
+            continue
+        if df_try is None or getattr(df_try, "empty", True):
+            continue
+        col_map = _build_col_map(list(df_try.columns))
+        if "nav_date" not in col_map:
+            continue
+        score = len(col_map)
+        if score > best_score:
+            best_score = score
+            best_df = df_try
+    if best_df is None:
+        hint = (
+            "无法识别净值表表头（需含「净值日期」或「日期」列）。"
+            "若为顶部标题+第二行表头的模板，无需改文件，程序会自动识别。"
+        )
+        if last_exc:
+            hint += f" 末次读取异常: {last_exc}"
+        raise ValueError(hint)
+    return best_df
 
 
 def parse_fund_nav_excel(
