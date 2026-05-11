@@ -7,6 +7,7 @@ import email
 import imaplib
 import os
 import re
+import zipfile
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
@@ -125,6 +126,87 @@ def save_excel_attachments_from_rfc822(msg_bytes: bytes, save_dir: Path) -> list
         output.write_bytes(payload)
         saved.append(output)
     return saved
+
+
+def excel_or_zip_ext_ok(filename: str) -> bool:
+    _, ext = os.path.splitext((filename or "").lower())
+    return ext in (".xlsx", ".xls", ".xlsm", ".zip")
+
+
+def _extract_zip_preserving_cn_filenames(zip_path: Path, dest_dir: Path) -> None:
+    """
+    解压 zip。中文 Windows 工具生成的压缩包常见「文件名 GBK、ZIP 内按 cp437 存」，
+    不按 GBK 还原会得到乱码路径，后续找不到真正的 xlsx。
+    Python 3.11+ 使用 ZipFile(metadata_encoding='gbk')；更早版本对 ZipInfo 做 cp437→gbk。
+    """
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        zf = zipfile.ZipFile(zip_path, "r", metadata_encoding="gbk")
+    except TypeError:
+        zf = zipfile.ZipFile(zip_path, "r")
+        for info in list(zf.infolist()):
+            name = info.filename
+            if name.endswith("/"):
+                continue
+            try:
+                fixed = name.encode("cp437").decode("gbk")
+            except (UnicodeDecodeError, UnicodeEncodeError):
+                continue
+            if fixed != name:
+                info.filename = fixed
+    with zf:
+        zf.extractall(dest_dir)
+
+
+def save_excel_zip_attachments_from_rfc822(msg_bytes: bytes, save_dir: Path) -> list[Path]:
+    """
+    保存 Excel 或 zip 附件；zip 解压到 save_dir/_zip_extract/<压缩包名>/，
+    返回所有 Excel 路径（含 zip 内文件）。
+    """
+    msg = email.message_from_bytes(msg_bytes)
+    save_dir.mkdir(parents=True, exist_ok=True)
+    saved_files: list[Path] = []
+    zips: list[Path] = []
+    for part in msg.walk():
+        disp = str(part.get("Content-Disposition", ""))
+        if "attachment" not in disp.lower():
+            continue
+        filename_raw = part.get_filename()
+        filename = normalize_attachment_filename(
+            decode_mime_header(filename_raw) if filename_raw else ""
+        )
+        if not excel_or_zip_ext_ok(filename):
+            continue
+        payload = part.get_payload(decode=True)
+        if payload is None:
+            continue
+        output = save_dir / filename
+        if output.exists():
+            stem, ext = output.stem, output.suffix
+            i = 1
+            while True:
+                candidate = save_dir / f"{stem}_{i}{ext}"
+                if not candidate.exists():
+                    output = candidate
+                    break
+                i += 1
+        output.write_bytes(payload)
+        saved_files.append(output)
+        if output.suffix.lower() == ".zip":
+            zips.append(output)
+
+    extract_root = save_dir / "_zip_extract"
+    excels: list[Path] = [p for p in saved_files if excel_ext_ok(p.name)]
+    for zp in zips:
+        dest = extract_root / zp.stem
+        try:
+            _extract_zip_preserving_cn_filenames(zp, dest)
+        except zipfile.BadZipFile:
+            continue
+        for p in dest.rglob("*"):
+            if p.is_file() and excel_ext_ok(p.name):
+                excels.append(p)
+    return excels
 
 
 def send_alpha_notify_result_email(

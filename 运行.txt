@@ -236,6 +236,23 @@
     python manage.py import_jlh_nav_series --file "九零号净值.xlsx"
     关闭定时：环境变量 JLH_NAV_MAIL_SCHEDULER_ENABLED=0
 
+  --- 吾执 CTA 一号私募证券投资基金 SNG191（IMAP 用 .env：ALPHA_MAIL_USER / ALPHA_MAIL_PASS）---
+    主题格式（精确匹配）：上海吾执投资管理有限公司净值表邮件{YYYYMMDD}【国信托管】
+      示例：上海吾执投资管理有限公司净值表邮件20260507【国信托管】（日期为附件报告日/净值对应批次）
+    附件：可为 zip（如「产品净值情况20260507.zip」解压后 xlsx）或直接 xlsx；
+      zip 内中文文件名按 GBK 解析（与常见 Windows 压缩工具一致），避免解压路径乱码导致找不到表格；
+      单日单行（图一：序号、产品代码、日期、资产净值、资产份额、单位净值、累计单位净值）或多日序列（图二：产品代码、产品名称、估值日期、单位净值、累计单位净值、资产净值）。
+    落库：fund_nav_real.WZ_CTAYH_MASTER（settings.NAV_REAL_WZ_CTAYH_MASTER）
+    约定：仅运行日为交易日时执行；默认导入净值日 nav_date = 运行日的上一交易日（T-1）；成功/失败发结果通知（ALPHA_NOTIFY_*）
+    附件落盘：downloaded_attachments_ctayh_nav/YYYYMMDD/
+    python manage.py auto_import_ctayh_nav_mail
+    python manage.py auto_import_ctayh_nav_mail --nav-date 2026-05-07
+    python manage.py auto_import_ctayh_nav_mail --force
+    本地多行序列（图二「产品净值信息」表，含估值日期、资产净值等）：
+    python manage.py import_ctayh_nav_series --file "产品净值信息.xlsx"
+    亦可：python scripts/import_ctayh_nav_series.py --file "xxx.xlsx"
+    关闭定时：环境变量 CTAYH_NAV_MAIL_SCHEDULER_ENABLED=0
+
   结果通知邮件（SMTP）：.env 中 ALPHA_NOTIFY_*、ALPHA_NOTIFY_TO
 
 --------------------------------------------------------------------------------
@@ -250,6 +267,7 @@
     11:00  auto_import_slh_nav_mail
     11:35  auto_import_dyyh_nav_mail
     11:40  auto_import_jlh_nav_mail
+    11:50  auto_import_ctayh_nav_mail（CTA 一号 SNG191，wangkan【国信托管】净值邮件；T-1）
     12:00  auto_import_zxdw_nav_mail
     11:10  auto_import_ysh_nav_mail
     12:10  auto_import_dylx_nav_mail

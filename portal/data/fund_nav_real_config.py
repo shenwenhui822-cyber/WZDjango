@@ -109,6 +109,13 @@ FUND_NAV_PRODUCTS: list[FundNavProduct] = [
         "name_prefix": "吾执九零号私募证券投资基金",
         "asset_code": "SXR194",
     },
+    {
+        "product_key": getattr(
+            settings, "NAV_REAL_WZ_CTAYH_MASTER", "WZ_CTAYH_MASTER"
+        ),
+        "name_prefix": "吾执CTA一号私募证券投资基金",
+        "asset_code": "SNG191",
+    },
     *_build_zxdw_fund_nav_products(),
 ]
 
@@ -123,6 +130,7 @@ def fund_nav_products_for_mail_import() -> list[FundNavProduct]:
             getattr(settings, "NAV_REAL_WZ_DYLX_MASTER", "WZ_DYLX_MASTER"),
             getattr(settings, "NAV_REAL_WZ_YSH_MASTER", "WZ_YSH_MASTER"),
             getattr(settings, "NAV_REAL_WZ_JLH_MASTER", "WZ_JLH_MASTER"),
+            getattr(settings, "NAV_REAL_WZ_CTAYH_MASTER", "WZ_CTAYH_MASTER"),
         }
     )
     return [f for f in FUND_NAV_PRODUCTS if f["product_key"] not in skip]

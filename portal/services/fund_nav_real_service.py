@@ -18,6 +18,7 @@ from portal.db.mongo import bson_safe_value, get_fund_nav_collection
 _HEADER_KEYS = {
     "日期": "nav_date",
     "净值日期": "nav_date",
+    "估值日期": "nav_date",
     "资产代码": "asset_code",
     "产品代码": "asset_code",
     "资产名称": "asset_name",
@@ -30,8 +31,10 @@ _HEADER_KEYS = {
     "累计净值": "cumulative_unit_nav",
     "资产净值(元)": "net_asset_value",
     "资产净值 (元)": "net_asset_value",
+    "资产净值": "net_asset_value",
     "基金资产净值": "net_asset_value",
     "总份额": "total_shares",
+    "资产份额": "total_shares",
     "资产总值(元)": "total_asset_value",
     "资产总值 (元)": "total_asset_value",
     "实收资本(元)": "paid_in_capital",
@@ -41,9 +44,6 @@ _HEADER_KEYS = {
     "持有份额": "shares_held",
     "参考市值(元)": "reference_market_value",
     "参考市值 (元)": "reference_market_value",
-    "考市值(元)": "reference_market_value",
-    "考市值 (元)": "reference_market_value",
-    "考市值": "reference_market_value",
     # 净值序列导出（列名带「(元)」，单位净值与累计净值可能与上文并存，优先首列）
     "单位净值 (元)": "unit_nav",
     "单位净值(元)": "unit_nav",
@@ -57,12 +57,27 @@ _HEADER_KEYS = {
 }
 
 
+def _normalize_fund_nav_asset_code_cell(v: Any) -> str:
+    """Excel 中产品代码：去空格、统一大写；纯数字串形如 191.0 → 191（少见）。"""
+    if v is None:
+        return ""
+    try:
+        if isinstance(v, float) and pd.isna(v):
+            return ""
+    except Exception:
+        pass
+    s = str(v).strip().replace(" ", "")
+    if re.fullmatch(r"\d+\.0", s):
+        s = s[:-2]
+    return s.upper()
+
+
 def _row_matches_fund_asset_code(row: Any, col_map: dict[str, str], fund: FundNavProduct) -> bool:
     """无产品代码列时保持原样（首行即主表）；有列时只处理与 fund 配置一致的那一行（如多份额同表只落库主代码）。"""
     if "asset_code" not in col_map:
         return True
-    raw_code = str(row[col_map["asset_code"]]).strip()
-    expected = str(fund["asset_code"]).strip()
+    raw_code = _normalize_fund_nav_asset_code_cell(row[col_map["asset_code"]])
+    expected = _normalize_fund_nav_asset_code_cell(fund["asset_code"])
     if raw_code == expected:
         return True
     short = expected.replace("(总)", "").replace("（总）", "").strip()
@@ -139,8 +154,8 @@ def _fund_nav_doc_from_row(
     nav_iso = _parse_date_to_iso(row[col_map["nav_date"]])
     if not nav_iso:
         return None
-    raw_code = str(row[col_map["asset_code"]]).strip()
-    expected = str(fund["asset_code"]).strip()
+    raw_code = _normalize_fund_nav_asset_code_cell(row[col_map["asset_code"]])
+    expected = _normalize_fund_nav_asset_code_cell(fund["asset_code"])
     if raw_code != expected:
         short = (
             expected.replace("(总)", "")
@@ -237,6 +252,8 @@ def parse_fund_nav_excel(
         if k not in col_map:
             raise ValueError(f"缺少列字段: {k}")
 
+    exp = expected_nav_iso.strip()[:10]
+    exp_code = str(fund["asset_code"]).strip()
     row = None
     for i in range(len(df)):
         r = df.iloc[i]
@@ -250,20 +267,19 @@ def parse_fund_nav_excel(
             continue
         if not _row_matches_fund_asset_code(r, col_map, fund):
             continue
+        nav_try = _parse_date_to_iso(r[col_map["nav_date"]])
+        if nav_try != exp:
+            continue
         row = r
         break
     if row is None:
-        exp_code = str(fund["asset_code"]).strip()
         raise ValueError(
-            f"未找到有效数据行（需产品代码为 {exp_code} 且日期与目标净值日一致）"
+            f"未找到有效数据行（需产品代码为 {exp_code} 且净值日为 {exp}）"
         )
 
     nav_iso = _parse_date_to_iso(row[col_map["nav_date"]])
     if not nav_iso:
         raise ValueError("无法解析日期单元格")
-    exp = expected_nav_iso.strip()[:10]
-    if nav_iso != exp:
-        raise ValueError(f"表格日期 {nav_iso} 与期望净值日 {exp} 不一致")
 
     doc = _fund_nav_doc_from_row(row, col_map, fund)
     if doc is None:
