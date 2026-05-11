@@ -14,6 +14,8 @@
     .t0-filter-bar { align-items: center !important; gap: .5rem 1rem; }
     .t0-filter-inline { display: inline-flex; align-items: center; gap: .5rem; flex-wrap: wrap; flex: 1 1 auto; min-width: min(100%, 32rem); }
     .t0-filter-inline .form-select { flex: 1 1 14rem; max-width: 22rem; min-width: 10rem; }
+    .t0-toolbar { align-items: flex-start !important; }
+    .t0-team-switch .btn.active { background-color: var(--bs-primary); border-color: var(--bs-primary); color: #fff; }
 </style>
 {% endblock %}
 {% block content %}
@@ -24,34 +26,44 @@
     </ol>
 </nav>
 
-<h1 class="h4 mb-2">{{ page_title }}</h1>
-
 {% if messages %}
     {% for message in messages %}
     <div class="alert py-2 mb-2 {% if 'error' in message.tags %}alert-danger{% elif 'success' in message.tags %}alert-success{% elif 'warning' in message.tags %}alert-warning{% else %}alert-info{% endif %}">{{ message }}</div>
     {% endfor %}
 {% endif %}
 
-<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-    <form method="post" action="{% url 'portal:alpha_t0' %}" class="d-inline">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="sync_qichat">
-        <input type="hidden" name="weekly_product" value="{{ weekly_product }}">
-        <input type="hidden" name="intraday_account" value="{{ intraday_account }}">
-        <button type="submit" class="btn btn-primary btn-sm">同步周度 CSV</button>
-    </form>
-    <form method="post" action="{% url 'portal:alpha_t0' %}" class="d-inline">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="sync_ftp">
-        <input type="hidden" name="weekly_product" value="{{ weekly_product }}">
-        <input type="hidden" name="intraday_account" value="{{ intraday_account }}">
-        <button type="submit" class="btn btn-outline-primary btn-sm">从 FTP 同步日内 xlsx</button>
-    </form>
-    <span class="text-muted small">周度 {{ order_row_count }} 条 · 日内 {{ performance_row_count }} 条</span>
+<div class="d-flex flex-wrap t0-toolbar justify-content-between gap-3 mb-3">
+    <div class="btn-group btn-group-sm t0-team-switch" role="group" aria-label="团队切换">
+        <a href="{{ t0_url_shendu }}" class="btn btn-outline-primary {% if t0_team == 'shendu' %}active{% endif %}">{{ t0_team_labels.shendu }}</a>
+        <a href="{{ t0_url_huizhu }}" class="btn btn-outline-primary {% if t0_team == 'huizhu' %}active{% endif %}">{{ t0_team_labels.huizhu }}</a>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2 ms-auto">
+        <form method="post" action="{% url 'portal:alpha_t0' %}" class="d-inline">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="sync_qichat">
+            <input type="hidden" name="weekly_product" value="{{ weekly_product }}">
+            <input type="hidden" name="intraday_account" value="{{ intraday_account }}">
+            <input type="hidden" name="t0_team" value="{{ t0_team }}">
+            <!-- <button type="submit" class="btn btn-primary btn-sm">同步周度 CSV</button> -->
+        </form>
+        <form method="post" action="{% url 'portal:alpha_t0' %}" class="d-inline">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="sync_ftp">
+            <input type="hidden" name="weekly_product" value="{{ weekly_product }}">
+            <input type="hidden" name="intraday_account" value="{{ intraday_account }}">
+            <input type="hidden" name="t0_team" value="{{ t0_team }}">
+            <!-- <button type="submit" class="btn btn-outline-primary btn-sm">从 FTP 同步日内 xlsx</button> -->
+        </form>
+        <span class="text-muted small">
+            {% if show_weekly %}周度 {{ order_row_count }} 条{% elif show_intraday %}日内 {{ performance_row_count }} 条{% endif %}
+        </span>
+    </div>
 </div>
 
-<h2 class="h6 text-secondary mb-2">周度绩效</h2>
+{% if show_weekly %}
+<h2 class="h6 text-secondary mb-2">周度绩效 <span class="text-muted fw-normal">（{{ t0_team_labels.shendu }}）</span></h2>
 <form method="get" action="{% url 'portal:alpha_t0' %}" class="mb-2 row g-0 t0-filter-bar">
+    <input type="hidden" name="t0_team" value="{{ t0_team }}">
     <input type="hidden" name="intraday_account" value="{{ intraday_account }}">
     <div class="t0-filter-inline mb-1">
         <label for="id_weekly_product" class="small mb-0 text-nowrap">产品筛选</label>
@@ -99,9 +111,12 @@
         {% endif %}
     </div>
 </div>
+{% endif %}
 
-<h2 class="h6 text-secondary mb-2">日内交易汇总</h2>
+{% if show_intraday %}
+<h2 class="h6 text-secondary mb-2">日内交易汇总 <span class="text-muted fw-normal">（{{ t0_team_labels.huizhu }}）</span></h2>
 <form method="get" action="{% url 'portal:alpha_t0' %}" class="mb-2 row g-0 t0-filter-bar">
+    <input type="hidden" name="t0_team" value="{{ t0_team }}">
     <input type="hidden" name="weekly_product" value="{{ weekly_product }}">
     <div class="t0-filter-inline mb-1">
         <label for="id_intraday_account" class="small mb-0 text-nowrap">账户筛选</label>
@@ -136,10 +151,10 @@
                     <td class="text-center">{{ r.account_name }}</td>
                     <td class="text-center">{{ r.trade_date }}</td>
                     <td class="num">{{ r.market_value }}</td>
-                    <td class="num">{{ r.intraday_net_profit }}</td>
+                    <td class="num">{% if r.intraday_net_profit is not None %}{{ r.intraday_net_profit|floatformat:2 }}{% else %}—{% endif %}</td>
                     <td class="num">{{ r.intraday_turnover }}</td>
                     <td class="num">{{ r.intraday_uncovered_shares }}</td>
-                    <td class="num">{{ r.intraday_total_cost }}</td>
+                    <td class="num">{% if r.intraday_total_cost is not None %}{{ r.intraday_total_cost|floatformat:2 }}{% else %}—{% endif %}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -149,4 +164,5 @@
         {% endif %}
     </div>
 </div>
+{% endif %}
 {% endblock %}
