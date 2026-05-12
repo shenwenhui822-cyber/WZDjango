@@ -31,6 +31,7 @@ _DEFAULT_SCHEDULES: list[tuple[str, str, dict]] = [
     ("11:30", "auto_import_llh_nav_mail", {}),
     ("11:40", "auto_import_jlh_nav_mail", {}),
     ("14:10", "auto_import_dyctayh_nav_mail", {}),
+    ("14:30", "auto_import_ylh_nav_mail", {}),
     ("11:50", "auto_import_ctayh_nav_mail", {}),
     ("16:30", "sync_t0_performance", {}),
     ("21:00", "auto_import_alpha_mail", {}),  
@@ -162,6 +163,14 @@ def _jlh_nav_mail_enabled() -> bool:
     )
 
 
+def _ylh_nav_mail_enabled() -> bool:
+    return os.getenv("YLH_NAV_MAIL_SCHEDULER_ENABLED", "1").strip() not in (
+        "0",
+        "false",
+        "False",
+    )
+
+
 def _ctayh_nav_mail_enabled() -> bool:
     return os.getenv("CTAYH_NAV_MAIL_SCHEDULER_ENABLED", "1").strip() not in (
         "0",
@@ -230,6 +239,8 @@ def _schedules() -> list[tuple[str, str, dict]]:
         s = [x for x in s if x[1] != "auto_import_ctayh_nav_mail"]
     if not _dyctayh_nav_mail_enabled():
         s = [x for x in s if x[1] != "auto_import_dyctayh_nav_mail"]
+    if not _ylh_nav_mail_enabled():
+        s = [x for x in s if x[1] != "auto_import_ylh_nav_mail"]
     if not _t0_ftp_sync_enabled():
         s = [x for x in s if x[1] != "sync_t0_performance"]
     if not _t0_qichat_weekly_sync_enabled():

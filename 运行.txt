@@ -209,6 +209,20 @@
     本地净值序列批量导入（列：单位净值 (元)、累计净值 (元)、资产净值 (元) 等）：
     python manage.py import_dyyh_nav_series --file "净值表excel版 (93).xlsx"
 
+  --- 吾执一零号私募证券投资基金 SQL632(总)（IMAP 用 .env：ALPHA_MAIL_USER / ALPHA_MAIL_PASS）---
+    主题格式（精确匹配）：【基金净值】SQL632(总)_吾执一零号私募证券投资基金_{YYYY-MM-DD}
+    表头含：日期、资产代码、资产名称、资产份额净值(元)、资产份额累计净值(元)、资产净值(元)；扩展：实收资本(元)、总资产(元) 等（与多元一号模板一致）
+    落库：fund_nav_real.WZ_YLH_MASTER（settings.NAV_REAL_WZ_YLH_MASTER）
+    约定：仅运行日为交易日时执行；默认 nav_date = 运行日上一交易日（T-1）；成功/失败发结果通知（ALPHA_NOTIFY_*）
+    附件落盘：Alphadata/ylh_nav_mail/YYYYMMDD/
+    python manage.py auto_import_ylh_nav_mail
+    python manage.py auto_import_ylh_nav_mail --nav-date 2026-05-07
+    python manage.py auto_import_ylh_nav_mail --force
+    本地多行序列（图二「产品基金净值数据」：首行标题、第二行表头；表头须含净值日期、资产代码等，同 import_dylx_nav_series）：
+    python manage.py import_ylh_nav_series --file "一零号净值.xlsx"
+    亦可：python scripts/import_ylh_nav_series.py --file "xxx.xlsx"
+    关闭定时：环境变量 YLH_NAV_MAIL_SCHEDULER_ENABLED=0
+
   --- 吾执三零号私募证券投资基金 SXN031(总)（IMAP 用 .env：ALPHA_MAIL_USER / ALPHA_MAIL_PASS）---
     主题格式：【基金净值】SXN031(总)_吾执三零号私募证券投资基金_{YYYY-MM-DD}
     落库：fund_nav_real.WZ_SLH_MASTER（settings.NAV_REAL_WZ_SLH_MASTER）
@@ -325,6 +339,7 @@
     11:35  auto_import_dyyh_nav_mail
     11:40  auto_import_jlh_nav_mail
     14:10  auto_import_dyctayh_nav_mail（多元 CTA 一号 SXE021(总)；每个交易日；T-1）
+    14:30  auto_import_ylh_nav_mail（吾执一零号 SQL632(总)；T-1）
     11:50  auto_import_ctayh_nav_mail（CTA 一号 SNG191，wangkan【国信托管】净值邮件；T-1）
     12:00  auto_import_zxdw_nav_mail
     12:10  auto_import_dylx_nav_mail
