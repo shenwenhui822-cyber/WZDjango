@@ -4,7 +4,11 @@ from __future__ import annotations
 from typing import TypedDict
 
 from django.conf import settings
-from typing_extensions import NotRequired
+
+try:
+    from typing import NotRequired
+except ImportError:  # Python < 3.11
+    from typing_extensions import NotRequired
 
 
 class FundNavProduct(TypedDict):
