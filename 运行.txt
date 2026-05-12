@@ -247,6 +247,20 @@
     python manage.py import_ysh_nav_series --file "一三号净值.xlsx"
     关闭定时：环境变量 YSH_NAV_MAIL_SCHEDULER_ENABLED=0
 
+  --- 吾执零零号私募证券投资基金 SNP584（IMAP 用 .env：ALPHA_MAIL_USER / ALPHA_MAIL_PASS）---
+    主题格式（精确匹配）：资产净值公告_SNP584_吾执零零号私募证券投资基金_{YYYY-MM-DD}
+    附件可能多行（含 A/B：产品代码可能同为 SNP584 或存在 SNP584B）：仅导入产品代码为 SNP584 且产品名称完全为「吾执零零号私募证券投资基金」的主基金行
+    落库：fund_nav_real.WZ_LLH_MASTER（settings.NAV_REAL_WZ_LLH_MASTER）
+    约定：仅运行日为交易日时执行；默认 nav_date = 运行日上一交易日（T-1）；成功/失败发结果通知（ALPHA_NOTIFY_*）
+    附件落盘：Alphadata/llh_nav_mail/YYYYMMDD/
+    python manage.py auto_import_llh_nav_mail
+    python manage.py auto_import_llh_nav_mail --nav-date 2026-05-07
+    python manage.py auto_import_llh_nav_mail --force
+    本地多行序列（图二「产品基金净值数据」：首行标题、第二行表头；表头须含净值日期、产品代码、产品名称等）：
+    python manage.py import_llh_nav_series --file "零零号净值.xlsx"
+    亦可：python scripts/import_llh_nav_series.py --file "xxx.xlsx"
+    关闭定时：环境变量 LLH_NAV_MAIL_SCHEDULER_ENABLED=0
+
   --- 吾执九零号私募证券投资基金 SXR194（IMAP 用 .env：ALPHA_MAIL_USER / ALPHA_MAIL_PASS）---
     主题格式：资产净值公告_SXR194_吾执九零号私募证券投资基金_{YYYY-MM-DD}
     附件可能多行（含 A/B 份额）：仅将产品代码为 SXR194 的一行落入库
@@ -307,6 +321,7 @@
     09:33  auto_import_ghzq_settle_mail
     11:00  auto_import_slh_nav_mail
     11:10  auto_import_ysh_nav_mail
+    11:30  auto_import_llh_nav_mail（吾执零零号 SNP584；T-1；仅主基金全称行）
     11:35  auto_import_dyyh_nav_mail
     11:40  auto_import_jlh_nav_mail
     14:10  auto_import_dyctayh_nav_mail（多元 CTA 一号 SXE021(总)；每个交易日；T-1）

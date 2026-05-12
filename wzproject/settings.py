@@ -118,6 +118,8 @@ NAV_REAL_WZ_SLH_MASTER = "WZ_SLH_MASTER"
 NAV_REAL_WZ_DYLX_MASTER = "WZ_DYLX_MASTER"
 # 吾执一三号主代码 SAHK33：资产净值公告邮件 → fund_nav_real.WZ_YSH_MASTER（auto_import_ysh_nav_mail；同表多份额仅落库 SAHK33）
 NAV_REAL_WZ_YSH_MASTER = "WZ_YSH_MASTER"
+# 吾执零零号 SNP584：资产净值公告邮件 → fund_nav_real.WZ_LLH_MASTER（auto_import_llh_nav_mail；同表仅主基金全称 + SNP584）
+NAV_REAL_WZ_LLH_MASTER = "WZ_LLH_MASTER"
 # 吾执九零号 SXR194：资产净值公告邮件 → fund_nav_real.WZ_JLH_MASTER（auto_import_jlh_nav_mail；同表多份额仅落库 SXR194）
 NAV_REAL_WZ_JLH_MASTER = "WZ_JLH_MASTER"
 # 吾执 CTA 一号 SNG191：ALPHA_MAIL「净值表邮件…【国信托管】」zip/xlsx → fund_nav_real.WZ_CTAYH_MASTER（auto_import_ctayh_nav_mail）

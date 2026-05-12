@@ -5,7 +5,7 @@ import os
 import re
 from datetime import datetime
 from io import BytesIO
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 from django.utils import timezone
@@ -72,15 +72,33 @@ def _normalize_fund_nav_asset_code_cell(v: Any) -> str:
     return s.upper()
 
 
+def _fund_nav_exact_import_product_name(fund: FundNavProduct) -> str | None:
+    """配置了 nav_import_exact_product_name 时，仅导入产品名称列与该值完全一致的行。"""
+    raw = cast(dict[str, Any], fund).get("nav_import_exact_product_name")
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    return s or None
+
+
 def _row_matches_fund_asset_code(row: Any, col_map: dict[str, str], fund: FundNavProduct) -> bool:
     """无产品代码列时保持原样（首行即主表）；有列时只处理与 fund 配置一致的那一行（如多份额同表只落库主代码）。"""
     if "asset_code" not in col_map:
         return True
     raw_code = _normalize_fund_nav_asset_code_cell(row[col_map["asset_code"]])
     expected = _normalize_fund_nav_asset_code_cell(fund["asset_code"])
+    short = expected.replace("(总)", "").replace("（总）", "").strip()
+    exact_name = _fund_nav_exact_import_product_name(fund)
+    if exact_name:
+        if raw_code != expected:
+            return False
+        if "asset_name" not in col_map:
+            return False
+        if str(row[col_map["asset_name"]]).strip() != exact_name:
+            return False
+        return True
     if raw_code == expected:
         return True
-    short = expected.replace("(总)", "").replace("（总）", "").strip()
     return raw_code == short
 
 
@@ -156,17 +174,31 @@ def _fund_nav_doc_from_row(
         return None
     raw_code = _normalize_fund_nav_asset_code_cell(row[col_map["asset_code"]])
     expected = _normalize_fund_nav_asset_code_cell(fund["asset_code"])
-    if raw_code != expected:
-        short = (
-            expected.replace("(总)", "")
-            .replace("（总）", "")
-            .strip()
-        )
+    short = (
+        expected.replace("(总)", "")
+        .replace("（总）", "")
+        .strip()
+    )
+    exact_name = _fund_nav_exact_import_product_name(fund)
+    if exact_name:
+        if raw_code != expected:
+            raise ValueError(
+                f"资产代码 {raw_code} 与期望 {expected} 不一致（主基金行须与配置代码完全一致）"
+            )
+        if str(row[col_map["asset_name"]]).strip() != exact_name:
+            raise ValueError(
+                f"产品名称与要求不符（须为 {exact_name!r}，当前为 "
+                f"{str(row[col_map['asset_name']]).strip()!r}）"
+            )
+        code = expected
+    elif raw_code != expected:
         if raw_code != short:
             raise ValueError(
                 f"资产代码 {raw_code} 与期望 {expected}（或简称 {short}）不一致"
             )
-    code = expected
+        code = expected
+    else:
+        code = expected
 
     doc: dict[str, Any] = {
         "nav_date": nav_iso,
@@ -273,9 +305,11 @@ def parse_fund_nav_excel(
         row = r
         break
     if row is None:
-        raise ValueError(
-            f"未找到有效数据行（需产品代码为 {exp_code} 且净值日为 {exp}）"
-        )
+        msg = f"未找到有效数据行（需产品代码为 {exp_code} 且净值日为 {exp}）"
+        en = _fund_nav_exact_import_product_name(fund)
+        if en:
+            msg += f"，且产品名称须完全为 {en!r}（排除 A/B 子份额行）"
+        raise ValueError(msg)
 
     nav_iso = _parse_date_to_iso(row[col_map["nav_date"]])
     if not nav_iso:

@@ -4,12 +4,15 @@ from __future__ import annotations
 from typing import TypedDict
 
 from django.conf import settings
+from typing_extensions import NotRequired
 
 
 class FundNavProduct(TypedDict):
     product_key: str
     name_prefix: str
     asset_code: str
+    # 同表多行且主/子份额产品代码相同时：仅「产品名称」列与该值完全一致才导入（排除 A/B 行）
+    nav_import_exact_product_name: NotRequired[str]
 
 
 # 与净值表文件名/邮件主题一致：{name_prefix}_{asset_code}_基金每日净值表YYYY-MM-DD
@@ -56,8 +59,8 @@ def fund_nav_portal_sidebar_allowed_keys() -> frozenset[str]:
     return frozenset(f["product_key"] for f in fund_nav_portal_sidebar_products())
 
 
-# 门户/曲线等产品下拉展示顺序（约）：三零号 → 多元量选 → 二二号 → 博士一号 → 多元一号 → 泽鑫多维 → 一三号 → 九零号 → CTA一号 → 多元CTA一号。
-# 「量化精选一号/二号」「吾执零零号/零一号/一零号」尚无 NAV_REAL 配置项，待接入时在下列对应位置插入 FundNavProduct。
+# 门户/曲线等产品下拉展示顺序（约）：三零号 → 多元量选 → 二二号 → 博士一号 → 多元一号 → 泽鑫多维 → 一三号 → 零零号 → 九零号 → CTA一号 → 多元CTA一号。
+# 「量化精选一号/二号」「吾执零一号/一零号」等待接入时在下列对应位置插入 FundNavProduct。
 FUND_NAV_PRODUCTS: list[FundNavProduct] = [
     {
         "product_key": getattr(
@@ -107,6 +110,14 @@ FUND_NAV_PRODUCTS: list[FundNavProduct] = [
     },
     {
         "product_key": getattr(
+            settings, "NAV_REAL_WZ_LLH_MASTER", "WZ_LLH_MASTER"
+        ),
+        "name_prefix": "吾执零零号私募证券投资基金",
+        "asset_code": "SNP584",
+        "nav_import_exact_product_name": "吾执零零号私募证券投资基金",
+    },
+    {
+        "product_key": getattr(
             settings, "NAV_REAL_WZ_JLH_MASTER", "WZ_JLH_MASTER"
         ),
         "name_prefix": "吾执九零号私募证券投资基金",
@@ -138,6 +149,7 @@ def fund_nav_products_for_mail_import() -> list[FundNavProduct]:
             getattr(settings, "NAV_REAL_WZ_SLH_MASTER", "WZ_SLH_MASTER"),
             getattr(settings, "NAV_REAL_WZ_DYLX_MASTER", "WZ_DYLX_MASTER"),
             getattr(settings, "NAV_REAL_WZ_YSH_MASTER", "WZ_YSH_MASTER"),
+            getattr(settings, "NAV_REAL_WZ_LLH_MASTER", "WZ_LLH_MASTER"),
             getattr(settings, "NAV_REAL_WZ_JLH_MASTER", "WZ_JLH_MASTER"),
             getattr(settings, "NAV_REAL_WZ_CTAYH_MASTER", "WZ_CTAYH_MASTER"),
             getattr(settings, "NAV_REAL_WZ_DYCTAYH_MASTER", "WZ_DYCTAYH_MASTER"),
