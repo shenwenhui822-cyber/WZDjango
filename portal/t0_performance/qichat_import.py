@@ -24,6 +24,20 @@ COL_PROFIT = "交易盈利"
 COL_ANN = "年化收益率"
 COL_TURNOVER = "换手率"
 
+# CSV 简称与门户/历史库中全称一致（唯一键 product_name）
+_QICHAT_PRODUCT_NAME_ALIASES: dict[str, str] = {
+    "吾执多元量选": "东吴吾执多元量选",
+    "吾执多元一号": "东吴吾执多元一号",
+    "吾执量选二号": "东方吾执量选二号",
+}
+
+
+def _normalize_qichat_product_name(raw: str) -> str:
+    s = (raw or "").strip()
+    if not s:
+        return s
+    return _QICHAT_PRODUCT_NAME_ALIASES.get(s, s)
+
 
 def _pct_cn_to_ratio(raw: Any) -> float | None:
     """「-6.54%」「109.61%」→ -0.0654 / 1.0961。"""
@@ -57,17 +71,19 @@ def parse_qichat_csv(path: Path) -> list[dict[str, Any]]:
     if df.empty:
         return []
     df.columns = [str(c).strip() for c in df.columns]
-    need = [COL_DATE, COL_PRODUCT, COL_TOTAL_AMT, COL_ASSETS, COL_PROFIT, COL_ANN, COL_TURNOVER]
+    need = [COL_DATE, COL_PRODUCT, COL_TOTAL_AMT, COL_ASSETS, COL_PROFIT, COL_ANN]
     for c in need:
         if c not in df.columns:
             raise ValueError(f"{path.name} 缺少列「{c}」，当前列={list(df.columns)}")
+    has_turnover = COL_TURNOVER in df.columns
 
     out: list[dict[str, Any]] = []
     for _, sr in df.iterrows():
         td = trade_date_to_iso(sr.get(COL_DATE))
-        name = str(sr.get(COL_PRODUCT) or "").strip()
+        name = _normalize_qichat_product_name(str(sr.get(COL_PRODUCT) or ""))
         if not td or not name:
             continue
+        turn_raw = sr.get(COL_TURNOVER) if has_turnover else None
         out.append(
             {
                 "trade_date": td,
@@ -76,7 +92,7 @@ def parse_qichat_csv(path: Path) -> list[dict[str, Any]]:
                 "entrusted_assets": bson_safe_value(sr.get(COL_ASSETS)),
                 "trading_profit": bson_safe_value(sr.get(COL_PROFIT)),
                 "annualized_return": _pct_cn_to_ratio(sr.get(COL_ANN)),
-                "turnover_ratio": _pct_cn_to_ratio(sr.get(COL_TURNOVER)),
+                "turnover_ratio": _pct_cn_to_ratio(turn_raw),
             }
         )
     return out
