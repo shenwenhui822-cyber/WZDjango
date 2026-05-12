@@ -122,6 +122,8 @@ NAV_REAL_WZ_YSH_MASTER = "WZ_YSH_MASTER"
 NAV_REAL_WZ_JLH_MASTER = "WZ_JLH_MASTER"
 # 吾执 CTA 一号 SNG191：ALPHA_MAIL「净值表邮件…【国信托管】」zip/xlsx → fund_nav_real.WZ_CTAYH_MASTER（auto_import_ctayh_nav_mail）
 NAV_REAL_WZ_CTAYH_MASTER = "WZ_CTAYH_MASTER"
+# 吾执多元 CTA 一号 SXE021(总)：wangkan「【基金净值】…」→ fund_nav_real.WZ_DYCTAYH_MASTER（auto_import_dyctayh_nav_mail，每个交易日 T-1）
+NAV_REAL_WZ_DYCTAYH_MASTER = "WZ_DYCTAYH_MASTER"
 # 华泰证券 HT1 普通账单资金情况（吾执博士一号 666810103835）→ auto_import_htzq_ht1_capital_mail
 HTZQ_666810103835_SETTLE_DB = "fstock_settle_real"
 HTZQ_666810103835_SETTLE_COLLECTION = "HTZQ_666810103835"
@@ -168,6 +170,8 @@ ZXDW_NAV_IMPORT_DIR = BASE_DIR / "WZ_ZXDW_MASTER"
 ZXDW_NAV_MAIL_ATTACH_DIR = BASE_DIR / "downloaded_attachments_zxdw_nav"
 # CTA 一号净值邮件附件落盘目录（主题见 auto_import_ctayh_nav_mail）
 CTAYH_NAV_MAIL_ATTACH_DIR = BASE_DIR / "downloaded_attachments_ctayh_nav"
+# 多元 CTA 一号净值邮件附件落盘目录（主题见 auto_import_dyctayh_nav_mail）
+DYCTAYH_NAV_MAIL_ATTACH_DIR = BASE_DIR / "downloaded_attachments_dyctayh_nav"
 # ZXDW 邮件导入：仅写入这些产品代码（逗号分隔；默认 STZ051，跳过 TZ051A/TZ051B 等列）。可用环境变量覆盖。
 ZXDW_NAV_MAIL_IMPORT_ASSET_CODES = os.getenv("ZXDW_NAV_MAIL_IMPORT_ASSET_CODES", "STZ051")
 
