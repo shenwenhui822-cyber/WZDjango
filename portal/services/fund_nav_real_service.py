@@ -41,6 +41,7 @@ _HEADER_KEYS = {
     "实收资本 (元)": "paid_in_capital",
     "总资产(元)": "total_assets",
     "总资产 (元)": "total_assets",
+    "总资产净值": "net_asset_value",
     "持有份额": "shares_held",
     "参考市值(元)": "reference_market_value",
     "参考市值 (元)": "reference_market_value",
@@ -139,6 +140,10 @@ def _parse_date_to_iso(v: Any) -> str | None:
         except Exception:
             pass
     s = str(v).strip()
+    m = re.match(r"^(\d{4})年(\d{1,2})月(\d{1,2})日", s)
+    if m:
+        y, mo, d = m.groups()
+        return f"{int(y):04d}-{int(mo):02d}-{int(d):02d}"
     if len(s) >= 10:
         s = s[:10]
     ts = pd.to_datetime(s, errors="coerce")

@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import email
 import imaplib
-from datetime import date
+import re
+from datetime import date, timedelta
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
+from typing import Sequence
 
 
 def decode_mime_header(value: str) -> str:
@@ -119,3 +121,83 @@ def find_latest_mail_id_by_exact_subject(
         if subject == want:
             return mail_id
     return None
+
+
+def _imap_en_month_date(d: date) -> str:
+    months = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
+    return f"{d.day}-{months[d.month - 1]}-{d.year}"
+
+
+def fetch_mail_subject_decoded(mailbox: imaplib.IMAP4_SSL, mail_id: str) -> str:
+    status, msg_data = mailbox.fetch(mail_id, "(BODY[HEADER.FIELDS (SUBJECT)])")
+    if status != "OK" or not msg_data or not msg_data[0]:
+        return ""
+    chunk = msg_data[0]
+    if isinstance(chunk, tuple) and len(chunk) >= 2 and isinstance(
+        chunk[1], (bytes, bytearray)
+    ):
+        header_b = chunk[1]
+    else:
+        return ""
+    msg = email.message_from_bytes(header_b)
+    return decode_mime_header(msg.get("Subject", "")).strip()
+
+
+def mail_ids_internal_date_equals(mailbox: imaplib.IMAP4_SSL, target: date) -> list[str]:
+    """INTERNALDATE 落在 target 日历日的邮件 id（target 常为 nav_date，与交易日净值日对齐）。"""
+    imap_d = _imap_en_month_date(target)
+    status, messages = mailbox.search(None, f"ON {imap_d}")
+    if status == "OK" and messages and messages[0]:
+        return [raw_id.decode() for raw_id in messages[0].split()]
+
+    since_d = target - timedelta(days=1)
+    status, messages = mailbox.search(None, f"SINCE {_imap_en_month_date(since_d)}")
+    if status != "OK" or not messages or not messages[0]:
+        return []
+    matched: list[str] = []
+    for mail_id in (raw_id.decode() for raw_id in messages[0].split()):
+        st2, msg_data = mailbox.fetch(mail_id, "(INTERNALDATE)")
+        if st2 != "OK" or not msg_data or not msg_data[0]:
+            continue
+        first = msg_data[0]
+        if isinstance(first, tuple) and first[0]:
+            raw = (
+                first[0].decode(errors="ignore")
+                if isinstance(first[0], (bytes, bytearray))
+                else str(first[0])
+            )
+        elif isinstance(first, bytes):
+            raw = first.decode(errors="ignore")
+        else:
+            continue
+        m = re.search(r'INTERNALDATE "([^"]+)"', raw)
+        if not m:
+            continue
+        try:
+            dt = parsedate_to_datetime(m.group(1))
+            if dt.date() == target:
+                matched.append(mail_id)
+        except (TypeError, ValueError, OverflowError):
+            continue
+    return matched
+
+
+def list_mail_ids_on_internal_calendar_day_matching_subjects(
+    mailbox: imaplib.IMAP4_SSL,
+    internal_day: date,
+    allowed_subjects: Sequence[str],
+) -> list[str]:
+    """指定日历日 INTERNALDATE 且解码后 Subject 与 allowed_subjects 中任一条完全相等（去重保序）。"""
+    allowed = frozenset((s or "").strip() for s in allowed_subjects if (s or "").strip())
+    if not allowed:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for mid in mail_ids_internal_date_equals(mailbox, internal_day):
+        if mid in seen:
+            continue
+        subj = fetch_mail_subject_decoded(mailbox, mid)
+        if subj in allowed:
+            out.append(mid)
+            seen.add(mid)
+    return out

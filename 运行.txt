@@ -223,6 +223,25 @@
     亦可：python scripts/import_ylh_nav_series.py --file "xxx.xlsx"
     关闭定时：环境变量 YLH_NAV_MAIL_SCHEDULER_ENABLED=0
 
+  --- 吾执零一号私募证券投资基金 STZ049（IMAP 用 .env：ALPHA_MAIL_USER / ALPHA_MAIL_PASS）---
+    主题格式（须与邮箱完全一致，末尾 8 位为净值日 YYYYMMDD）：
+      【净值表】上海吾执投资管理有限公司管理人旗下「吾执安澜6号私募证券投资基金-STZ056」等22个产品净值表发送20260511
+      （内层为中文弯引号 \u201c \u201d，与 portal.services.wz_lyh_fund_nav_mail_service 中常量一致）
+    附件图一：集合计划每日净值表（.xls/.xlsx）；表头含日期、产品代码、产品名称、总资产净值、单位净值、累计单位净值等；
+      同表多产品：仅导入产品代码 STZ049 且产品名称完全为「吾执零一号私募证券投资基金」的一行。
+    落库：fund_nav_real.WZ_LYH_MASTER（settings.NAV_REAL_WZ_LYH_MASTER）
+    约定：仅运行日为交易日时执行；默认 nav_date = 运行日上一交易日（T-1）；成功/失败发结果通知（ALPHA_NOTIFY_*）
+    IMAP：先取「与 nav_date（默认运行日上一交易日）同一日历日」的 INTERNALDATE 且主题（弯引号/半角引号两变体）完全匹配的全部邮件，自新向旧逐封、逐附件尝试解析；
+      若该日无命中则回退为全箱按主题精确匹配的最新一封。
+    附件落盘：Alphadata/wz_lyh_nav_mail/YYYYMMDD/
+    python manage.py auto_import_wz_lyh_nav_mail
+    python manage.py auto_import_wz_lyh_nav_mail --nav-date 2026-05-11
+    python manage.py auto_import_wz_lyh_nav_mail --force
+    本地多行序列（图二「产品基金净值数据」：首行标题、第二行表头；表头须含净值日期、产品代码、产品名称等，同 import_dylx_nav_series）：
+    python manage.py import_wz_lyh_nav_series --file "零一号净值.xlsx"
+    亦可：python scripts/import_wz_lyh_nav_series.py --file "xxx.xlsx"
+    关闭定时：环境变量 WZ_LYH_NAV_MAIL_SCHEDULER_ENABLED=0
+
   --- 吾执三零号私募证券投资基金 SXN031(总)（IMAP 用 .env：ALPHA_MAIL_USER / ALPHA_MAIL_PASS）---
     主题格式：【基金净值】SXN031(总)_吾执三零号私募证券投资基金_{YYYY-MM-DD}
     落库：fund_nav_real.WZ_SLH_MASTER（settings.NAV_REAL_WZ_SLH_MASTER）
@@ -340,6 +359,7 @@
     11:40  auto_import_jlh_nav_mail
     14:10  auto_import_dyctayh_nav_mail（多元 CTA 一号 SXE021(总)；每个交易日；T-1）
     14:30  auto_import_ylh_nav_mail（吾执一零号 SQL632(总)；T-1）
+    17:10  auto_import_wz_lyh_nav_mail（吾执零一号 STZ049；nav_date=T-1；IMAP 筛 INTERNALDATE=nav_date 当日；主题 YYYYMMDD=nav_date）
     11:50  auto_import_ctayh_nav_mail（CTA 一号 SNG191，wangkan【国信托管】净值邮件；T-1）
     12:00  auto_import_zxdw_nav_mail
     12:10  auto_import_dylx_nav_mail

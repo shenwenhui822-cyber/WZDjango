@@ -59,8 +59,8 @@ def fund_nav_portal_sidebar_allowed_keys() -> frozenset[str]:
     return frozenset(f["product_key"] for f in fund_nav_portal_sidebar_products())
 
 
-# 门户/曲线等产品下拉展示顺序（约）：三零号 → 多元量选 → 二二号 → 博士一号 → 多元一号 → 一零号 → 泽鑫多维 → 一三号 → 零零号 → 九零号 → CTA一号 → 多元CTA一号。
-# 「量化精选一号/二号」「吾执零一号」等待接入时在下列对应位置插入 FundNavProduct。
+# 门户/曲线等产品下拉展示顺序（约）：三零号 → 多元量选 → 二二号 → 博士一号 → 多元一号 → 一零号 → 泽鑫多维 → 一三号 → 零零号 → 九零号 → 零一号 → CTA一号 → 多元CTA一号。
+# 「量化精选一号/二号」等待接入时在下列对应位置插入 FundNavProduct。
 FUND_NAV_PRODUCTS: list[FundNavProduct] = [
     {
         "product_key": getattr(
@@ -100,13 +100,6 @@ FUND_NAV_PRODUCTS: list[FundNavProduct] = [
         "name_prefix": "吾执多元一号私募证券投资基金",
         "asset_code": "SAJM63(总)",
     },
-    {
-        "product_key": getattr(
-            settings, "NAV_REAL_WZ_YLH_MASTER", "WZ_YLH_MASTER"
-        ),
-        "name_prefix": "吾执一零号私募证券投资基金",
-        "asset_code": "SQL632(总)",
-    },
     *_build_zxdw_fund_nav_products(),
     {
         "product_key": getattr(
@@ -114,6 +107,20 @@ FUND_NAV_PRODUCTS: list[FundNavProduct] = [
         ),
         "name_prefix": "吾执一三号私募证券投资基金",
         "asset_code": "SAHK33",
+    },
+    {
+        "product_key": getattr(
+            settings, "NAV_REAL_WZ_DYCTAYH_MASTER", "WZ_DYCTAYH_MASTER"
+        ),
+        "name_prefix": "吾执多元CTA一号私募证券投资基金",
+        "asset_code": "SXE021(总)",
+    },
+    {
+        "product_key": getattr(
+            settings, "NAV_REAL_WZ_JLH_MASTER", "WZ_JLH_MASTER"
+        ),
+        "name_prefix": "吾执九零号私募证券投资基金",
+        "asset_code": "SXR194",
     },
     {
         "product_key": getattr(
@@ -125,10 +132,18 @@ FUND_NAV_PRODUCTS: list[FundNavProduct] = [
     },
     {
         "product_key": getattr(
-            settings, "NAV_REAL_WZ_JLH_MASTER", "WZ_JLH_MASTER"
+            settings, "NAV_REAL_WZ_LYH_MASTER", "WZ_LYH_MASTER"
         ),
-        "name_prefix": "吾执九零号私募证券投资基金",
-        "asset_code": "SXR194",
+        "name_prefix": "吾执零一号私募证券投资基金",
+        "asset_code": "STZ049",
+        "nav_import_exact_product_name": "吾执零一号私募证券投资基金",
+    },
+    {
+        "product_key": getattr(
+            settings, "NAV_REAL_WZ_YLH_MASTER", "WZ_YLH_MASTER"
+        ),
+        "name_prefix": "吾执一零号私募证券投资基金",
+        "asset_code": "SQL632(总)",
     },
     {
         "product_key": getattr(
@@ -136,13 +151,6 @@ FUND_NAV_PRODUCTS: list[FundNavProduct] = [
         ),
         "name_prefix": "吾执CTA一号私募证券投资基金",
         "asset_code": "SNG191",
-    },
-    {
-        "product_key": getattr(
-            settings, "NAV_REAL_WZ_DYCTAYH_MASTER", "WZ_DYCTAYH_MASTER"
-        ),
-        "name_prefix": "吾执多元CTA一号私募证券投资基金",
-        "asset_code": "SXE021(总)",
     },
 ]
 
@@ -158,6 +166,7 @@ def fund_nav_products_for_mail_import() -> list[FundNavProduct]:
             getattr(settings, "NAV_REAL_WZ_DYLX_MASTER", "WZ_DYLX_MASTER"),
             getattr(settings, "NAV_REAL_WZ_YSH_MASTER", "WZ_YSH_MASTER"),
             getattr(settings, "NAV_REAL_WZ_LLH_MASTER", "WZ_LLH_MASTER"),
+            getattr(settings, "NAV_REAL_WZ_LYH_MASTER", "WZ_LYH_MASTER"),
             getattr(settings, "NAV_REAL_WZ_JLH_MASTER", "WZ_JLH_MASTER"),
             getattr(settings, "NAV_REAL_WZ_CTAYH_MASTER", "WZ_CTAYH_MASTER"),
             getattr(settings, "NAV_REAL_WZ_DYCTAYH_MASTER", "WZ_DYCTAYH_MASTER"),
