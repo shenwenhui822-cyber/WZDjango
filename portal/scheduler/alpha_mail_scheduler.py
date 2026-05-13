@@ -1,23 +1,228 @@
 from __future__ import annotations
 
+import io
 import os
 import threading
 import time
+import traceback
 from datetime import datetime
 
+from django.conf import settings
 from django.core.management import call_command
 from django.utils import timezone
 
+from portal.db.mongo import bson_safe_value, get_mail_logs_collection
+from portal.services.mail_import_common import send_alpha_notify_result_email
 from portal.services.trade_calendar_service import (
     is_first_trading_day_of_iso_week,
     is_trade_date_iso,
 )
+
+_mail_logs_index_lock = threading.Lock()
+_mail_logs_indexes_ready = False
+
+
+def _scheduler_mail_log_enabled() -> bool:
+    return os.getenv("SCHEDULER_MAIL_LOG_TO_MONGO_ENABLED", "1").strip() not in (
+        "0",
+        "false",
+        "False",
+    )
+
+
+def _scheduler_result_alpha_notify_enabled() -> bool:
+    return os.getenv("SCHEDULER_RESULT_ALPHA_NOTIFY_ENABLED", "1").strip() not in (
+        "0",
+        "false",
+        "False",
+    )
+
+
+def _scheduler_mail_log_max_chars() -> int:
+    try:
+        return max(10_000, int(getattr(settings, "SCHEDULER_MAIL_LOG_MAX_CHARS", 400_000)))
+    except (TypeError, ValueError):
+        return 400_000
+
+
+def _scheduler_result_email_body_max_chars() -> int:
+    try:
+        return max(5_000, int(getattr(settings, "SCHEDULER_RESULT_EMAIL_BODY_MAX_CHARS", 100_000)))
+    except (TypeError, ValueError):
+        return 100_000
+
+
+def _truncate_log_text(text: str, max_len: int) -> str:
+    if len(text) <= max_len:
+        return text
+    head = max_len // 2
+    tail = max_len - head - 32
+    return text[:head] + "\n...[中间已省略]...\n" + text[-tail:]
+
+
+def _kwargs_bson_safe(extra_kwargs: dict | None, *, force: bool) -> dict[str, object]:
+    merged = dict(extra_kwargs or {})
+    if force:
+        merged["force"] = True
+    out: dict[str, object] = {}
+    for k, v in merged.items():
+        key = str(k)
+        try:
+            out[key] = bson_safe_value(v)
+        except Exception:
+            out[key] = repr(v)
+    return out
+
+
+def _ensure_mail_logs_indexes(coll) -> None:
+    global _mail_logs_indexes_ready
+    if _mail_logs_indexes_ready:
+        return
+    with _mail_logs_index_lock:
+        if _mail_logs_indexes_ready:
+            return
+        try:
+            import pymongo
+
+            coll.create_index(
+                [
+                    ("log_type", pymongo.ASCENDING),
+                    ("command_name", pymongo.ASCENDING),
+                    ("finished_at", pymongo.DESCENDING),
+                ],
+                name="scheduler_mail_logs_by_cmd_time",
+                background=True,
+            )
+        except Exception:
+            pass
+        _mail_logs_indexes_ready = True
+
+
+def _persist_mail_scheduler_run(
+    *,
+    command_name: str,
+    ok: bool,
+    started_at,
+    finished_at,
+    stdout_text: str,
+    stderr_text: str,
+    extra_kwargs: dict | None,
+    force: bool,
+    exc: BaseException | None = None,
+) -> None:
+    if not _scheduler_mail_log_enabled():
+        return
+    max_len = _scheduler_mail_log_max_chars()
+    stdout_text = _truncate_log_text(stdout_text or "", max_len)
+    stderr_text = _truncate_log_text(stderr_text or "", max_len)
+    kwargs_log = _kwargs_bson_safe(extra_kwargs, force=force)
+    try:
+        coll = get_mail_logs_collection()
+        _ensure_mail_logs_indexes(coll)
+        if ok:
+            coll.insert_one(
+                {
+                    "log_type": "success",
+                    "command_name": command_name,
+                    "started_at": started_at,
+                    "finished_at": finished_at,
+                    "stdout": stdout_text,
+                    "stderr": stderr_text,
+                    "kwargs": kwargs_log,
+                }
+            )
+        else:
+            tb = ""
+            if exc is not None:
+                tb = traceback.format_exc()
+                tb = _truncate_log_text(tb, max_len)
+            coll.insert_one(
+                {
+                    "log_type": "failure",
+                    "command_name": command_name,
+                    "started_at": started_at,
+                    "finished_at": finished_at,
+                    "stdout": stdout_text,
+                    "stderr": stderr_text,
+                    "kwargs": kwargs_log,
+                    "error_type": type(exc).__name__ if exc else "Unknown",
+                    "error_message": str(exc) if exc else "",
+                    "traceback": tb,
+                }
+            )
+    except Exception as log_exc:
+        ts = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
+        print(
+            f"[alpha-scheduler] [{ts}] 写入 mail_logs 运行记录失败（不影响任务）: {log_exc}"
+        )
+
+
+def _send_scheduler_result_email(
+    *,
+    ok: bool,
+    command_name: str,
+    started_at,
+    finished_at,
+    stdout_text: str,
+    stderr_text: str,
+    exc: BaseException | None = None,
+) -> None:
+    if not _scheduler_result_alpha_notify_enabled():
+        return
+    max_body = _scheduler_result_email_body_max_chars()
+    st = timezone.localtime(started_at).strftime("%Y-%m-%d %H:%M:%S")
+    et = timezone.localtime(finished_at).strftime("%Y-%m-%d %H:%M:%S")
+    parts = [
+        "alpha_mail_scheduler 定时任务汇总（完整日志见 mail_logs.MAIL_LOGS）",
+        "",
+        f"命令: {command_name}",
+        f"结果: {'成功' if ok else '失败'}",
+        f"开始(本地): {st}",
+        f"结束(本地): {et}",
+        "",
+        "--- stdout ---",
+        stdout_text or "(空)",
+        "",
+        "--- stderr ---",
+        stderr_text or "(空)",
+    ]
+    if not ok and exc is not None:
+        parts.extend(["", "--- exception ---", f"{type(exc).__name__}: {exc}"])
+    body = _truncate_log_text("\n".join(parts), max_body)
+    tag = "OK" if ok else "FAILED"
+    mail_subject = (
+        f"[alpha-scheduler][{tag}] {command_name} "
+        f"{timezone.localtime(finished_at).strftime('%Y-%m-%d %H:%M')}"
+    )
+
+    def _log_out(s: str) -> None:
+        ts = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[alpha-scheduler] [{ts}] {s}")
+
+    def _log_warn(s: str) -> None:
+        ts = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[alpha-scheduler] [{ts}] {s}")
+
+    try:
+        send_alpha_notify_result_email(
+            mail_subject=mail_subject,
+            body=body,
+            log_stdout=_log_out,
+            log_stderr_warn=_log_warn,
+        )
+    except Exception as notify_exc:
+        ts = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
+        print(
+            f"[alpha-scheduler] [{ts}] 调度汇总邮件发送异常（不影响任务）: {notify_exc}"
+        )
+
 
 _scheduler_started = False
 
 # (HH:MM, management command name, kwargs)
 # 邮件类任务在各自命令内校验「查询日～运行日」闭区间交易日个数 ≤ MAIL_JOB_MAX_TRADING_DAY_SPAN（默认 3）。
 # auto_import_qichat_t0_mail：IMAP 动态主题拉取上周 CSV + 入库（仅调度：每周首个交易日，见 _should_skip_scheduled_job）。
+# 每次定时任务结束：stdout/stderr 写入 mail_logs.MAIL_LOGS（log_type=success / failure 每次执行各插入一条）；成功/失败均发 ALPHA_NOTIFY_* 汇总邮件（可配）。
 _DEFAULT_SCHEDULES: list[tuple[str, str, dict]] = [
     ("09:00", "auto_import_htzq_ht1_capital_mail", {}),
     ("09:31", "auto_import_fund_nav_mail", {}),
@@ -265,13 +470,62 @@ def _run_job(command_name: str, *, force: bool, extra_kwargs: dict | None = None
     kwargs = dict(extra_kwargs or {})
     if force:
         kwargs["force"] = True
+    started_at = timezone.now()
+    out_buf = io.StringIO()
+    err_buf = io.StringIO()
     try:
-        call_command(command_name, **kwargs)
+        call_command(command_name, stdout=out_buf, stderr=err_buf, **kwargs)
         ts2 = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
         print(f"[alpha-scheduler] [{ts2}] {command_name} 本次执行结束。")
+        finished_at = timezone.now()
+        out_text = out_buf.getvalue()
+        err_text = err_buf.getvalue()
+        _persist_mail_scheduler_run(
+            command_name=command_name,
+            ok=True,
+            started_at=started_at,
+            finished_at=finished_at,
+            stdout_text=out_text,
+            stderr_text=err_text,
+            extra_kwargs=extra_kwargs,
+            force=force,
+            exc=None,
+        )
+        _send_scheduler_result_email(
+            ok=True,
+            command_name=command_name,
+            started_at=started_at,
+            finished_at=finished_at,
+            stdout_text=out_text,
+            stderr_text=err_text,
+            exc=None,
+        )
     except Exception as exc:
         ts2 = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
         print(f"[alpha-scheduler] [{ts2}] {command_name} 执行失败: {exc}")
+        finished_at = timezone.now()
+        out_text = out_buf.getvalue()
+        err_text = err_buf.getvalue()
+        _persist_mail_scheduler_run(
+            command_name=command_name,
+            ok=False,
+            started_at=started_at,
+            finished_at=finished_at,
+            stdout_text=out_text,
+            stderr_text=err_text,
+            extra_kwargs=extra_kwargs,
+            force=force,
+            exc=exc,
+        )
+        _send_scheduler_result_email(
+            ok=False,
+            command_name=command_name,
+            started_at=started_at,
+            finished_at=finished_at,
+            stdout_text=out_text,
+            stderr_text=err_text,
+            exc=exc,
+        )
 
 
 def _dispatch_job_async(command_name: str, *, force: bool, extra_kwargs: dict | None = None) -> None:

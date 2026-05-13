@@ -167,7 +167,10 @@ FUND_NAV_PRODUCTS: list[FundNavProduct] = [
 
 
 def fund_nav_products_for_mail_import() -> list[FundNavProduct]:
-    """博士一号等「基金每日净值表」邮件任务使用；排除专用主题邮件（STZ053、多元一号、三零号、多元量选等）。"""
+    """
+    「基金每日净值表」格式、且已在 FUND_NAV_PRODUCTS 中但未拆到专用邮件导入命令的产品列表。
+    auto_import_fund_nav_mail 已固定仅导入博士一号主份额（NAV_REAL_WZ_BSYH_MASTER），不再使用本函数。
+    """
     skip = frozenset(
         {
             getattr(settings, "NAV_REAL_WZ_EEH_MASTER", "WZ_EEH_MASTER"),

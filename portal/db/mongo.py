@@ -77,6 +77,14 @@ def get_rq_bench_collection() -> Collection:
     return db[settings.MONGODB_RQ_BENCH_COLLECTION]
 
 
+def get_mail_logs_collection() -> Collection:
+    """定时任务运行日志：{MONGODB_MAIL_LOGS_DB}.{MONGODB_MAIL_LOGS_COLLECTION}（默认 mail_logs.MAIL_LOGS）。"""
+    client = get_mongo_client()
+    db_name = getattr(settings, "MONGODB_MAIL_LOGS_DB", "mail_logs")
+    coll_name = getattr(settings, "MONGODB_MAIL_LOGS_COLLECTION", "MAIL_LOGS")
+    return client[db_name][coll_name]
+
+
 def get_wz_bsyh_htqh_capital_collection() -> Collection:
     """华泰 HT1 普通账单「资金情况」快照：fstock_settle_real.HTZQ_666810103835。"""
     db_name = getattr(

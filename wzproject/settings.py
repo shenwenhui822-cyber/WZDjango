@@ -106,6 +106,14 @@ MONGODB_DB_NAME = "alpha_product"
 MONGODB_COLLECTION_NAME = "alpha_sim_nav"
 # 博士一号真实净值：独立库 fund_nav_real；集合名 = 下方逻辑产品编码
 MONGODB_FUND_NAV_REAL_DB = "fund_nav_real"
+# alpha_mail_scheduler：每次定时任务结束后写入 mail_logs.MAIL_LOGS（每次成功/失败各插入一条历史），并按 ALPHA_NOTIFY_* 发送汇总邮件（成功/失败均发，可配关闭）
+MONGODB_MAIL_LOGS_DB = os.getenv("MONGODB_MAIL_LOGS_DB", "mail_logs")
+MONGODB_MAIL_LOGS_COLLECTION = os.getenv("MONGODB_MAIL_LOGS_COLLECTION", "MAIL_LOGS")
+SCHEDULER_MAIL_LOG_MAX_CHARS = int(os.getenv("SCHEDULER_MAIL_LOG_MAX_CHARS", "400000"))
+# 调度汇总邮件正文上限（Mongo 中可存更长日志）；关闭邮件设 SCHEDULER_RESULT_ALPHA_NOTIFY_ENABLED=0
+SCHEDULER_RESULT_EMAIL_BODY_MAX_CHARS = int(
+    os.getenv("SCHEDULER_RESULT_EMAIL_BODY_MAX_CHARS", "100000")
+)
 NAV_REAL_WZ_BSYH_MASTER = "WZ_BSYH_MASTER"
 NAV_REAL_WZ_BSYH_B = "WZ_BSYH_B"
 # 吾执二二号 STZ053：fareport 邮件「净值表」附件竖表 → fund_nav_real.WZ_EEH_MASTER（auto_import_stz053_nav_mail）

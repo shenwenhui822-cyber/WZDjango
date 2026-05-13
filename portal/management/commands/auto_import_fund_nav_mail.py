@@ -1,10 +1,12 @@
 """
-T+1 早晨拉取「博士一号」真实净值邮件中的 Excel 附件（.xlsx / .xls），写入 MongoDB：fund_nav_real.WZ_BSYH_MASTER / fund_nav_real.WZ_BSYH_B。
+T+1 早晨拉取「博士一号主份额」真实净值邮件中的 Excel 附件（.xlsx / .xls），仅写入 MongoDB：fund_nav_real.WZ_BSYH_MASTER。
 
 业务约定：净值表在估值日 T 的 T+1 日约 6:30 到达；本任务在运行日 9:30 执行（见 alpha_mail_scheduler）。
 仅当「运行日」为交易日时才执行；非交易日直接退出且不发送结果邮件。
 目标净值日 nav_date：默认为「运行日」之前最近一个交易日（遇连续非交易日则继续往前查找）；
 手工指定 --nav-date 时仍以该日为表格校验日；表格内「日期」须与 nav_date 一致。
+
+博士一号 B 类、泽鑫多维等请使用各自专用管理命令，本命令不再查询。
 
 用法：
   python manage.py auto_import_fund_nav_mail
@@ -24,8 +26,9 @@ from django.utils import timezone
 
 from portal.config.mail_imap import resolve_imap_credentials
 from portal.data.fund_nav_real_config import (
+    FUND_NAV_PRODUCTS,
+    FundNavProduct,
     build_fund_nav_mail_subject,
-    fund_nav_products_for_mail_import,
 )
 from portal.services.fund_nav_real_service import parse_fund_nav_excel, upsert_fund_nav_doc
 from portal.services.imap_common import find_latest_mail_id_by_exact_subject
@@ -42,11 +45,21 @@ from portal.services.trade_calendar_service import (
 )
 
 
+def _bsyh_master_fund_for_mail() -> FundNavProduct:
+    """本命令仅导入博士一号主份额（settings.NAV_REAL_WZ_BSYH_MASTER）。"""
+    key = getattr(settings, "NAV_REAL_WZ_BSYH_MASTER", "WZ_BSYH_MASTER")
+    for f in FUND_NAV_PRODUCTS:
+        if f["product_key"] == key:
+            return f
+    raise RuntimeError(
+        f"FUND_NAV_PRODUCTS 中未找到 product_key={key!r}，无法执行 auto_import_fund_nav_mail。"
+    )
+
+
 class Command(BaseCommand):
     help = (
-        "仅运行日为交易日时执行：抓取博士一号净值邮件 Excel（xlsx/xls）并写入 "
-        "fund_nav_real.WZ_BSYH_MASTER / fund_nav_real.WZ_BSYH_B；"
-        "nav_date 默认为运行日之前最近一个交易日。"
+        "仅运行日为交易日时执行：抓取博士一号主份额净值邮件 Excel（xlsx/xls）并仅写入 "
+        "fund_nav_real.WZ_BSYH_MASTER；nav_date 默认为运行日之前最近一个交易日。"
     )
 
     def add_arguments(self, parser):
@@ -82,7 +95,7 @@ class Command(BaseCommand):
         fail_lines = report.get("failed_lines") or []
         body = "\n".join(
             [
-                "博士一号真实净值（fund_nav_real / WZ_BSYH_MASTER、WZ_BSYH_B）自动导入结果",
+                "博士一号主份额真实净值（fund_nav_real / WZ_BSYH_MASTER）自动导入结果",
                 "",
                 f"状态: {status}",
                 f"开始时间: {timezone.localtime(started_at).strftime('%Y-%m-%d %H:%M:%S')}",
@@ -202,7 +215,7 @@ class Command(BaseCommand):
                     email_user, email_pass, imap_server, imap_port
                 )
 
-                for fund in fund_nav_products_for_mail_import():
+                for fund in (_bsyh_master_fund_for_mail(),):
                     subj = build_fund_nav_mail_subject(fund, nav_iso)
                     self.stdout.write(f"主题: {subj}")
                     mail_id = find_latest_mail_id_by_exact_subject(mailbox, subj)
@@ -270,7 +283,7 @@ class Command(BaseCommand):
             report["ok_count"] = report_ok
             report["success_lines"] = success_lines
             report["failed_lines"] = report_fail
-            n_funds = len(fund_nav_products_for_mail_import())
+            n_funds = 1
             if report_ok == n_funds and not report_fail:
                 report["status"] = "SUCCESS"
                 report["message"] = f"完成，成功 {report_ok} 条。"
