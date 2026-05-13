@@ -2,7 +2,7 @@
 泽鑫多维等净值 Excel（xlsx / xls）解析并写入 fund_nav_real.{WZ_ZXDW_MASTER|WZ_ZXDW_A|WZ_ZXDW_B|WZ_ZXDW_C}。
 
 支持表头版式：
-- 竖表：产品名称、产品代码、净值日期、单位净值、累计净值；可选 基金资产净值、基金资产份额（图二）
+- 竖表：产品名称、产品代码、净值日期、单位净值、累计净值或累计单位净值（入库字段 cumulative_unit_nav）；可选 基金资产净值、基金资产份额（图二）
 - 资产净值公告横表：多列为 TZ051B/TZ051A/STZ051 等，行为基金代码/名称/基金份额净值/基金份额累计净值/
   基金资产净值/基金资产份额（邮件导入默认仅保留 STZ051，见 mail_import_asset_allowlist）
 
@@ -29,8 +29,9 @@ _CANON_HEADERS: dict[str, str] = {
     "净值日期": "nav_date",
     "日期": "nav_date",
     "单位净值": "unit_nav",
-    "累计净值": "cumulative_nav",
-    "累计单位净值": "cumulative_nav",
+    # 泽鑫多维落库统一使用 cumulative_unit_nav（份额累计净值）；不再写入 cumulative_nav
+    "累计净值": "cumulative_unit_nav",
+    "累计单位净值": "cumulative_unit_nav",
     "基金资产净值": "net_asset_value",
     "基金资产份额": "total_shares",
 }
@@ -151,7 +152,7 @@ def _doc_from_row(row: Any, col_map: dict[str, str]) -> dict[str, Any] | None:
         "asset_code": code,
         "nav_date": nav_iso,
         "unit_nav": _parse_decimal(row[col_map["unit_nav"]]),
-        "cumulative_nav": _parse_decimal(row[col_map["cumulative_nav"]]),
+        "cumulative_unit_nav": _parse_decimal(row[col_map["cumulative_unit_nav"]]),
     }
     if "net_asset_value" in col_map:
         doc["net_asset_value"] = _parse_decimal(row[col_map["net_asset_value"]])
@@ -328,7 +329,7 @@ def _load_docs_from_wide_announcement(file_bytes: bytes, filename: str) -> list[
     )
     row_fund_shares = _find_row_index_label(raw, ("基金资产份额",))
     if row_code is None or row_cum is None:
-        raise ValueError("资产净值公告格式缺少“基金代码/累计净值”关键行")
+        raise ValueError("资产净值公告格式缺少“基金代码/基金份额累计净值”关键行")
 
     docs: list[dict[str, Any]] = []
     for j in range(1, raw.shape[1]):
@@ -355,7 +356,7 @@ def _load_docs_from_wide_announcement(file_bytes: bytes, filename: str) -> list[
             "asset_code": code,
             "nav_date": nav_iso,
             "unit_nav": unit_val,
-            "cumulative_nav": cum_val,
+            "cumulative_unit_nav": cum_val,
         }
         if nav_total is not None:
             doc["net_asset_value"] = nav_total
@@ -391,7 +392,7 @@ def import_zxdw_excel_all_rows(
         if df.empty:
             raise ValueError("Excel 无数据行")
         col_map = _build_col_map(list(df.columns))
-        need_keys = ("product_name", "asset_code", "nav_date", "unit_nav", "cumulative_nav")
+        need_keys = ("product_name", "asset_code", "nav_date", "unit_nav", "cumulative_unit_nav")
         for k in need_keys:
             if k not in col_map:
                 cn_labels = [cn for cn, en in _CANON_HEADERS.items() if en == k]
@@ -452,7 +453,7 @@ def import_zxdw_excel_routed_by_asset_code(
         if df.empty:
             raise ValueError("Excel 无数据行")
         col_map = _build_col_map(list(df.columns))
-        need_keys = ("product_name", "asset_code", "nav_date", "unit_nav", "cumulative_nav")
+        need_keys = ("product_name", "asset_code", "nav_date", "unit_nav", "cumulative_unit_nav")
         for k in need_keys:
             if k not in col_map:
                 cn_labels = [cn for cn, en in _CANON_HEADERS.items() if en == k]
@@ -513,7 +514,7 @@ def upsert_zxdw_nav_doc(
     }
     coll.update_one(
         {"asset_code": doc["asset_code"], "nav_date": doc["nav_date"]},
-        {"$set": payload},
+        {"$set": payload, "$unset": {"cumulative_nav": ""}},
         upsert=True,
     )
     try:

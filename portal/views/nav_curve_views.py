@@ -30,6 +30,11 @@ from portal.services.trade_calendar_service import (
     fetch_nav_curve_series,
 )
 
+
+def _zxdw_nav_product_keys() -> frozenset[str]:
+    return frozenset(getattr(settings, "MONGODB_ZXDW_NAV_COLLECTIONS", ()))
+
+
 _BENCH_COMPARE_GROUP_PREFIXES: list[str] = [
     "中证1000指增",
     "中证500指增",
@@ -90,10 +95,14 @@ def _build_fund_nav_chart_data(rows: list[dict], selected_keys: list[str] | None
             or product_key
         )
         raw_nav = doc.get("cumulative_unit_nav")
-        if raw_nav is None:
-            raw_nav = doc.get("cumulative_nav")
-        if raw_nav is None:
-            raw_nav = doc.get("unit_nav")
+        if product_key in _zxdw_nav_product_keys():
+            if raw_nav is None:
+                raw_nav = doc.get("unit_nav")
+        else:
+            if raw_nav is None:
+                raw_nav = doc.get("cumulative_nav")
+            if raw_nav is None:
+                raw_nav = doc.get("unit_nav")
         try:
             nav_val = float(raw_nav) if raw_nav is not None else None
         except (TypeError, ValueError):

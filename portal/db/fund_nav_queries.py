@@ -118,8 +118,7 @@ def _normalize_zxdw_nav_doc(doc: dict[str, Any], fund: FundNavProduct) -> dict[s
     row.pop("_id", None)
     row["asset_code"] = str(row.get("asset_code") or "").strip()
     row["asset_name"] = str(row.get("product_name") or "").strip()
-    if row.get("cumulative_unit_nav") is None and row.get("cumulative_nav") is not None:
-        row["cumulative_unit_nav"] = row.get("cumulative_nav")
+    # 泽鑫多维 WZ_ZXDW_*：门户与图表仅使用 cumulative_unit_nav，不从 cumulative_nav 回填
     row["product_key"] = fund["product_key"]
     row["product_label"] = fund["name_prefix"]
     return row
