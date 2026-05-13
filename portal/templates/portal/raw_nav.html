@@ -7,28 +7,38 @@
     .fund-nav-table-wrap table { font-size: 0.8rem; white-space: nowrap; }
     .fund-nav-table-wrap th { position: sticky; top: 0; background: #e7f1ff; z-index: 1; }
     .fund-nav-chart-wrap { max-width: 100%; height: 360px; }
-    /* 与 alpha 产品表现页一致：侧栏与右侧查询区同高，列表区域内部滚动，底部不留大块空白 */
-    .fund-nav-product-panel {
-        border: 1px solid #dee2e6;
-        border-radius: 0.75rem;
-        background: #fff;
+    /* 与 alpha 产品表现类似：侧栏底与右侧「图表+查询」底对齐（不含下方表格）；高度由 JS 写入 --fund-nav-main-stack-h */
+    .panel-card { border: 1px solid #dee2e6; border-radius: 0.75rem; background: #fff; }
+    .panel-card .panel-hd { padding: 0.65rem 0.85rem; border-bottom: 1px solid #eef0f2; font-weight: 700; font-size: 0.95rem; }
+    .cmp-left-panel {
         display: flex;
         flex-direction: column;
         overflow: hidden;
         min-height: 0;
     }
-    .fund-nav-product-panel-hd {
-        font-weight: 700;
-        padding: 0.65rem 0.85rem;
-        border-bottom: 1px solid #eef0f2;
-        flex-shrink: 0;
-    }
-    .fund-nav-product-panel-bd {
+    .cmp-left-panel .panel-bd {
         flex: 1 1 auto;
+        min-height: 0;
+        padding: 0;
+        overflow: hidden;
+    }
+    /* lg：行高仅由右侧「图表+查询」决定，侧栏高度同步为该块（不把下方表格算进对齐） */
+    @media (min-width: 992px) {
+        .fund-nav-layout-row {
+            align-items: flex-start;
+        }
+        .fund-nav-sidebar-panel {
+            height: var(--fund-nav-main-stack-h, auto);
+            min-height: 0;
+        }
+    }
+    /* 与 nav_bench_compare 的 .product-list 一致：父级 flex 链 + min-height:0 才能出现滚动条 */
+    .product-list {
+        height: 100%;
         min-height: 0;
         overflow-y: auto;
         overflow-x: hidden;
-        padding: 0.5rem 0.5rem 0.65rem;
+        padding: 0.5rem;
     }
     .fund-nav-chart-details {
         border: 1px solid #dee2e6;
@@ -114,16 +124,16 @@
     {% endif %}
 </div>
 
-<form class="row g-2 align-items-end mb-3" method="get" action="" id="fundNavForm">
+<form method="get" action="" id="fundNavForm" class="mb-3">
     <input type="hidden" name="nav_q" value="1">
     <input type="hidden" name="date_from" id="id_nav_date_from" value="{{ date_from }}">
     <input type="hidden" name="date_to" id="id_nav_date_to" value="{{ date_to }}">
-    <div class="col-12">
-        <div class="row g-3 mt-0 align-items-stretch">
-            <div class="col-12 col-lg-3 d-flex">
-                <div class="fund-nav-product-panel w-100 h-100">
-                    <div class="fund-nav-product-panel-hd">产品名称</div>
-                    <div class="fund-nav-product-panel-bd">
+    <div class="row g-3 fund-nav-layout-row">
+        <div class="col-12 col-lg-3">
+            <div class="panel-card cmp-left-panel fund-nav-sidebar-panel">
+                <div class="panel-hd">产品名称</div>
+                <div class="panel-bd p-0">
+                    <div class="product-list">
                         {% for fund in fund_nav_sidebar_products %}
                         <div class="fund-nav-tier1-row fund-nav-product-item {% if fund.product_key in fund_nav_selection %}active{% endif %}">
                             <label class="fund-nav-tier1-summary" for="fund_pk_{{ fund.product_key }}">
@@ -137,12 +147,14 @@
                     </div>
                 </div>
             </div>
-            <div class="col-12 col-lg-9">
+        </div>
+        <div class="col-12 col-lg-9">
+                <div class="fund-nav-main-stack">
                 <details class="fund-nav-chart-details" id="fundNavChartPanel" open>
                     <summary class="fund-nav-chart-summary">基金净值走势</summary>
                     <div class="fund-nav-chart-content">
                         <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-2">
-                            <div class="small text-muted">按当前筛选条件展示单位净值</div>
+                            <div class="small text-muted">按当前筛选条件展示累计单位净值</div>
                             <div class="btn-group btn-group-sm" role="group" aria-label="区间选择">
                                 <input type="radio" class="btn-check fund-nav-recent" name="recent" id="fund_nav_r1m" value="21" {% if recent == "21" %}checked{% endif %}>
                                 <label class="btn btn-outline-primary" for="fund_nav_r1m">近1月</label>
@@ -193,8 +205,8 @@
                         </div>
                     </div>
                 </div>
+                </div>
             </div>
-        </div>
     </div>
 
     <div class="modal fade" id="fundNavColModal" tabindex="-1" aria-labelledby="fundNavColModalLabel" aria-hidden="true">
@@ -422,6 +434,34 @@
 })();
 
 (function () {
+    var layoutRow = document.querySelector(".fund-nav-layout-row");
+    var mainStackEl = document.querySelector(".fund-nav-main-stack");
+    if (!layoutRow || !mainStackEl) return;
+
+    function syncFundNavSidebarStackHeight() {
+        if (window.innerWidth < 992) {
+            layoutRow.style.removeProperty("--fund-nav-main-stack-h");
+            return;
+        }
+        var h = Math.ceil(mainStackEl.getBoundingClientRect().height);
+        if (h > 0) {
+            layoutRow.style.setProperty("--fund-nav-main-stack-h", h + "px");
+        }
+    }
+
+    if (typeof ResizeObserver !== "undefined") {
+        var ro = new ResizeObserver(function () {
+            syncFundNavSidebarStackHeight();
+        });
+        ro.observe(mainStackEl);
+    }
+    window.addEventListener("resize", syncFundNavSidebarStackHeight);
+    window.addEventListener("load", syncFundNavSidebarStackHeight);
+    syncFundNavSidebarStackHeight();
+    window.__fundNavSyncSidebarStackHeight = syncFundNavSidebarStackHeight;
+})();
+
+(function () {
     var form = document.getElementById("fundNavForm");
     var messagesEl = document.getElementById("fundNavMessages");
     var debugWrapEl = document.getElementById("fundNavDebugWrap");
@@ -513,6 +553,11 @@
                 chartIns.destroy();
                 chartIns = null;
             }
+            if (typeof window.__fundNavSyncSidebarStackHeight === "function") {
+                window.requestAnimationFrame(function () {
+                    window.__fundNavSyncSidebarStackHeight();
+                });
+            }
             return;
         }
         chartPanelEl.style.display = "";
@@ -544,11 +589,16 @@
                 maintainAspectRatio: false,
                 scales: {
                     x: { ticks: { maxRotation: 45, minRotation: 0 } },
-                    y: { title: { display: true, text: "单位净值" } },
+                    y: { title: { display: true, text: "累计单位净值" } },
                 },
                 plugins: { legend: { display: true } },
             },
         });
+        if (typeof window.__fundNavSyncSidebarStackHeight === "function") {
+            window.requestAnimationFrame(function () {
+                window.__fundNavSyncSidebarStackHeight();
+            });
+        }
     }
 
     if (chartDataEl) {
@@ -612,6 +662,11 @@
                 renderDebug(data);
                 renderChart(data.chart_data || {});
                 renderTable(data);
+                if (typeof window.__fundNavSyncSidebarStackHeight === "function") {
+                    window.requestAnimationFrame(function () {
+                        window.__fundNavSyncSidebarStackHeight();
+                    });
+                }
             })
             .catch(function (err) {
                 messagesEl.innerHTML = '<div class="alert alert-danger">' + esc(err.message || "请求失败") + "</div>";

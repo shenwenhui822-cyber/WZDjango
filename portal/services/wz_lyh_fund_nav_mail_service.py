@@ -37,3 +37,10 @@ def get_wz_lyh_fund_product() -> FundNavProduct:
         if f["product_key"] == key:
             return f
     raise RuntimeError("未配置吾执零一号 WZ_LYH_MASTER 产品")
+
+
+def get_wz_lyh_nav_mail_bundle_funds() -> tuple[FundNavProduct, FundNavProduct]:
+    """同一封「等22个产品净值表」邮件：零一号 STZ049 + 量化精选一号 SASQ16。"""
+    from portal.services.lhjxyh_fund_nav_mail_service import get_lhjxyh_fund_product
+
+    return (get_wz_lyh_fund_product(), get_lhjxyh_fund_product())

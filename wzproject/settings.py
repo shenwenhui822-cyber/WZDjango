@@ -116,6 +116,8 @@ NAV_REAL_WZ_DYYH_MASTER = "WZ_DYYH_MASTER"
 NAV_REAL_WZ_YLH_MASTER = "WZ_YLH_MASTER"
 # 吾执零一号 STZ049：管理人「等22个产品净值表发送YYYYMMDD」邮件 + 集合计划每日净值表 → fund_nav_real.WZ_LYH_MASTER（auto_import_wz_lyh_nav_mail）
 NAV_REAL_WZ_LYH_MASTER = "WZ_LYH_MASTER"
+# 吾执量化精选一号 SASQ16：同上封邮件 / 同附件多行 → fund_nav_real.WZ_LHJXYH_MASTER（与零一号同一 auto_import_wz_lyh_nav_mail）
+NAV_REAL_WZ_LHJXYH_MASTER = "WZ_LHJXYH_MASTER"
 # 吾执三零号 SXN031(总)：wangkan 邮件「基金净值」→ fund_nav_real.WZ_SLH_MASTER（auto_import_slh_nav_mail）
 NAV_REAL_WZ_SLH_MASTER = "WZ_SLH_MASTER"
 # 吾执多元量选 SAJM64(总)：wangkan 邮件「基金净值」→ fund_nav_real.WZ_DYLX_MASTER（auto_import_dylx_nav_mail）
