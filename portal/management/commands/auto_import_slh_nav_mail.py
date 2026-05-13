@@ -1,5 +1,5 @@
 """
-交易日 11:00 拉取 wangkan（ALPHA_MAIL_*）邮箱中主题
+交易日 17:20 拉取 wangkan（ALPHA_MAIL_*）邮箱中主题
 「【基金净值】SXN031(总)_吾执三零号私募证券投资基金_{YYYY-MM-DD}」
 的邮件，从附件 xlsx 解析表头行净值表，写入 fund_nav_real.WZ_SLH_MASTER。
 
@@ -8,7 +8,7 @@ IMAP：`.env` 中 ALPHA_MAIL_USER / ALPHA_MAIL_PASS、ALPHA_IMAP_SERVER、ALPHA_
 业务约定：仅运行日为交易日时执行；非交易日不执行、不通知。净值日 nav_date 默认取运行日之前
 最近一个交易日（上一交易日，与 auto_import_dyyh_nav_mail 一致）。
 
-调度：alpha_mail_scheduler 默认 11:00（环境变量 SLH_NAV_MAIL_SCHEDULER_ENABLED）。
+调度：alpha_mail_scheduler 默认 17:20（环境变量 SLH_NAV_MAIL_SCHEDULER_ENABLED）。
 
 用法：
   python manage.py auto_import_slh_nav_mail
