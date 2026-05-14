@@ -4,10 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import render
+from django.shortcuts import redirect, render
+from django.urls import reverse
+from django.views.decorators.http import require_POST
 
 from portal.db.mongo import get_mail_logs_collection
+from portal.services.mail_log_rerun_service import rerun_and_update_mail_log
 
 
 def _fmt_cell(val: Any) -> str:
@@ -49,6 +53,7 @@ def mail_scheduler_logs(request):
             coll.find(
                 query,
                 projection={
+                    "_id": 1,
                     "target_date": 1,
                     "log_type": 1,
                     "import_succeeded": 1,
@@ -64,6 +69,7 @@ def mail_scheduler_logs(request):
             ok = doc.get("import_succeeded")
             rows.append(
                 {
+                    "log_id": str(doc.get("_id")),
                     "target_date": _fmt_cell(doc.get("target_date")),
                     "log_type": _fmt_cell(doc.get("log_type")),
                     "import_succeeded": ok if isinstance(ok, bool) else bool(ok),
@@ -85,3 +91,18 @@ def mail_scheduler_logs(request):
             "limit": lim,
         },
     )
+
+
+@login_required(login_url="/")
+@require_POST
+def mail_log_rerun(request):
+    log_id = (request.POST.get("log_id") or "").strip()
+    ok, msg = rerun_and_update_mail_log(log_id)
+    if ok:
+        messages.success(request, msg)
+    else:
+        messages.error(request, msg)
+    nxt = (request.POST.get("next") or "").strip()
+    if nxt.startswith("/") and not nxt.startswith("//"):
+        return redirect(nxt)
+    return redirect(reverse("portal:mail_logs"))

@@ -27,6 +27,7 @@ web_urlpatterns = [
         name="market_neutral_product",
     ),
     path("nav/raw/", nav_curve_views.raw_nav, name="raw_nav"),
+    path("logs/rerun/", mail_logs_views.mail_log_rerun, name="mail_log_rerun"),
     path("logs/", mail_logs_views.mail_scheduler_logs, name="mail_logs"),
     path("logout/", auth_views.logout_view, name="logout"),
 ]
