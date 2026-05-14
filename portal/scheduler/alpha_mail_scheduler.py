@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import threading
 import time
 import traceback
@@ -61,6 +62,48 @@ def _truncate_log_text(text: str, max_len: int) -> str:
     return text[:head] + "\n...[中间已省略]...\n" + text[-tail:]
 
 
+def _valid_calendar_ymd(ymd: str) -> bool:
+    try:
+        datetime.strptime(ymd, "%Y%m%d")
+        return True
+    except (ValueError, TypeError):
+        return False
+
+
+def _extract_mail_log_target_fields(stdout_text: str) -> tuple[str | None, str | None]:
+    """从命令 stdout 解析「目标主题」「目标日期」，写入 MAIL_LOGS（目标日期统一为 YYYYMMDD 字符串）。"""
+    text = stdout_text or ""
+    target_subject: str | None = None
+    m_sub = re.search(r"^\s*目标主题[:：]\s*(.+?)(?:\r?\n|$)", text, flags=re.MULTILINE)
+    if m_sub:
+        target_subject = (m_sub.group(1) or "").strip() or None
+
+    target_date: str | None = None
+    m_day = re.search(r"主题日\s+(\d{8})\b", text)
+    if m_day and _valid_calendar_ymd(m_day.group(1)):
+        target_date = m_day.group(1)
+    if target_date is None:
+        m_rep = re.search(r"报告日\D*(\d{8})\b", text)
+        if m_rep and _valid_calendar_ymd(m_rep.group(1)):
+            target_date = m_rep.group(1)
+    if target_date is None and target_subject:
+        m_iso = re.search(r"(\d{4}-\d{2}-\d{2})", target_subject)
+        if m_iso:
+            compact = m_iso.group(1).replace("-", "")
+            if _valid_calendar_ymd(compact):
+                target_date = compact
+    if target_date is None and target_subject:
+        m_tail = re.search(r"(\d{8})\s*$", target_subject)
+        if m_tail and _valid_calendar_ymd(m_tail.group(1)):
+            target_date = m_tail.group(1)
+    if target_date is None and target_subject:
+        cands = re.findall(r"(?<![0-9])(\d{8})(?![0-9])", target_subject)
+        ok = [c for c in cands if _valid_calendar_ymd(c)]
+        if ok:
+            target_date = ok[-1]
+    return target_subject, target_date
+
+
 def _kwargs_bson_safe(extra_kwargs: dict | None, *, force: bool) -> dict[str, object]:
     merged = dict(extra_kwargs or {})
     if force:
@@ -110,6 +153,8 @@ def _persist_mail_scheduler_run(
     extra_kwargs: dict | None,
     force: bool,
     exc: BaseException | None = None,
+    target_subject: str | None = None,
+    target_date: str | None = None,
 ) -> None:
     if not _scheduler_mail_log_enabled():
         return
@@ -130,6 +175,8 @@ def _persist_mail_scheduler_run(
                     "stdout": stdout_text,
                     "stderr": stderr_text,
                     "kwargs": kwargs_log,
+                    "target_subject": target_subject,
+                    "target_date": target_date,
                 }
             )
         else:
@@ -146,6 +193,8 @@ def _persist_mail_scheduler_run(
                     "stdout": stdout_text,
                     "stderr": stderr_text,
                     "kwargs": kwargs_log,
+                    "target_subject": target_subject,
+                    "target_date": target_date,
                     "error_type": type(exc).__name__ if exc else "Unknown",
                     "error_message": str(exc) if exc else "",
                     "traceback": tb,
@@ -167,6 +216,8 @@ def _send_scheduler_result_email(
     stdout_text: str,
     stderr_text: str,
     exc: BaseException | None = None,
+    target_subject: str | None = None,
+    target_date: str | None = None,
 ) -> None:
     if not _scheduler_result_alpha_notify_enabled():
         return
@@ -180,13 +231,24 @@ def _send_scheduler_result_email(
         f"结果: {'成功' if ok else '失败'}",
         f"开始(本地): {st}",
         f"结束(本地): {et}",
+    ]
+    if target_subject or target_date:
+        parts.extend(
+            [
+                f"目标主题: {target_subject or '-'}",
+                f"目标日期(YYYYMMDD): {target_date or '-'}",
+            ]
+        )
+    parts.extend(
+        [
         "",
         "--- stdout ---",
         stdout_text or "(空)",
         "",
         "--- stderr ---",
         stderr_text or "(空)",
-    ]
+        ]
+    )
     if not ok and exc is not None:
         parts.extend(["", "--- exception ---", f"{type(exc).__name__}: {exc}"])
     body = _truncate_log_text("\n".join(parts), max_body)
@@ -223,7 +285,7 @@ _scheduler_started = False
 # (HH:MM, management command name, kwargs)
 # 邮件类任务在各自命令内校验「查询日～运行日」闭区间交易日个数 ≤ MAIL_JOB_MAX_TRADING_DAY_SPAN（默认 3）。
 # auto_import_qichat_t0_mail：IMAP 动态主题拉取上周 CSV + 入库（仅调度：每周首个交易日，见 _should_skip_scheduled_job）。
-# 每次定时任务结束：stdout/stderr 写入 mail_logs.MAIL_LOGS（log_type=success / failure 每次执行各插入一条）；成功/失败均发 ALPHA_NOTIFY_* 汇总邮件（可配）。
+# 每次定时任务结束：stdout/stderr 写入 mail_logs.MAIL_LOGS（含结构化字段 target_subject / target_date，见 _extract_mail_log_target_fields）；成功/失败均发 ALPHA_NOTIFY_* 汇总邮件（可配）。
 _DEFAULT_SCHEDULES: list[tuple[str, str, dict]] = [
     ("09:00", "auto_import_htzq_ht1_capital_mail", {}),
     ("09:31", "auto_import_fund_nav_mail", {}),
@@ -481,6 +543,7 @@ def _run_job(command_name: str, *, force: bool, extra_kwargs: dict | None = None
         finished_at = timezone.now()
         out_text = out_buf.getvalue()
         err_text = err_buf.getvalue()
+        target_subject, target_date = _extract_mail_log_target_fields(out_text)
         _persist_mail_scheduler_run(
             command_name=command_name,
             ok=True,
@@ -491,6 +554,8 @@ def _run_job(command_name: str, *, force: bool, extra_kwargs: dict | None = None
             extra_kwargs=extra_kwargs,
             force=force,
             exc=None,
+            target_subject=target_subject,
+            target_date=target_date,
         )
         _send_scheduler_result_email(
             ok=True,
@@ -500,6 +565,8 @@ def _run_job(command_name: str, *, force: bool, extra_kwargs: dict | None = None
             stdout_text=out_text,
             stderr_text=err_text,
             exc=None,
+            target_subject=target_subject,
+            target_date=target_date,
         )
     except Exception as exc:
         ts2 = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
@@ -507,6 +574,7 @@ def _run_job(command_name: str, *, force: bool, extra_kwargs: dict | None = None
         finished_at = timezone.now()
         out_text = out_buf.getvalue()
         err_text = err_buf.getvalue()
+        target_subject, target_date = _extract_mail_log_target_fields(out_text)
         _persist_mail_scheduler_run(
             command_name=command_name,
             ok=False,
@@ -517,6 +585,8 @@ def _run_job(command_name: str, *, force: bool, extra_kwargs: dict | None = None
             extra_kwargs=extra_kwargs,
             force=force,
             exc=exc,
+            target_subject=target_subject,
+            target_date=target_date,
         )
         _send_scheduler_result_email(
             ok=False,
@@ -526,6 +596,8 @@ def _run_job(command_name: str, *, force: bool, extra_kwargs: dict | None = None
             stdout_text=out_text,
             stderr_text=err_text,
             exc=exc,
+            target_subject=target_subject,
+            target_date=target_date,
         )
 
 

@@ -78,7 +78,10 @@ def get_rq_bench_collection() -> Collection:
 
 
 def get_mail_logs_collection() -> Collection:
-    """定时任务运行日志：{MONGODB_MAIL_LOGS_DB}.{MONGODB_MAIL_LOGS_COLLECTION}（默认 mail_logs.MAIL_LOGS）。"""
+    """定时任务运行日志：{MONGODB_MAIL_LOGS_DB}.{MONGODB_MAIL_LOGS_COLLECTION}（默认 mail_logs.MAIL_LOGS）。
+    文档含 log_type、command_name、started_at、finished_at、stdout、stderr、kwargs，
+    及调度器解析的 target_subject、target_date（YYYYMMDD，无则 null）。
+    """
     client = get_mongo_client()
     db_name = getattr(settings, "MONGODB_MAIL_LOGS_DB", "mail_logs")
     coll_name = getattr(settings, "MONGODB_MAIL_LOGS_COLLECTION", "MAIL_LOGS")
