@@ -25,7 +25,7 @@ DEFAULT_MAIL_SCHEDULER_SCHEDULES: list[tuple[str, str, dict[str, Any]]] = [
     ("12:10", "auto_import_dylx_nav_mail", {"scheduler_job_key": "dylx_nav"}),
     ("14:10", "auto_import_dyctayh_nav_mail", {"scheduler_job_key": "dyctayh_nav"}),
     ("14:30", "auto_import_ylh_nav_mail", {"scheduler_job_key": "ylh_nav"}),
-    ("16:30", "sync_t0_performance", {"scheduler_job_key": "sync_t0_ftp"}),
+    ("18:05", "sync_t0_performance", {"scheduler_job_key": "sync_t0_ftp"}),
     ("17:10", "auto_import_wz_lyh_nav_mail", {"scheduler_job_key": "wz_lyh_nav"}),
     ("17:20", "auto_import_slh_nav_mail", {"scheduler_job_key": "slh_nav"}),
     ("18:00", "auto_import_wkqh_settle_mail", {"scheduler_job_key": "wkqh_settle"}),
@@ -33,7 +33,7 @@ DEFAULT_MAIL_SCHEDULER_SCHEDULES: list[tuple[str, str, dict[str, Any]]] = [
     ("18:10", "auto_import_stz053_nav_mail", {"scheduler_job_key": "stz053_nav"}),
     ("19:00", "auto_import_htqh_settle_mail", {"scheduler_job_key": "htqh_settle"}),
     ("20:00", "auto_import_qichat_t0_mail", {"scheduler_job_key": "qichat_t0_weekly"}),
-    ("15:05", "auto_import_alpha_mail", {"scheduler_job_key": "alpha_mail"}),
+    ("21:00", "auto_import_alpha_mail", {"scheduler_job_key": "alpha_mail"}),
 ]
 
 

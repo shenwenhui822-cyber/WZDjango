@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}定时任务运行日志 - 吾执产品平台{% endblock %}
+{% block extra_css %}
+<style>
+    .mail-logs-wrap { overflow-x: auto; }
+    .mail-logs-wrap table { font-size: 0.85rem; }
+    .mail-logs-wrap th { position: sticky; top: 0; background: #e7f1ff; z-index: 1; white-space: nowrap; }
+    .mail-logs-wrap td { vertical-align: middle; max-width: 28rem; word-break: break-word; white-space: normal; }
+    .mail-logs-wrap td.col-subject { max-width: 36rem; }
+    .mail-logs-wrap td.col-reason { max-width: 32rem; }
+    .mail-logs-filter { font-size: 0.9rem; margin-bottom: 1rem; }
+    .mail-logs-filter a { margin-right: 1rem; }
+    .mail-logs-filter a.active { font-weight: 700; color: #0d6efd; }
+</style>
+{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'portal:home' %}">首页</a></li>
+        <li class="breadcrumb-item active" aria-current="page">MAIL_LOGS</li>
+    </ol>
+</nav>
+
+<h1 class="h4 mb-3">定时任务运行日志（MAIL_LOGS）</h1>
+
+<p class="text-muted small mb-2">直接访问路径：<code>/logs/</code>。默认仅展示 <code>import_succeeded = false</code>；可通过下方链接切换。</p>
+
+<div class="mail-logs-filter">
+    <span class="text-muted">按 import_succeeded：</span>
+    <a href="{% url 'portal:mail_logs' %}?import_succeeded=false" class="{% if filter_mode == 'false' %}active{% endif %}">仅失败/未成功（默认）</a>
+    <a href="{% url 'portal:mail_logs' %}?import_succeeded=true" class="{% if filter_mode == 'true' %}active{% endif %}">仅成功</a>
+    <a href="{% url 'portal:mail_logs' %}?import_succeeded=all" class="{% if filter_mode == 'all' %}active{% endif %}">全部</a>
+    <span class="text-muted ms-2">（最多 {{ limit }} 条，按结束时间倒序）</span>
+</div>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<div class="card border-0 shadow-sm mail-logs-wrap">
+    <div class="card-body p-0">
+        <table class="table table-sm table-striped table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>target_date</th>
+                    <th>log_type</th>
+                    <th>import_succeeded</th>
+                    <th>command_name</th>
+                    <th>target_subject</th>
+                    <th>failure_reason</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr>
+                    <td>{{ r.target_date }}</td>
+                    <td>{{ r.log_type }}</td>
+                    <td>
+                        {% if r.import_succeeded %}
+                        <span class="badge text-bg-success">是</span>
+                        {% else %}
+                        <span class="badge text-bg-danger">否</span>
+                        {% endif %}
+                    </td>
+                    <td><code>{{ r.command_name }}</code></td>
+                    <td class="col-subject">{{ r.target_subject }}</td>
+                    <td class="col-reason">{{ r.failure_reason }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" class="text-center text-muted py-4">暂无数据</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

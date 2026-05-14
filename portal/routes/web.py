@@ -4,6 +4,7 @@ from portal.t0_performance import views as t0_views
 from portal.views import (
     alpha_daily_views,
     auth_views,
+    mail_logs_views,
     nav_curve_views,
     placeholder_views,
 )
@@ -26,6 +27,7 @@ web_urlpatterns = [
         name="market_neutral_product",
     ),
     path("nav/raw/", nav_curve_views.raw_nav, name="raw_nav"),
+    path("logs/", mail_logs_views.mail_scheduler_logs, name="mail_logs"),
     path("logout/", auth_views.logout_view, name="logout"),
 ]
 
