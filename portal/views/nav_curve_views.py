@@ -24,7 +24,12 @@ from portal.db.fund_nav_queries import (
 )
 from portal.db.queries import fetch_alpha_daily_documents
 from portal.services.benchmark_compare_service import build_and_store_nav_bench_compare
-from portal.services.formatters import row_to_display_cells, row_to_fund_nav_display_cells
+from portal.services.formatters import (
+    ALPHA_COMPARE_TABLE_LEFT_ALIGN_EN,
+    FUND_NAV_TABLE_LEFT_ALIGN_EN,
+    row_to_display_cells,
+    row_to_fund_nav_display_cells,
+)
 from portal.services.trade_calendar_service import (
     distinct_product_names,
     fetch_nav_curve_series,
@@ -518,6 +523,8 @@ def raw_nav(request):
     table_rows: list[list[str]] = []
     for doc in rows:
         table_rows.append(row_to_fund_nav_display_cells(doc, visible_field_keys))
+    fund_nav_header_pairs = list(zip(headers_zh, visible_field_keys))
+    fund_nav_body_rows = [list(zip(r, visible_field_keys)) for r in table_rows]
 
     debug_info_text: str | None = None
     if show_debug and error_msg is None and elapsed_ms is not None:
@@ -538,6 +545,9 @@ def raw_nav(request):
         "headers_zh": headers_zh,
         "column_catalog": column_catalog,
         "table_rows": table_rows,
+        "fund_nav_header_pairs": fund_nav_header_pairs,
+        "fund_nav_body_rows": fund_nav_body_rows,
+        "fund_nav_left_align_en": FUND_NAV_TABLE_LEFT_ALIGN_EN,
         "raw_count": len(rows),
         "date_from": date_from,
         "date_to": date_to,
@@ -568,6 +578,7 @@ def raw_nav(request):
                 "raw_count": len(rows),
                 "headers_zh": headers_zh,
                 "table_rows": table_rows,
+                "fund_nav_column_en_keys": visible_field_keys,
                 "fund_nav_empty_product_pick": fund_nav_empty_product_pick,
                 "debug_info_text": debug_info_text,
                 "chart_data": chart_data,
@@ -694,6 +705,8 @@ def nav_bench_compare(request):
         except Exception:
             alpha_rows_raw = []
             alpha_table_rows = []
+    alpha_header_pairs = list(zip(alpha_headers_zh, alpha_field_keys))
+    alpha_body_rows = [list(zip(r, alpha_field_keys)) for r in alpha_table_rows]
 
     context = {
         "error_msg": error_msg,
@@ -720,6 +733,9 @@ def nav_bench_compare(request):
         "mode": mode,
         "alpha_headers_zh": alpha_headers_zh,
         "alpha_table_rows": alpha_table_rows,
+        "alpha_header_pairs": alpha_header_pairs,
+        "alpha_body_rows": alpha_body_rows,
+        "alpha_left_align_en": ALPHA_COMPARE_TABLE_LEFT_ALIGN_EN,
         "alpha_row_count": len(alpha_rows_raw),
     }
     is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
@@ -746,6 +762,7 @@ def nav_bench_compare(request):
                 },
                 "alpha_headers_zh": alpha_headers_zh,
                 "alpha_table_rows": alpha_table_rows,
+                "alpha_column_en_keys": alpha_field_keys,
                 "alpha_row_count": len(alpha_rows_raw),
             },
             json_dumps_params={"ensure_ascii": False},

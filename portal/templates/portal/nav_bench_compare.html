@@ -86,6 +86,8 @@
     .cmp-table-wrap { overflow-x: auto; max-height: 62vh; }
     .cmp-table-wrap th { position: sticky; top: 0; background: #e7f1ff; z-index: 1; white-space: nowrap; }
     .cmp-table-wrap td { white-space: nowrap; }
+    .cmp-table-wrap th.tnum,
+    .cmp-table-wrap td.tnum { text-align: right; font-variant-numeric: tabular-nums; }
 </style>
 {% endblock %}
 {% block content %}
@@ -222,21 +224,21 @@
             <div class="panel-card">
                 <div class="panel-hd">数据明细</div>
                 <div class="panel-bd" id="cmpAlphaTableWrap">
-                    {% if alpha_table_rows %}
+                    {% if alpha_body_rows %}
                     <div class="cmp-table-wrap border rounded shadow-sm">
                         <table class="table table-sm table-bordered table-hover mb-0">
                             <thead>
                                 <tr>
-                                    {% for h in alpha_headers_zh %}
-                                    <th>{{ h }}</th>
+                                    {% for h, en in alpha_header_pairs %}
+                                    <th class="{% if en not in alpha_left_align_en %}tnum{% endif %}">{{ h }}</th>
                                     {% endfor %}
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for row in alpha_table_rows %}
+                                {% for zipped_row in alpha_body_rows %}
                                 <tr>
-                                    {% for cell in row %}
-                                    <td>{{ cell }}</td>
+                                    {% for cell, en in zipped_row %}
+                                    <td class="{% if en not in alpha_left_align_en %}tnum{% endif %}">{{ cell }}</td>
                                     {% endfor %}
                                 </tr>
                                 {% endfor %}
@@ -443,15 +445,25 @@
         });
     }
 
-    function renderAlphaTable(headers, rows) {
+    function renderAlphaTable(headers, rows, colKeys) {
+        colKeys = colKeys || [];
+        var leftEn = { report_date: 1, product_name: 1, product_type: 1 };
         if (!alphaTableWrapEl) return;
         if (!rows || !rows.length) {
             alphaTableWrapEl.innerHTML = '<div class="alert alert-warning mb-0">暂无可展示数据。</div>';
             return;
         }
-        var thead = '<tr>' + (headers || []).map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('') + '</tr>';
+        var thead = '<tr>' + (headers || []).map(function (h, i) {
+            var en = colKeys[i] || '';
+            var cls = leftEn[en] ? '' : 'tnum';
+            return '<th class="' + cls + '">' + esc(h) + '</th>';
+        }).join('') + '</tr>';
         var tbody = rows.map(function (r) {
-            return '<tr>' + (r || []).map(function (c) { return '<td>' + esc(c) + '</td>'; }).join('') + '</tr>';
+            return '<tr>' + (r || []).map(function (c, i) {
+                var en = colKeys[i] || '';
+                var cls = leftEn[en] ? '' : 'tnum';
+                return '<td class="' + cls + '">' + esc(c) + '</td>';
+            }).join('') + '</tr>';
         }).join('');
         alphaTableWrapEl.innerHTML = [
             '<div class="cmp-table-wrap border rounded shadow-sm">',
@@ -518,7 +530,7 @@
                 if (kpiVolEl) kpiVolEl.textContent = formatNum(data.metrics && data.metrics.annual_vol_pct, 2, '%');
                 if (kpiSharpeEl) kpiSharpeEl.textContent = formatNum(data.metrics && data.metrics.sharpe, 2, '');
                 renderChart(data.chart_data || { labels: [], datasets: [] });
-                renderAlphaTable(data.alpha_headers_zh || [], data.alpha_table_rows || []);
+                renderAlphaTable(data.alpha_headers_zh || [], data.alpha_table_rows || [], data.alpha_column_en_keys || []);
                 setActiveProductClass();
                 syncLeftPanelHeight();
             })

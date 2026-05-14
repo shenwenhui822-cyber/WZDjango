@@ -6,6 +6,8 @@
     .fund-nav-table-wrap { overflow-x: auto; max-height: 75vh; }
     .fund-nav-table-wrap table { font-size: 0.8rem; white-space: nowrap; }
     .fund-nav-table-wrap th { position: sticky; top: 0; background: #e7f1ff; z-index: 1; }
+    .fund-nav-table-wrap th.tnum,
+    .fund-nav-table-wrap td.tnum { text-align: right; font-variant-numeric: tabular-nums; }
     .fund-nav-chart-wrap { max-width: 100%; height: 360px; }
     /* 与 alpha 产品表现类似：侧栏底与右侧「图表+查询」底对齐（不含下方表格）；高度由 JS 写入 --fund-nav-main-stack-h */
     .panel-card { border: 1px solid #dee2e6; border-radius: 0.75rem; background: #fff; }
@@ -264,16 +266,16 @@
             <table class="table table-sm table-bordered table-hover mb-0">
                 <thead>
                     <tr>
-                        {% for h in headers_zh %}
-                        <th>{{ h }}</th>
+                        {% for h, en in fund_nav_header_pairs %}
+                        <th class="{% if en not in fund_nav_left_align_en %}tnum{% endif %}">{{ h }}</th>
                         {% endfor %}
                     </tr>
                 </thead>
                 <tbody>
-                    {% for row in table_rows %}
+                    {% for zipped_row in fund_nav_body_rows %}
                     <tr>
-                        {% for cell in row %}
-                        <td>{{ cell }}</td>
+                        {% for cell, en in zipped_row %}
+                        <td class="{% if en not in fund_nav_left_align_en %}tnum{% endif %}">{{ cell }}</td>
                         {% endfor %}
                     </tr>
                     {% endfor %}
@@ -525,11 +527,19 @@
             return;
         }
         var headers = Array.isArray(data.headers_zh) ? data.headers_zh : [];
+        var colKeys = Array.isArray(data.fund_nav_column_en_keys) ? data.fund_nav_column_en_keys : [];
         var rows = Array.isArray(data.table_rows) ? data.table_rows : [];
-        var thead = "<tr>" + headers.map(function (h) { return "<th>" + esc(h) + "</th>"; }).join("") + "</tr>";
+        var leftEn = { nav_date: 1, asset_code: 1, asset_name: 1 };
+        var thead = "<tr>" + headers.map(function (h, i) {
+            var en = colKeys[i] || "";
+            var cls = leftEn[en] ? "" : "tnum";
+            return "<th" + (cls ? ' class="' + cls + '"' : "") + ">" + esc(h) + "</th>";
+        }).join("") + "</tr>";
         var tbody = rows.map(function (r) {
-            var cells = (Array.isArray(r) ? r : []).map(function (c) {
-                return "<td>" + esc(c) + "</td>";
+            var cells = (Array.isArray(r) ? r : []).map(function (c, i) {
+                var en = colKeys[i] || "";
+                var cls = leftEn[en] ? "" : "tnum";
+                return "<td" + (cls ? ' class="' + cls + '"' : "") + ">" + esc(c) + "</td>";
             }).join("");
             return "<tr>" + cells + "</tr>";
         }).join("");

@@ -3,6 +3,15 @@ from __future__ import annotations
 
 from typing import Any
 
+# 门户「基金净值」表：左对齐列（其余列按数字展示：两位小数、右对齐）
+FUND_NAV_TABLE_LEFT_ALIGN_EN: frozenset[str] = frozenset(
+    {"nav_date", "asset_code", "asset_name"}
+)
+# 门户「alpha 产品表现」对比页下方 Alpha 日报明细表
+ALPHA_COMPARE_TABLE_LEFT_ALIGN_EN: frozenset[str] = frozenset(
+    {"report_date", "product_name", "product_type"}
+)
+
 _RATIO_KEYS = frozenset(
     {
         "daily_pnl_ratio",
@@ -46,13 +55,13 @@ def format_alpha_cell(en_key: str, val: Any) -> str:
     if en_key in _RATIO_KEYS:
         try:
             x = float(val)
-            return f"{x * 100:.4f}%"
+            return f"{x * 100:.2f}%"
         except (TypeError, ValueError):
             return str(val)
     if en_key in _FLOAT_KEYS:
         try:
             x = float(val)
-            return f"{x:,.4f}"
+            return f"{x:,.2f}"
         except (TypeError, ValueError):
             return str(val)
     if en_key in ("product_name", "product_type"):
@@ -71,6 +80,8 @@ _FUND_NAV_FLOAT_KEYS = frozenset(
         "net_asset_value",
         "total_shares",
         "total_asset_value",
+        "paid_in_capital",
+        "total_assets",
     }
 )
 
@@ -85,7 +96,7 @@ def format_fund_nav_cell(en_key: str, val: Any) -> str:
     if en_key in _FUND_NAV_FLOAT_KEYS:
         try:
             x = float(val)
-            return f"{x:,.4f}"
+            return f"{x:,.2f}"
         except (TypeError, ValueError):
             return str(val)
     if en_key in ("asset_code", "asset_name"):
