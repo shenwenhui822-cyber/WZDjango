@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
@@ -23,6 +22,11 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
+from portal.services.mail_import_common import (
+    emit_mail_job_result_line,
+    format_mail_job_notify_body,
+    mail_job_notify_base,
+)
 from portal.services.trade_calendar_service import (
     is_trade_date_iso,
     prev_trading_day_iso_before,
@@ -82,37 +86,55 @@ class Command(BaseCommand):
         smtp_pass = os.getenv("ALPHA_NOTIFY_PASS", "").strip()
         sender = os.getenv("ALPHA_NOTIFY_FROM", smtp_user).strip()
 
+        status = str(report.get("status") or "UNKNOWN")
+        subject = f"[{status}] rq_bench 自动更新 {timezone.localdate().strftime('%Y-%m-%d')}"
+        title = "rq_bench 自动更新执行结果"
+        data_ok = status == "SUCCESS"
+        body = format_mail_job_notify_body(
+            title=title,
+            status=status,
+            started_at=started_at,
+            ended_at=ended_at,
+            base_url=base_url,
+            field_rows=[
+                ("运行日", report.get("run_date")),
+                ("运行日是否交易日", report.get("run_day_is_trading")),
+                ("目标行情日", report.get("target_trade_day")),
+                (
+                    "写入目标",
+                    f"{report.get('mongo_db')}.{report.get('target_coll')}",
+                ),
+                ("结果说明", report.get("message")),
+                ("异常信息", report.get("error")),
+            ],
+        )
+        snap = mail_job_notify_base(
+            notify_title=title,
+            status=status,
+            started_at=started_at,
+            ended_at=ended_at,
+            base_url=base_url,
+            data_import_succeeded=data_ok,
+        )
+        snap.update(
+            {
+                "run_date": report.get("run_date") or "",
+                "run_day_is_trading": report.get("run_day_is_trading"),
+                "target_trade_day": report.get("target_trade_day") or "",
+                "mongo_db": report.get("mongo_db") or "",
+                "target_coll": report.get("target_coll") or "",
+                "message": report.get("message") or "",
+                "error": report.get("error") or "",
+            }
+        )
+        emit_mail_job_result_line(self.stdout.write, snap)
+
         if not recipients:
             self.stdout.write("未配置 ALPHA_NOTIFY_TO，跳过结果通知邮件。")
             return
         if not (smtp_host and smtp_user and smtp_pass and sender):
             self.stdout.write("通知邮箱 SMTP 配置不完整，跳过结果通知邮件。")
             return
-
-        duration = ended_at - started_at
-        if isinstance(duration, timedelta):
-            duration_sec = round(duration.total_seconds(), 3)
-        else:
-            duration_sec = 0.0
-
-        status = str(report.get("status") or "UNKNOWN")
-        subject = f"[{status}] rq_bench 自动更新 {timezone.localdate().strftime('%Y-%m-%d')}"
-        body = "\n".join(
-            [
-                "rq_bench 自动更新执行结果",
-                "",
-                f"状态: {status}",
-                f"开始时间: {timezone.localtime(started_at).strftime('%Y-%m-%d %H:%M:%S')}",
-                f"结束时间: {timezone.localtime(ended_at).strftime('%Y-%m-%d %H:%M:%S')}",
-                f"运行时长(秒): {duration_sec}",
-                f"运行日: {report.get('run_date') or '-'}",
-                f"运行日是否交易日: {report.get('run_day_is_trading')}",
-                f"目标行情日: {report.get('target_trade_day') or '-'}",
-                f"写入目标: {report.get('mongo_db')}.{report.get('target_coll')}",
-                f"结果说明: {report.get('message') or '-'}",
-                f"异常信息: {report.get('error') or '-'}",
-            ]
-        )
 
         msg = MIMEMultipart()
         msg["Subject"] = subject

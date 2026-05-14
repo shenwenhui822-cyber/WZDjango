@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import imaplib
 import os
-from datetime import timedelta
 from pathlib import Path
 
 from django.conf import settings
@@ -33,8 +32,11 @@ from portal.data.fund_nav_real_config import (
 from portal.services.fund_nav_real_service import parse_fund_nav_excel, upsert_fund_nav_doc
 from portal.services.imap_common import find_latest_mail_id_by_exact_subject
 from portal.services.mail_import_common import (
+    emit_mail_job_result_line,
+    format_mail_job_notify_body,
     imap_logout_safe,
     imap_open_inbox,
+    mail_job_notify_base,
     save_excel_attachments_from_rfc822,
     send_alpha_notify_result_email,
     validate_mail_job_query_span,
@@ -81,41 +83,65 @@ class Command(BaseCommand):
         ended_at,
         base_url: str,
     ) -> None:
-        duration = ended_at - started_at
-        if isinstance(duration, timedelta):
-            duration_sec = round(duration.total_seconds(), 3)
-        else:
-            duration_sec = 0.0
         status = str(report.get("status") or "UNKNOWN")
         mail_subject = (
             f"[{status}] 博士一号真实净值导入 "
             f"{timezone.localdate().strftime('%Y-%m-%d')}"
         )
+        title = "博士一号主份额真实净值（fund_nav_real / WZ_BSYH_MASTER）自动导入结果"
+        data_ok = status == "SUCCESS"
         ok_lines = report.get("success_lines") or []
         fail_lines = report.get("failed_lines") or []
-        body = "\n".join(
+        ok_block = "\n".join(
+            ["成功明细:", *(ok_lines if isinstance(ok_lines, list) and ok_lines else ["- 无"])]
+        )
+        fail_block = "\n".join(
             [
-                "博士一号主份额真实净值（fund_nav_real / WZ_BSYH_MASTER）自动导入结果",
-                "",
-                f"状态: {status}",
-                f"开始时间: {timezone.localtime(started_at).strftime('%Y-%m-%d %H:%M:%S')}",
-                f"结束时间: {timezone.localtime(ended_at).strftime('%Y-%m-%d %H:%M:%S')}",
-                f"运行时长(秒): {duration_sec}",
-                f"服务地址: {base_url or '-'}",
-                f"目标净值日(nav_date): {report.get('nav_date') or '-'}",
-                f"运行日为交易日: {report.get('run_day_is_trading')}",
-                f"nav_date 为交易日: {report.get('nav_date_is_trading')}",
-                f"成功条数: {report.get('ok_count', 0)}",
-                f"结果说明: {report.get('message') or '-'}",
-                f"异常信息: {report.get('error') or '-'}",
-                "",
-                "成功明细:",
-                *(ok_lines if isinstance(ok_lines, list) and ok_lines else ["- 无"]),
-                "",
                 "失败/缺失明细:",
-                *(fail_lines if isinstance(fail_lines, list) and fail_lines else ["- 无"]),
+                *(
+                    fail_lines
+                    if isinstance(fail_lines, list) and fail_lines
+                    else ["- 无"]
+                ),
             ]
         )
+        body = format_mail_job_notify_body(
+            title=title,
+            status=status,
+            started_at=started_at,
+            ended_at=ended_at,
+            base_url=base_url,
+            field_rows=[
+                ("目标净值日(nav_date)", report.get("nav_date")),
+                ("运行日为交易日", report.get("run_day_is_trading")),
+                ("nav_date 为交易日", report.get("nav_date_is_trading")),
+                ("成功条数", report.get("ok_count", 0)),
+                ("结果说明", report.get("message")),
+                ("异常信息", report.get("error")),
+            ],
+            extra_sections=[ok_block, fail_block],
+        )
+        snap = mail_job_notify_base(
+            notify_title=title,
+            status=status,
+            started_at=started_at,
+            ended_at=ended_at,
+            base_url=base_url,
+            data_import_succeeded=data_ok,
+        )
+        snap.update(
+            {
+                "nav_date": report.get("nav_date") or "",
+                "run_day_is_trading": report.get("run_day_is_trading"),
+                "nav_date_is_trading": report.get("nav_date_is_trading"),
+                "ok_count": report.get("ok_count", 0),
+                "success_lines": ok_lines if isinstance(ok_lines, list) else [],
+                "failed_lines": fail_lines if isinstance(fail_lines, list) else [],
+                "message": report.get("message") or "",
+                "error": report.get("error") or "",
+            }
+        )
+        emit_mail_job_result_line(self.stdout.write, snap)
         send_alpha_notify_result_email(
             mail_subject=mail_subject,
             body=body,

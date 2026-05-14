@@ -5,14 +5,18 @@ from __future__ import annotations
 
 import email
 import imaplib
+import json
 import os
 import re
 import zipfile
+from datetime import timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 from smtplib import SMTPException, SMTP_SSL
-from typing import Callable
+from typing import Any, Callable
+
+from django.utils import timezone
 
 from portal.services.imap_common import decode_mime_header, normalize_attachment_filename
 from portal.services.trade_calendar_service import count_trading_days_inclusive
@@ -282,3 +286,109 @@ def send_alpha_notify_result_email(
         log_stdout(f"结果通知邮件已发送: {', '.join(recipients)}")
     except SMTPException as exc:
         log_stderr_warn(f"结果通知邮件发送失败: {exc}")
+
+
+# --- MAIL_LOGS：命令在 stdout 末尾输出一行 JSON，供 alpha_mail_scheduler 解析落库（notify_snapshot）---
+
+MAIL_LOG_RESULT_PREFIX = "__MAIL_LOG_RESULT_JSON__:"
+
+
+def format_mail_job_notify_body(
+    *,
+    title: str,
+    status: str,
+    started_at,
+    ended_at,
+    base_url: str,
+    field_rows: list[tuple[str, object]],
+    extra_sections: list[str] | None = None,
+) -> str:
+    """统一结果通知邮件正文（纯文本）。"""
+    duration = ended_at - started_at
+    if isinstance(duration, timedelta):
+        duration_sec = round(duration.total_seconds(), 3)
+    else:
+        duration_sec = 0.0
+    lines: list[str] = [
+        title,
+        "",
+        f"状态: {status}",
+        f"开始时间: {timezone.localtime(started_at).strftime('%Y-%m-%d %H:%M:%S')}",
+        f"结束时间: {timezone.localtime(ended_at).strftime('%Y-%m-%d %H:%M:%S')}",
+        f"运行时长(秒): {duration_sec}",
+        f"服务地址: {base_url or '-'}",
+    ]
+    for label, val in field_rows:
+        if val is None or val == "":
+            disp = "-"
+        else:
+            disp = val
+        lines.append(f"{label}: {disp}")
+    if extra_sections:
+        for sec in extra_sections:
+            if sec is None or not str(sec).strip():
+                continue
+            lines.append("")
+            lines.extend(str(sec).strip().splitlines())
+    return "\n".join(lines)
+
+
+def mail_job_notify_base(
+    *,
+    notify_title: str,
+    status: str,
+    started_at,
+    ended_at,
+    base_url: str,
+    data_import_succeeded: bool,
+) -> dict[str, Any]:
+    """构造写入 MAIL_LOGS.notify_snapshot 的公共字段（与邮件正文头部一致）。"""
+    duration = ended_at - started_at
+    if isinstance(duration, timedelta):
+        duration_sec = round(duration.total_seconds(), 3)
+    else:
+        duration_sec = 0.0
+    return {
+        "notify_title": notify_title,
+        "status": status,
+        "started_at_local": timezone.localtime(started_at).strftime("%Y-%m-%d %H:%M:%S"),
+        "ended_at_local": timezone.localtime(ended_at).strftime("%Y-%m-%d %H:%M:%S"),
+        "duration_sec": duration_sec,
+        "base_url": base_url or "",
+        "data_import_succeeded": data_import_succeeded,
+    }
+
+
+def emit_mail_job_result_line(write: Callable[[str], None], payload: dict[str, Any]) -> None:
+    """在 stdout 追加一行 JSON，供调度器写入 MAIL_LOGS.notify_snapshot（须为单行）。"""
+    from portal.db.mongo import bson_safe_value
+
+    safe: dict[str, Any] = {}
+    for k, v in payload.items():
+        safe[str(k)] = bson_safe_value(v)
+    line = MAIL_LOG_RESULT_PREFIX + json.dumps(safe, ensure_ascii=False, separators=(",", ":"))
+    write(line + "\n")
+
+
+def strip_mail_job_result_json(stdout_text: str) -> tuple[str, dict[str, Any] | None]:
+    """从 stdout 剥离最后一行 MAIL_LOG JSON，返回 (剩余 stdout, 解析出的 dict)。"""
+    text = stdout_text or ""
+    marker = MAIL_LOG_RESULT_PREFIX
+    lines = text.splitlines()
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if not lines:
+        return text, None
+    last = lines[-1].strip()
+    if not last.startswith(marker):
+        return text, None
+    raw = last[len(marker) :]
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return text, None
+    rest_lines = lines[:-1]
+    rest = "\n".join(rest_lines)
+    if rest_lines and text.endswith("\n"):
+        rest += "\n"
+    return rest, data if isinstance(data, dict) else None

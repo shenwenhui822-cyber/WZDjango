@@ -29,8 +29,11 @@ from django.utils import timezone
 
 from portal.services.imap_common import find_latest_mail_id_by_exact_subject
 from portal.services.mail_import_common import (
+    emit_mail_job_result_line,
+    format_mail_job_notify_body,
     imap_logout_safe,
     imap_open_inbox,
+    mail_job_notify_base,
     max_mail_job_trading_day_span,
     save_excel_attachments_from_rfc822,
     send_alpha_notify_result_email,
@@ -93,37 +96,23 @@ class Command(BaseCommand):
         ended_at,
         base_url: str,
     ) -> None:
-        duration = ended_at - started_at
-        if isinstance(duration, timedelta):
-            duration_sec = round(duration.total_seconds(), 3)
-        else:
-            duration_sec = 0.0
         status = str(report.get("status") or "UNKNOWN")
         mail_subject = (
             f"[{status}] ZXDW 泽鑫多维净值邮件导入 "
             f"{timezone.localdate().strftime('%Y-%m-%d')}"
         )
+        title = "ZXDW 净值（fund_nav_real / WZ_ZXDW_*）邮件自动导入结果"
+        data_ok = status == "SUCCESS"
         warn_lines = report.get("warn_lines") or []
         ok_lines = report.get("success_lines") or []
-        body = "\n".join(
+        ok_block = "\n".join(
             [
-                "ZXDW 净值（fund_nav_real / WZ_ZXDW_*）邮件自动导入结果",
-                "",
-                f"状态: {status}",
-                f"开始时间: {timezone.localtime(started_at).strftime('%Y-%m-%d %H:%M:%S')}",
-                f"结束时间: {timezone.localtime(ended_at).strftime('%Y-%m-%d %H:%M:%S')}",
-                f"运行时长(秒): {duration_sec}",
-                f"服务地址: {base_url or '-'}",
-                f"报告日(report_date): {report.get('report_date') or '-'}",
-                f"主题日期(ymd): {report.get('ymd') or '-'}",
-                f"尝试过的报告日: {report.get('report_dates_tried') or '-'}",
-                f"累计 upsert 条数: {report.get('total_upsert', 0)}",
-                f"结果说明: {report.get('message') or '-'}",
-                f"异常信息: {report.get('error') or '-'}",
-                "",
                 "成功/处理明细:",
                 *(ok_lines if isinstance(ok_lines, list) and ok_lines else ["- 无"]),
-                "",
+            ]
+        )
+        warn_block = "\n".join(
+            [
                 "告警/解析问题（若有）:",
                 *(
                     warn_lines
@@ -132,6 +121,43 @@ class Command(BaseCommand):
                 ),
             ]
         )
+        body = format_mail_job_notify_body(
+            title=title,
+            status=status,
+            started_at=started_at,
+            ended_at=ended_at,
+            base_url=base_url,
+            field_rows=[
+                ("报告日(report_date)", report.get("report_date")),
+                ("主题日期(ymd)", report.get("ymd")),
+                ("尝试过的报告日", report.get("report_dates_tried")),
+                ("累计 upsert 条数", report.get("total_upsert", 0)),
+                ("结果说明", report.get("message")),
+                ("异常信息", report.get("error")),
+            ],
+            extra_sections=[ok_block, warn_block],
+        )
+        snap = mail_job_notify_base(
+            notify_title=title,
+            status=status,
+            started_at=started_at,
+            ended_at=ended_at,
+            base_url=base_url,
+            data_import_succeeded=data_ok,
+        )
+        snap.update(
+            {
+                "report_date": report.get("report_date") or "",
+                "ymd": report.get("ymd") or "",
+                "report_dates_tried": report.get("report_dates_tried") or "",
+                "total_upsert": report.get("total_upsert", 0),
+                "success_lines": ok_lines if isinstance(ok_lines, list) else [],
+                "warn_lines": warn_lines if isinstance(warn_lines, list) else [],
+                "message": report.get("message") or "",
+                "error": report.get("error") or "",
+            }
+        )
+        emit_mail_job_result_line(self.stdout.write, snap)
         send_alpha_notify_result_email(
             mail_subject=mail_subject,
             body=body,

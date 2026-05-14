@@ -1,6 +1,7 @@
 
 from __future__ import annotations
 
+import functools
 import io
 import os
 import re
@@ -14,7 +15,12 @@ from django.core.management import call_command
 from django.utils import timezone
 
 from portal.db.mongo import bson_safe_value, get_mail_logs_collection
-from portal.services.mail_import_common import send_alpha_notify_result_email
+from portal.scheduler.alpha_mail_job_runner import submit_mail_scheduler_job
+from portal.scheduler.alpha_mail_schedule import get_active_mail_scheduler_schedules
+from portal.services.mail_import_common import (
+    send_alpha_notify_result_email,
+    strip_mail_job_result_json,
+)
 from portal.services.trade_calendar_service import (
     is_first_trading_day_of_iso_week,
     is_trade_date_iso,
@@ -104,6 +110,132 @@ def _extract_mail_log_target_fields(stdout_text: str) -> tuple[str | None, str |
     return target_subject, target_date
 
 
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+# 命令正常退出（无异常）但 stdout/stderr 出现下列片段时，视为未成功拉取/入库（见 _infer_scheduled_job_outcome）。
+_SCHED_SKIP_MARKERS: tuple[str, ...] = (
+    "非交易日（trade_calendar），不执行",
+    "非交易日（trade_calendar），跳过",
+    "跳过 rq_bench 更新",
+)
+_SCHED_FAILURE_MARKERS: tuple[str, ...] = (
+    "未找到目标邮件",
+    "未找到匹配主题的邮件",
+    "未找到完整主题精确匹配的邮件",
+    "未找到主题完全匹配的邮件",
+    "未找到 INTERNALDATE 为",
+    "邮件中未找到 .xlsx 附件",
+    "邮件中无 Excel 附件",
+    "邮件中无 CSV 附件（Content-Disposition: attachment）",
+    "无法读取邮件正文",
+    "邮件内容格式异常",
+    "未找到目标 xlsx 附件",
+    "未找到 STZ053",
+    "解压后未找到 xlsx/xls",
+    "未找到「普通账单_HT1」",
+    "推算的上一自然周内无交易日历记录",
+    "请缩小日期范围或使用 --force",
+    "查询日期或运行日格式无效",
+    "未找到邮件",
+    "未选择到附件。",
+)
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_ESCAPE_RE.sub("", text or "")
+
+
+def _first_line_containing(text: str, needle: str) -> str | None:
+    for line in text.splitlines():
+        if needle in line:
+            s = line.strip()
+            return s[:800] if len(s) > 800 else s
+    return None
+
+
+def _infer_scheduled_job_outcome(
+    command_name: str,
+    stdout_text: str,
+    stderr_text: str,
+) -> tuple[str, str | None]:
+    """
+    在 call_command 未抛异常时，根据输出推断是否真正完成数据拉取/入库。
+    返回 (log_type, failure_reason)，log_type ∈ success | failure | skipped。
+    """
+    out = _strip_ansi(stdout_text or "")
+    err = _strip_ansi(stderr_text or "")
+    comb = f"{out}\n{err}"
+    for marker in _SCHED_SKIP_MARKERS:
+        if marker in comb:
+            return "skipped", _first_line_containing(comb, marker) or marker
+    for marker in _SCHED_FAILURE_MARKERS:
+        if marker in comb:
+            return "failure", _first_line_containing(comb, marker) or marker
+    if command_name == "sync_t0_performance" and re.search(
+        r"完成：\s*处理\s*0\s*个文件", comb
+    ):
+        return "failure", "sync_t0_performance：FTP 未处理到任何文件（0 个）。"
+    if command_name == "sync_t0_performance" and re.search(r"upsert\s*0\s*行", comb):
+        return (
+            "failure",
+            _first_line_containing(comb, "完成") or "sync_t0_performance：upsert 0 行，未写入数据。",
+        )
+    if command_name == "auto_import_qichat_t0_mail" and re.search(
+        r"入库完成[^\n]*upsert\s*0\s*行", comb
+    ):
+        return (
+            "failure",
+            _first_line_containing(comb, "入库完成") or "qichat 周度 CSV：upsert 0 行。",
+        )
+    return "success", None
+
+
+# 仅用于 MAIL_LOGS / 调度元数据，不会传给 manage.py（见 _split_scheduler_call_kwargs）。
+_SCHEDULER_META_KEYS: frozenset[str] = frozenset({"scheduler_job_key"})
+
+
+def _split_scheduler_call_kwargs(extra: dict | None) -> tuple[dict, str | None]:
+    """返回 (传给 call_command 的 kwargs, scheduler_job_key)。"""
+    raw = dict(extra or {})
+    job_key = raw.pop("scheduler_job_key", None)
+    sk = str(job_key).strip() if job_key is not None else ""
+    for k in list(raw.keys()):
+        if k in _SCHEDULER_META_KEYS:
+            raw.pop(k, None)
+    return raw, (sk or None)
+
+
+def _notify_snapshot_for_mongo(snapshot: dict | None) -> dict[str, object] | None:
+    if not snapshot:
+        return None
+    return {str(k): bson_safe_value(v) for k, v in snapshot.items()}
+
+
+def _merge_outcome_with_notify_snapshot(
+    outcome: str,
+    soft_reason: str | None,
+    notify_snapshot: dict | None,
+) -> tuple[str, bool, str | None]:
+    """结合 stdout 推断与命令上报的 data_import_succeeded，得到 (outcome, import_ok, failure_reason)。"""
+    import_ok = outcome == "success"
+    fr = soft_reason
+    if notify_snapshot and "data_import_succeeded" in notify_snapshot:
+        import_ok = bool(notify_snapshot["data_import_succeeded"])
+        if import_ok:
+            outcome = "success"
+            fr = None
+        else:
+            if outcome != "skipped":
+                outcome = "failure"
+            if not fr:
+                fr = str(
+                    notify_snapshot.get("message")
+                    or notify_snapshot.get("status")
+                    or "未落库成功(data_import_succeeded=false)"
+                )
+    return outcome, import_ok, fr
+
+
 def _kwargs_bson_safe(extra_kwargs: dict | None, *, force: bool) -> dict[str, object]:
     merged = dict(extra_kwargs or {})
     if force:
@@ -145,7 +277,8 @@ def _ensure_mail_logs_indexes(coll) -> None:
 def _persist_mail_scheduler_run(
     *,
     command_name: str,
-    ok: bool,
+    log_type: str,
+    import_succeeded: bool,
     started_at,
     finished_at,
     stdout_text: str,
@@ -155,6 +288,9 @@ def _persist_mail_scheduler_run(
     exc: BaseException | None = None,
     target_subject: str | None = None,
     target_date: str | None = None,
+    failure_reason: str | None = None,
+    scheduler_job_key: str | None = None,
+    notify_snapshot: dict | None = None,
 ) -> None:
     if not _scheduler_mail_log_enabled():
         return
@@ -165,41 +301,35 @@ def _persist_mail_scheduler_run(
     try:
         coll = get_mail_logs_collection()
         _ensure_mail_logs_indexes(coll)
-        if ok:
-            coll.insert_one(
-                {
-                    "log_type": "success",
-                    "command_name": command_name,
-                    "started_at": started_at,
-                    "finished_at": finished_at,
-                    "stdout": stdout_text,
-                    "stderr": stderr_text,
-                    "kwargs": kwargs_log,
-                    "target_subject": target_subject,
-                    "target_date": target_date,
-                }
-            )
-        else:
-            tb = ""
+        doc: dict[str, object] = {
+            "log_type": log_type,
+            "import_succeeded": import_succeeded,
+            "command_name": command_name,
+            "scheduler_job_key": scheduler_job_key,
+            "started_at": started_at,
+            "finished_at": finished_at,
+            "stdout": stdout_text,
+            "stderr": stderr_text,
+            "kwargs": kwargs_log,
+            "target_subject": target_subject,
+            "target_date": target_date,
+            "failure_reason": failure_reason,
+        }
+        ns = _notify_snapshot_for_mongo(notify_snapshot)
+        if ns is not None:
+            doc["notify_snapshot"] = ns
+        if log_type == "failure":
             if exc is not None:
                 tb = traceback.format_exc()
                 tb = _truncate_log_text(tb, max_len)
-            coll.insert_one(
-                {
-                    "log_type": "failure",
-                    "command_name": command_name,
-                    "started_at": started_at,
-                    "finished_at": finished_at,
-                    "stdout": stdout_text,
-                    "stderr": stderr_text,
-                    "kwargs": kwargs_log,
-                    "target_subject": target_subject,
-                    "target_date": target_date,
-                    "error_type": type(exc).__name__ if exc else "Unknown",
-                    "error_message": str(exc) if exc else "",
-                    "traceback": tb,
-                }
-            )
+                doc["error_type"] = type(exc).__name__
+                doc["error_message"] = str(exc)
+                doc["traceback"] = tb
+            else:
+                doc["error_type"] = "ImportOutcome"
+                doc["error_message"] = failure_reason or ""
+                doc["traceback"] = ""
+        coll.insert_one(doc)
     except Exception as log_exc:
         ts = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
         print(
@@ -209,7 +339,7 @@ def _persist_mail_scheduler_run(
 
 def _send_scheduler_result_email(
     *,
-    ok: bool,
+    outcome: str,
     command_name: str,
     started_at,
     finished_at,
@@ -218,20 +348,33 @@ def _send_scheduler_result_email(
     exc: BaseException | None = None,
     target_subject: str | None = None,
     target_date: str | None = None,
+    failure_reason: str | None = None,
+    scheduler_job_key: str | None = None,
+    notify_snapshot: dict | None = None,
 ) -> None:
     if not _scheduler_result_alpha_notify_enabled():
         return
     max_body = _scheduler_result_email_body_max_chars()
     st = timezone.localtime(started_at).strftime("%Y-%m-%d %H:%M:%S")
     et = timezone.localtime(finished_at).strftime("%Y-%m-%d %H:%M:%S")
+    label = {"success": "成功", "failure": "失败", "skipped": "跳过"}.get(
+        outcome, outcome
+    )
     parts = [
         "alpha_mail_scheduler 定时任务汇总（完整日志见 mail_logs.MAIL_LOGS）",
         "",
         f"命令: {command_name}",
-        f"结果: {'成功' if ok else '失败'}",
+        f"调度任务键: {scheduler_job_key or '-'}",
+        f"结果: {label}",
         f"开始(本地): {st}",
         f"结束(本地): {et}",
     ]
+    if failure_reason:
+        parts.append(f"导入/同步说明: {failure_reason}")
+    if notify_snapshot:
+        st = str(notify_snapshot.get("status") or "-")
+        dis = notify_snapshot.get("data_import_succeeded")
+        parts.append(f"任务结果摘要(status={st}, data_import_succeeded={dis})")
     if target_subject or target_date:
         parts.extend(
             [
@@ -249,10 +392,12 @@ def _send_scheduler_result_email(
         stderr_text or "(空)",
         ]
     )
-    if not ok and exc is not None:
+    if outcome == "failure" and exc is not None:
         parts.extend(["", "--- exception ---", f"{type(exc).__name__}: {exc}"])
     body = _truncate_log_text("\n".join(parts), max_body)
-    tag = "OK" if ok else "FAILED"
+    tag = {"success": "OK", "failure": "FAILED", "skipped": "SKIP"}.get(
+        outcome, "UNKNOWN"
+    )
     mail_subject = (
         f"[alpha-scheduler][{tag}] {command_name} "
         f"{timezone.localtime(finished_at).strftime('%Y-%m-%d %H:%M')}"
@@ -282,255 +427,15 @@ def _send_scheduler_result_email(
 
 _scheduler_started = False
 
-# (HH:MM, management command name, kwargs)
-# 邮件类任务在各自命令内校验「查询日～运行日」闭区间交易日个数 ≤ MAIL_JOB_MAX_TRADING_DAY_SPAN（默认 3）。
-# auto_import_qichat_t0_mail：IMAP 动态主题拉取上周 CSV + 入库（仅调度：每周首个交易日，见 _should_skip_scheduled_job）。
-# 每次定时任务结束：stdout/stderr 写入 mail_logs.MAIL_LOGS（含结构化字段 target_subject / target_date，见 _extract_mail_log_target_fields）；成功/失败均发 ALPHA_NOTIFY_* 汇总邮件（可配）。
-_DEFAULT_SCHEDULES: list[tuple[str, str, dict]] = [
-    ("09:00", "auto_import_htzq_ht1_capital_mail", {}),
-    ("09:31", "auto_import_fund_nav_mail", {}),
-    ("09:33", "auto_import_ghzq_settle_mail", {}),
-    ("17:20", "auto_import_slh_nav_mail", {}),
-    ("11:35", "auto_import_dyyh_nav_mail", {}),
-    ("09:30", "update_rq_bench", {}),
-    ("12:00", "auto_import_zxdw_nav_mail", {}),
-    ("12:10", "auto_import_dylx_nav_mail", {}),
-    ("11:10", "auto_import_ysh_nav_mail", {}),
-    ("11:30", "auto_import_llh_nav_mail", {}),
-    ("11:40", "auto_import_jlh_nav_mail", {}),
-    ("14:10", "auto_import_dyctayh_nav_mail", {}),
-    ("14:30", "auto_import_ylh_nav_mail", {}),
-    ("17:10", "auto_import_wz_lyh_nav_mail", {}),
-    ("11:50", "auto_import_ctayh_nav_mail", {}),
-    ("16:30", "sync_t0_performance", {}),
-    ("21:00", "auto_import_alpha_mail", {}),  
-    ("18:00", "auto_import_wkqh_settle_mail", {}),
-    ("18:05", "auto_import_cjqh_settle_mail", {}),
-    ("18:10", "auto_import_stz053_nav_mail", {}),
-    ("19:00", "auto_import_htqh_settle_mail", {}),
-    ("20:00", "auto_import_qichat_t0_mail", {}),
-]
-
-
-def _htzq_ht1_capital_mail_enabled() -> bool:
-    return os.getenv("HTZQ_HT1_CAPITAL_MAIL_SCHEDULER_ENABLED", "1").strip() not in (
-        "0",
-        "false",
-        "False",
-    )
-
-
-def _fund_nav_enabled() -> bool:
-    return os.getenv("FUND_NAV_SCHEDULER_ENABLED", "1").strip() not in (
-        "0",
-        "false",
-        "False",
-    )
-
-
-def _rq_bench_enabled() -> bool:
-    return os.getenv("RQ_BENCH_SCHEDULER_ENABLED", "1").strip() not in (
-        "0",
-        "false",
-        "False",
-    )
-
-
-def _zxdw_nav_mail_enabled() -> bool:
-    return os.getenv("ZXDW_NAV_MAIL_SCHEDULER_ENABLED", "1").strip() not in (
-        "0",
-        "false",
-        "False",
-    )
-
-
-def _wkqh_settle_mail_enabled() -> bool:
-    return os.getenv("WKQH_SETTLE_MAIL_SCHEDULER_ENABLED", "1").strip() not in (
-        "0",
-        "false",
-        "False",
-    )
-
-
-def _cjqh_settle_mail_enabled() -> bool:
-    return os.getenv("CJQH_SETTLE_MAIL_SCHEDULER_ENABLED", "1").strip() not in (
-        "0",
-        "false",
-        "False",
-    )
-
-
-def _ghzq_settle_mail_enabled() -> bool:
-    return os.getenv("GHZQ_SETTLE_MAIL_SCHEDULER_ENABLED", "1").strip() not in (
-        "0",
-        "false",
-        "False",
-    )
-
-
-def _htqh_settle_mail_enabled() -> bool:
-    return os.getenv("HTQH_SETTLE_MAIL_SCHEDULER_ENABLED", "1").strip() not in (
-        "0",
-        "false",
-        "False",
-    )
-
-
-def _stz053_nav_mail_enabled() -> bool:
-    return os.getenv("STZ053_NAV_MAIL_SCHEDULER_ENABLED", "1").strip() not in (
-        "0",
-        "false",
-        "False",
-    )
-
-
-def _slh_nav_mail_enabled() -> bool:
-    return os.getenv("SLH_NAV_MAIL_SCHEDULER_ENABLED", "1").strip() not in (
-        "0",
-        "false",
-        "False",
-    )
-
-
-def _dyyh_nav_mail_enabled() -> bool:
-    return os.getenv("DYYH_NAV_MAIL_SCHEDULER_ENABLED", "1").strip() not in (
-        "0",
-        "false",
-        "False",
-    )
-
-
-def _dylx_nav_mail_enabled() -> bool:
-    return os.getenv("DYLX_NAV_MAIL_SCHEDULER_ENABLED", "1").strip() not in (
-        "0",
-        "false",
-        "False",
-    )
-
-
-def _ysh_nav_mail_enabled() -> bool:
-    return os.getenv("YSH_NAV_MAIL_SCHEDULER_ENABLED", "1").strip() not in (
-        "0",
-        "false",
-        "False",
-    )
-
-
-def _llh_nav_mail_enabled() -> bool:
-    return os.getenv("LLH_NAV_MAIL_SCHEDULER_ENABLED", "1").strip() not in (
-        "0",
-        "false",
-        "False",
-    )
-
-
-def _jlh_nav_mail_enabled() -> bool:
-    return os.getenv("JLH_NAV_MAIL_SCHEDULER_ENABLED", "1").strip() not in (
-        "0",
-        "false",
-        "False",
-    )
-
-
-def _ylh_nav_mail_enabled() -> bool:
-    return os.getenv("YLH_NAV_MAIL_SCHEDULER_ENABLED", "1").strip() not in (
-        "0",
-        "false",
-        "False",
-    )
-
-
-def _wz_lyh_nav_mail_enabled() -> bool:
-    return os.getenv("WZ_LYH_NAV_MAIL_SCHEDULER_ENABLED", "1").strip() not in (
-        "0",
-        "false",
-        "False",
-    )
-
-
-def _ctayh_nav_mail_enabled() -> bool:
-    return os.getenv("CTAYH_NAV_MAIL_SCHEDULER_ENABLED", "1").strip() not in (
-        "0",
-        "false",
-        "False",
-    )
-
-
-def _dyctayh_nav_mail_enabled() -> bool:
-    return os.getenv("DYCTAYH_NAV_MAIL_SCHEDULER_ENABLED", "1").strip() not in (
-        "0",
-        "false",
-        "False",
-    )
-
-
-def _t0_ftp_sync_enabled() -> bool:
-    return os.getenv("T0_FTP_SYNC_SCHEDULER_ENABLED", "1").strip() not in (
-        "0",
-        "false",
-        "False",
-    )
-
-
-def _t0_qichat_weekly_sync_enabled() -> bool:
-    return os.getenv("T0_QICHAT_WEEKLY_SCHEDULER_ENABLED", "1").strip() not in (
-        "0",
-        "false",
-        "False",
-    )
-
-
-def _schedules() -> list[tuple[str, str, dict]]:
-    s = list(_DEFAULT_SCHEDULES)
-    if not _htzq_ht1_capital_mail_enabled():
-        s = [x for x in s if x[1] != "auto_import_htzq_ht1_capital_mail"]
-    if not _fund_nav_enabled():
-        s = [x for x in s if x[1] != "auto_import_fund_nav_mail"]
-    if not _rq_bench_enabled():
-        s = [x for x in s if x[1] != "update_rq_bench"]
-    if not _zxdw_nav_mail_enabled():
-        s = [x for x in s if x[1] != "auto_import_zxdw_nav_mail"]
-    if not _wkqh_settle_mail_enabled():
-        s = [x for x in s if x[1] != "auto_import_wkqh_settle_mail"]
-    if not _cjqh_settle_mail_enabled():
-        s = [x for x in s if x[1] != "auto_import_cjqh_settle_mail"]
-    if not _ghzq_settle_mail_enabled():
-        s = [x for x in s if x[1] != "auto_import_ghzq_settle_mail"]
-    if not _htqh_settle_mail_enabled():
-        s = [x for x in s if x[1] != "auto_import_htqh_settle_mail"]
-    if not _stz053_nav_mail_enabled():
-        s = [x for x in s if x[1] != "auto_import_stz053_nav_mail"]
-    if not _slh_nav_mail_enabled():
-        s = [x for x in s if x[1] != "auto_import_slh_nav_mail"]
-    if not _dyyh_nav_mail_enabled():
-        s = [x for x in s if x[1] != "auto_import_dyyh_nav_mail"]
-    if not _dylx_nav_mail_enabled():
-        s = [x for x in s if x[1] != "auto_import_dylx_nav_mail"]
-    if not _ysh_nav_mail_enabled():
-        s = [x for x in s if x[1] != "auto_import_ysh_nav_mail"]
-    if not _llh_nav_mail_enabled():
-        s = [x for x in s if x[1] != "auto_import_llh_nav_mail"]
-    if not _jlh_nav_mail_enabled():
-        s = [x for x in s if x[1] != "auto_import_jlh_nav_mail"]
-    if not _ctayh_nav_mail_enabled():
-        s = [x for x in s if x[1] != "auto_import_ctayh_nav_mail"]
-    if not _dyctayh_nav_mail_enabled():
-        s = [x for x in s if x[1] != "auto_import_dyctayh_nav_mail"]
-    if not _ylh_nav_mail_enabled():
-        s = [x for x in s if x[1] != "auto_import_ylh_nav_mail"]
-    if not _wz_lyh_nav_mail_enabled():
-        s = [x for x in s if x[1] != "auto_import_wz_lyh_nav_mail"]
-    if not _t0_ftp_sync_enabled():
-        s = [x for x in s if x[1] != "sync_t0_performance"]
-    if not _t0_qichat_weekly_sync_enabled():
-        s = [x for x in s if x[1] != "auto_import_qichat_t0_mail"]
-    return s
+# 默认任务时刻表与各任务环境开关见 portal.scheduler.alpha_mail_schedule。
+# 到点派发不阻塞：任务在线程池内执行/排队（portal.scheduler.alpha_mail_job_runner，并发数 ALPHA_MAIL_SCHEDULER_MAX_WORKERS，默认 8）。
 
 
 def _run_job(command_name: str, *, force: bool, extra_kwargs: dict | None = None) -> None:
     ts = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[alpha-scheduler] [{ts}] 触发执行 {command_name} ...")
-    kwargs = dict(extra_kwargs or {})
+    call_kw, sched_job_key = _split_scheduler_call_kwargs(extra_kwargs)
+    kwargs = dict(call_kw)
     if force:
         kwargs["force"] = True
     started_at = timezone.now()
@@ -541,12 +446,20 @@ def _run_job(command_name: str, *, force: bool, extra_kwargs: dict | None = None
         ts2 = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
         print(f"[alpha-scheduler] [{ts2}] {command_name} 本次执行结束。")
         finished_at = timezone.now()
-        out_text = out_buf.getvalue()
+        out_text_raw = out_buf.getvalue()
+        out_text, notify_snapshot = strip_mail_job_result_json(out_text_raw)
         err_text = err_buf.getvalue()
         target_subject, target_date = _extract_mail_log_target_fields(out_text)
+        outcome, soft_reason = _infer_scheduled_job_outcome(
+            command_name, out_text, err_text
+        )
+        outcome, import_ok, soft_reason = _merge_outcome_with_notify_snapshot(
+            outcome, soft_reason, notify_snapshot
+        )
         _persist_mail_scheduler_run(
             command_name=command_name,
-            ok=True,
+            log_type=outcome,
+            import_succeeded=import_ok,
             started_at=started_at,
             finished_at=finished_at,
             stdout_text=out_text,
@@ -556,9 +469,12 @@ def _run_job(command_name: str, *, force: bool, extra_kwargs: dict | None = None
             exc=None,
             target_subject=target_subject,
             target_date=target_date,
+            failure_reason=None if import_ok else soft_reason,
+            scheduler_job_key=sched_job_key,
+            notify_snapshot=notify_snapshot,
         )
         _send_scheduler_result_email(
-            ok=True,
+            outcome=outcome,
             command_name=command_name,
             started_at=started_at,
             finished_at=finished_at,
@@ -567,17 +483,23 @@ def _run_job(command_name: str, *, force: bool, extra_kwargs: dict | None = None
             exc=None,
             target_subject=target_subject,
             target_date=target_date,
+            failure_reason=None if import_ok else soft_reason,
+            scheduler_job_key=sched_job_key,
+            notify_snapshot=notify_snapshot,
         )
     except Exception as exc:
         ts2 = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
         print(f"[alpha-scheduler] [{ts2}] {command_name} 执行失败: {exc}")
         finished_at = timezone.now()
-        out_text = out_buf.getvalue()
+        out_text_raw = out_buf.getvalue()
+        out_text, notify_snapshot = strip_mail_job_result_json(out_text_raw)
         err_text = err_buf.getvalue()
         target_subject, target_date = _extract_mail_log_target_fields(out_text)
+        fr = str(exc)
         _persist_mail_scheduler_run(
             command_name=command_name,
-            ok=False,
+            log_type="failure",
+            import_succeeded=False,
             started_at=started_at,
             finished_at=finished_at,
             stdout_text=out_text,
@@ -587,9 +509,12 @@ def _run_job(command_name: str, *, force: bool, extra_kwargs: dict | None = None
             exc=exc,
             target_subject=target_subject,
             target_date=target_date,
+            failure_reason=fr,
+            scheduler_job_key=sched_job_key,
+            notify_snapshot=notify_snapshot,
         )
         _send_scheduler_result_email(
-            ok=False,
+            outcome="failure",
             command_name=command_name,
             started_at=started_at,
             finished_at=finished_at,
@@ -598,21 +523,21 @@ def _run_job(command_name: str, *, force: bool, extra_kwargs: dict | None = None
             exc=exc,
             target_subject=target_subject,
             target_date=target_date,
+            failure_reason=fr,
+            scheduler_job_key=sched_job_key,
+            notify_snapshot=notify_snapshot,
         )
 
 
 def _dispatch_job_async(command_name: str, *, force: bool, extra_kwargs: dict | None = None) -> None:
-    t = threading.Thread(
-        target=_run_job,
-        kwargs={
-            "command_name": command_name,
-            "force": force,
-            "extra_kwargs": extra_kwargs,
-        },
-        name=f"alpha-job-{command_name}",
-        daemon=True,
+    submit_mail_scheduler_job(
+        functools.partial(
+            _run_job,
+            command_name,
+            force=force,
+            extra_kwargs=extra_kwargs,
+        )
     )
-    t.start()
 
 
 def _should_skip_scheduled_job(command_name: str, *, today_iso: str) -> bool:
@@ -639,7 +564,7 @@ def run_scheduler_loop(
     force: bool,
     run_now: bool,
 ) -> None:
-    schedules = _schedules()
+    schedules = get_active_mail_scheduler_schedules()
     for target, _, _ in schedules:
         try:
             datetime.strptime(target, "%H:%M")

@@ -13,11 +13,10 @@ import email
 import imaplib
 import os
 import re
-from datetime import timedelta
 from pathlib import Path
 
 from django.conf import settings
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from portal.config.mail_imap import resolve_imap_credentials
@@ -29,9 +28,12 @@ from portal.services.imap_common import (
 )
 from portal.services.import_service import import_excel_fileobj
 from portal.services.mail_import_common import (
+    emit_mail_job_result_line,
+    format_mail_job_notify_body,
     imap_logout_safe,
     imap_open_inbox,
     iso_date_from_yyyymmdd,
+    mail_job_notify_base,
     send_alpha_notify_result_email,
     validate_mail_job_query_span,
 )
@@ -91,7 +93,7 @@ class Command(BaseCommand):
                 report["status"] = "FAILED"
                 report["message"] = span_err
                 self.stderr.write(self.style.ERROR(span_err))
-                return
+                raise CommandError(span_err)
 
             report["is_trading_day"] = self._is_trading_day(local_date)
             if not options["force"] and not report["is_trading_day"]:
@@ -122,7 +124,7 @@ class Command(BaseCommand):
                     report["status"] = "NO_MAIL"
                     report["message"] = "未找到目标邮件。"
                     self.stdout.write(self.style.WARNING(report["message"]))
-                    return
+                    raise CommandError(report["message"])
                 report["mail_found"] = True
 
                 save_dir = (
@@ -136,7 +138,7 @@ class Command(BaseCommand):
                     report["status"] = "NO_XLSX"
                     report["message"] = "邮件中未找到 .xlsx 附件。"
                     self.stdout.write(self.style.WARNING(report["message"]))
-                    return
+                    raise CommandError(report["message"])
 
                 imported_stats: list[dict] = []
                 for fp in files:
@@ -227,11 +229,6 @@ class Command(BaseCommand):
         ended_at,
         base_url: str,
     ) -> None:
-        duration = ended_at - started_at
-        if isinstance(duration, timedelta):
-            duration_sec = round(duration.total_seconds(), 3)
-        else:
-            duration_sec = 0.0
         status = str(report.get("status") or "UNKNOWN")
         mail_subject = (
             f"[{status}] Alpha 日报自动导入 {timezone.localdate().strftime('%Y-%m-%d')}"
@@ -243,28 +240,48 @@ class Command(BaseCommand):
                 imported_lines.append(
                     f"- {row.get('file')}: inserted={row.get('inserted')}"
                 )
-        body = "\n".join(
-            [
-                "Alpha 日报自动导入执行结果",
-                "",
-                f"状态: {status}",
-                f"开始时间: {timezone.localtime(started_at).strftime('%Y-%m-%d %H:%M:%S')}",
-                f"结束时间: {timezone.localtime(ended_at).strftime('%Y-%m-%d %H:%M:%S')}",
-                f"运行时长(秒): {duration_sec}",
-                f"服务地址: {base_url or '-'}",
-                f"交易日: {report.get('is_trading_day')}",
-                f"主题日期: {report.get('subject_date')}",
-                f"目标主题: {report.get('target_subject')}",
-                f"命中邮件: {report.get('mail_found')}",
-                f"下载附件数: {len(report.get('saved_files') or [])}",
-                f"导入文件数: {len(imported)}",
-                f"结果说明: {report.get('message') or '-'}",
-                f"异常信息: {report.get('error') or '-'}",
-                "",
-                "导入明细:",
-                *(imported_lines or ["- 无"]),
-            ]
+        title = "Alpha 日报自动导入执行结果"
+        data_ok = status == "SUCCESS"
+        body = format_mail_job_notify_body(
+            title=title,
+            status=status,
+            started_at=started_at,
+            ended_at=ended_at,
+            base_url=base_url,
+            field_rows=[
+                ("交易日", report.get("is_trading_day")),
+                ("主题日期", report.get("subject_date")),
+                ("目标主题", report.get("target_subject")),
+                ("命中邮件", report.get("mail_found")),
+                ("下载附件数", len(report.get("saved_files") or [])),
+                ("导入文件数", len(imported)),
+                ("结果说明", report.get("message")),
+                ("异常信息", report.get("error")),
+            ],
+            extra_sections=["\n".join(["导入明细:", *(imported_lines or ["- 无"])])],
         )
+        snap = mail_job_notify_base(
+            notify_title=title,
+            status=status,
+            started_at=started_at,
+            ended_at=ended_at,
+            base_url=base_url,
+            data_import_succeeded=data_ok,
+        )
+        snap.update(
+            {
+                "is_trading_day": report.get("is_trading_day"),
+                "subject_date": report.get("subject_date") or "",
+                "target_subject": report.get("target_subject") or "",
+                "mail_found": report.get("mail_found"),
+                "saved_files_count": len(report.get("saved_files") or []),
+                "imported_files_count": len(imported),
+                "imported_detail": "\n".join(imported_lines) if imported_lines else "",
+                "message": report.get("message") or "",
+                "error": report.get("error") or "",
+            }
+        )
+        emit_mail_job_result_line(self.stdout.write, snap)
         send_alpha_notify_result_email(
             mail_subject=mail_subject,
             body=body,

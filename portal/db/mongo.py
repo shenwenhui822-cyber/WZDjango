@@ -79,8 +79,11 @@ def get_rq_bench_collection() -> Collection:
 
 def get_mail_logs_collection() -> Collection:
     """定时任务运行日志：{MONGODB_MAIL_LOGS_DB}.{MONGODB_MAIL_LOGS_COLLECTION}（默认 mail_logs.MAIL_LOGS）。
-    文档含 log_type、command_name、started_at、finished_at、stdout、stderr、kwargs，
-    及调度器解析的 target_subject、target_date（YYYYMMDD，无则 null）。
+    文档含 log_type（success|failure|skipped）、import_succeeded、failure_reason、scheduler_job_key、
+    command_name、started_at、finished_at、stdout、stderr、kwargs、target_subject、target_date；
+    log_type 为 failure 且存在异常时另有 error_type、error_message、traceback。
+    notify_snapshot：管理命令在 stdout 末行输出的 `__MAIL_LOG_RESULT_JSON__:` JSON（与结果邮件字段一致），
+    含 data_import_succeeded 等，由调度器解析后与 outcome 合并写入。
     """
     client = get_mongo_client()
     db_name = getattr(settings, "MONGODB_MAIL_LOGS_DB", "mail_logs")

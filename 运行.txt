@@ -1,4 +1,5 @@
 ================================================================================
+  python manage.py runserver 
   WZDjango 本地 / 服务器运行说明
   项目根目录：<项目>/WZDjango（Windows 示例 G:\github\WZDjango）
 ================================================================================
@@ -351,6 +352,7 @@
 --------------------------------------------------------------------------------
 
   完整排期与可拷贝命令见项目根目录「定时任务脚本命令.md」（与 portal/scheduler/alpha_mail_scheduler.py 中 _DEFAULT_SCHEDULES 一致）。
+  每条任务在 kwargs 中配置 scheduler_job_key，仅写入 MAIL_LOGS，不会传给 manage.py。
 
   默认排期（本地时区，可通过环境变量关闭单项任务，见 portal/scheduler/alpha_mail_scheduler 内 *_SCHEDULER_ENABLED）：
     09:00  auto_import_htzq_ht1_capital_mail

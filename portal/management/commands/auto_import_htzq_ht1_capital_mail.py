@@ -16,7 +16,6 @@ IMAP 使用 `.env` 中 FARPORT_MAIL_USER / FARPORT_MAIL_PASS 与 ALPHA_IMAP_SERV
 from __future__ import annotations
 
 import imaplib
-from datetime import timedelta
 from pathlib import Path
 
 from django.conf import settings
@@ -31,8 +30,11 @@ from portal.services.htzq_ht1_capital_service import (
 )
 from portal.services.imap_common import find_latest_mail_id_by_exact_subject
 from portal.services.mail_import_common import (
+    emit_mail_job_result_line,
+    format_mail_job_notify_body,
     imap_logout_safe,
     imap_open_inbox,
+    mail_job_notify_base,
     save_excel_attachments_from_rfc822,
     send_alpha_notify_result_email,
     validate_mail_job_query_span,
@@ -94,33 +96,47 @@ class Command(BaseCommand):
         ended_at,
         base_url: str,
     ) -> None:
-        duration = ended_at - started_at
-        if isinstance(duration, timedelta):
-            duration_sec = round(duration.total_seconds(), 3)
-        else:
-            duration_sec = 0.0
         status = str(report.get("status") or "UNKNOWN")
         mail_subject = (
             f"[{status}] 华泰 HT1 资金情况导入 "
             f"{timezone.localdate().strftime('%Y-%m-%d')}"
         )
-        body = "\n".join(
-            [
-                "华泰 HT1 普通账单「资金情况」（fstock_settle_real / HTZQ_666810103835）",
-                "",
-                f"状态: {status}",
-                f"开始时间: {timezone.localtime(started_at).strftime('%Y-%m-%d %H:%M:%S')}",
-                f"结束时间: {timezone.localtime(ended_at).strftime('%Y-%m-%d %H:%M:%S')}",
-                f"运行时长(秒): {duration_sec}",
-                f"服务地址: {base_url or '-'}",
-                f"对账单日期(statement_date): {report.get('statement_date') or '-'}",
-                f"运行日为交易日: {report.get('run_day_is_trading')}",
-                f"邮件主题: {report.get('target_subject') or '-'}",
-                f"附件文件: {report.get('source_file') or '-'}",
-                f"结果说明: {report.get('message') or '-'}",
-                f"异常信息: {report.get('error') or '-'}",
-            ]
+        title = "华泰 HT1 普通账单「资金情况」（fstock_settle_real / HTZQ_666810103835）"
+        data_ok = status == "SUCCESS"
+        body = format_mail_job_notify_body(
+            title=title,
+            status=status,
+            started_at=started_at,
+            ended_at=ended_at,
+            base_url=base_url,
+            field_rows=[
+                ("对账单日期(statement_date)", report.get("statement_date")),
+                ("运行日为交易日", report.get("run_day_is_trading")),
+                ("邮件主题", report.get("target_subject")),
+                ("附件文件", report.get("source_file")),
+                ("结果说明", report.get("message")),
+                ("异常信息", report.get("error")),
+            ],
         )
+        snap = mail_job_notify_base(
+            notify_title=title,
+            status=status,
+            started_at=started_at,
+            ended_at=ended_at,
+            base_url=base_url,
+            data_import_succeeded=data_ok,
+        )
+        snap.update(
+            {
+                "statement_date": report.get("statement_date") or "",
+                "run_day_is_trading": report.get("run_day_is_trading"),
+                "target_subject": report.get("target_subject") or "",
+                "source_file": report.get("source_file") or "",
+                "message": report.get("message") or "",
+                "error": report.get("error") or "",
+            }
+        )
+        emit_mail_job_result_line(self.stdout.write, snap)
         send_alpha_notify_result_email(
             mail_subject=mail_subject,
             body=body,

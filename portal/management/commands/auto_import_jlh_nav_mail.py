@@ -34,8 +34,11 @@ from portal.services.jlh_nav_mail_service import (
     get_jlh_fund_product,
 )
 from portal.services.mail_import_common import (
+    emit_mail_job_result_line,
+    format_mail_job_notify_body,
     imap_logout_safe,
     imap_open_inbox,
+    mail_job_notify_base,
     save_excel_attachments_from_rfc822,
     send_alpha_notify_result_email,
     validate_mail_job_query_span,
@@ -95,32 +98,45 @@ class Command(BaseCommand):
         ended_at,
         base_url: str,
     ) -> None:
-        duration = ended_at - started_at
-        if isinstance(duration, timedelta):
-            duration_sec = round(duration.total_seconds(), 3)
-        else:
-            duration_sec = 0.0
         status = str(report.get("status") or "UNKNOWN")
         mail_subject = (
             f"[{status}] 吾执九零号净值邮件导入 "
             f"{timezone.localdate().strftime('%Y-%m-%d')}"
         )
-        body = "\n".join(
-            [
-                "吾执九零号 SXR194（fund_nav_real / WZ_JLH_MASTER）自动导入结果",
-                "",
-                f"状态: {status}",
-                f"开始时间: {timezone.localtime(started_at).strftime('%Y-%m-%d %H:%M:%S')}",
-                f"结束时间: {timezone.localtime(ended_at).strftime('%Y-%m-%d %H:%M:%S')}",
-                f"运行时长(秒): {duration_sec}",
-                f"服务地址: {base_url or '-'}",
-                f"目标净值日(nav_date): {report.get('nav_date') or '-'}",
-                f"邮件主题: {report.get('target_subject') or '-'}",
-                f"附件文件: {report.get('source_file') or '-'}",
-                f"结果说明: {report.get('message') or '-'}",
-                f"异常信息: {report.get('error') or '-'}",
-            ]
+        title = "吾执九零号 SXR194（fund_nav_real / WZ_JLH_MASTER）自动导入结果"
+        data_ok = status == "SUCCESS"
+        body = format_mail_job_notify_body(
+            title=title,
+            status=status,
+            started_at=started_at,
+            ended_at=ended_at,
+            base_url=base_url,
+            field_rows=[
+                ("目标净值日(nav_date)", report.get("nav_date")),
+                ("邮件主题", report.get("target_subject")),
+                ("附件文件", report.get("source_file")),
+                ("结果说明", report.get("message")),
+                ("异常信息", report.get("error")),
+            ],
         )
+        snap = mail_job_notify_base(
+            notify_title=title,
+            status=status,
+            started_at=started_at,
+            ended_at=ended_at,
+            base_url=base_url,
+            data_import_succeeded=data_ok,
+        )
+        snap.update(
+            {
+                "nav_date": report.get("nav_date") or "",
+                "target_subject": report.get("target_subject") or "",
+                "source_file": report.get("source_file") or "",
+                "message": report.get("message") or "",
+                "error": report.get("error") or "",
+            }
+        )
+        emit_mail_job_result_line(self.stdout.write, snap)
         send_alpha_notify_result_email(
             mail_subject=mail_subject,
             body=body,

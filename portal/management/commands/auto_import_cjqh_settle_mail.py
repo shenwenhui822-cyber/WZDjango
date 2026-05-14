@@ -18,8 +18,11 @@ from portal.services.imap_common import (
     normalize_attachment_filename,
 )
 from portal.services.mail_import_common import (
+    emit_mail_job_result_line,
+    format_mail_job_notify_body,
     imap_logout_safe,
     imap_open_inbox,
+    mail_job_notify_base,
     send_alpha_notify_result_email,
 )
 from portal.services.cjqh_settle_service import extract_cjqh_record_from_rar
@@ -138,32 +141,48 @@ class Command(BaseCommand):
         )
 
     def _send_result_email(self, report: dict[str, object], started_at, ended_at, base_url: str) -> None:
-        duration = ended_at - started_at
-        if isinstance(duration, timedelta):
-            duration_sec = round(duration.total_seconds(), 3)
-        else:
-            duration_sec = 0.0
         status = str(report.get("status") or "UNKNOWN")
         subject = f"[{status}] 长江期货结算单入库 {timezone.localdate().strftime('%Y-%m-%d')}"
-        body = "\n".join(
-            [
-                "长江期货结算单自动入库执行结果",
-                "",
-                f"状态: {status}",
-                f"开始时间: {timezone.localtime(started_at).strftime('%Y-%m-%d %H:%M:%S')}",
-                f"结束时间: {timezone.localtime(ended_at).strftime('%Y-%m-%d %H:%M:%S')}",
-                f"运行时长(秒): {duration_sec}",
-                f"服务地址: {base_url or '-'}",
-                f"目标主题: {report.get('target_subject') or '-'}",
-                f"主题日期: {report.get('subject_ymd') or '-'}",
-                f"交易日(trade_date): {report.get('trade_date') or '-'}",
-                f"账号(account_id): {report.get('account_id') or '-'}",
-                f"RAR 文件: {report.get('source_rar_file') or '-'}",
-                f"TXT 文件: {report.get('source_txt_file_ascii') or '-'}",
-                f"结果说明: {report.get('message') or '-'}",
-                f"异常信息: {report.get('error') or '-'}",
-            ]
+        title = "长江期货结算单自动入库执行结果"
+        data_ok = status == "SUCCESS"
+        body = format_mail_job_notify_body(
+            title=title,
+            status=status,
+            started_at=started_at,
+            ended_at=ended_at,
+            base_url=base_url,
+            field_rows=[
+                ("目标主题", report.get("target_subject")),
+                ("主题日期", report.get("subject_ymd")),
+                ("交易日(trade_date)", report.get("trade_date")),
+                ("账号(account_id)", report.get("account_id")),
+                ("RAR 文件", report.get("source_rar_file")),
+                ("TXT 文件", report.get("source_txt_file_ascii")),
+                ("结果说明", report.get("message")),
+                ("异常信息", report.get("error")),
+            ],
         )
+        snap = mail_job_notify_base(
+            notify_title=title,
+            status=status,
+            started_at=started_at,
+            ended_at=ended_at,
+            base_url=base_url,
+            data_import_succeeded=data_ok,
+        )
+        snap.update(
+            {
+                "target_subject": report.get("target_subject") or "",
+                "subject_ymd": report.get("subject_ymd") or "",
+                "trade_date": report.get("trade_date") or "",
+                "account_id": report.get("account_id") or "",
+                "source_rar_file": report.get("source_rar_file") or "",
+                "source_txt_file_ascii": report.get("source_txt_file_ascii") or "",
+                "message": report.get("message") or "",
+                "error": report.get("error") or "",
+            }
+        )
+        emit_mail_job_result_line(self.stdout.write, snap)
         send_alpha_notify_result_email(
             mail_subject=subject,
             body=body,

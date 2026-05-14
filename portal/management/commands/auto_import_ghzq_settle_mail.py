@@ -18,8 +18,11 @@ from portal.services.imap_common import (
     normalize_attachment_filename,
 )
 from portal.services.mail_import_common import (
+    emit_mail_job_result_line,
+    format_mail_job_notify_body,
     imap_logout_safe,
     imap_open_inbox,
+    mail_job_notify_base,
     send_alpha_notify_result_email,
 )
 from portal.services.ghzq_settle_service import extract_ghzq_statement_from_xlsx
@@ -154,32 +157,48 @@ class Command(BaseCommand):
         )
 
     def _send_result_email(self, report: dict[str, object], started_at, ended_at, base_url: str) -> None:
-        duration = ended_at - started_at
-        if isinstance(duration, timedelta):
-            duration_sec = round(duration.total_seconds(), 3)
-        else:
-            duration_sec = 0.0
         status = str(report.get("status") or "UNKNOWN")
         subject = f"[{status}] 国海证券对账单入库 {timezone.localdate().strftime('%Y-%m-%d')}"
-        body = "\n".join(
-            [
-                "国海证券吾执九五号对账单自动入库执行结果",
-                "",
-                f"状态: {status}",
-                f"运行日: {report.get('run_date') or '-'}",
-                f"主题对账单日期: {report.get('statement_ymd') or '-'}",
-                f"开始时间: {timezone.localtime(started_at).strftime('%Y-%m-%d %H:%M:%S')}",
-                f"结束时间: {timezone.localtime(ended_at).strftime('%Y-%m-%d %H:%M:%S')}",
-                f"运行时长(秒): {duration_sec}",
-                f"服务地址: {base_url or '-'}",
-                f"目标主题: {report.get('target_subject') or '-'}",
-                f"交易日: {report.get('trade_date') or '-'}",
-                f"资金账号: {report.get('fund_account_id') or '-'}",
-                f"xlsx 文件: {report.get('source_xlsx_file') or '-'}",
-                f"结果说明: {report.get('message') or '-'}",
-                f"异常信息: {report.get('error') or '-'}",
-            ]
+        title = "国海证券吾执九五号对账单自动入库执行结果"
+        data_ok = status == "SUCCESS"
+        body = format_mail_job_notify_body(
+            title=title,
+            status=status,
+            started_at=started_at,
+            ended_at=ended_at,
+            base_url=base_url,
+            field_rows=[
+                ("运行日", report.get("run_date")),
+                ("主题对账单日期", report.get("statement_ymd")),
+                ("目标主题", report.get("target_subject")),
+                ("交易日", report.get("trade_date")),
+                ("资金账号", report.get("fund_account_id")),
+                ("xlsx 文件", report.get("source_xlsx_file")),
+                ("结果说明", report.get("message")),
+                ("异常信息", report.get("error")),
+            ],
         )
+        snap = mail_job_notify_base(
+            notify_title=title,
+            status=status,
+            started_at=started_at,
+            ended_at=ended_at,
+            base_url=base_url,
+            data_import_succeeded=data_ok,
+        )
+        snap.update(
+            {
+                "run_date": report.get("run_date") or "",
+                "statement_ymd": report.get("statement_ymd") or "",
+                "target_subject": report.get("target_subject") or "",
+                "trade_date": report.get("trade_date") or "",
+                "fund_account_id": report.get("fund_account_id") or "",
+                "source_xlsx_file": report.get("source_xlsx_file") or "",
+                "message": report.get("message") or "",
+                "error": report.get("error") or "",
+            }
+        )
+        emit_mail_job_result_line(self.stdout.write, snap)
         send_alpha_notify_result_email(
             mail_subject=subject,
             body=body,
