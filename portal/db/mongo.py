@@ -79,6 +79,22 @@ def get_rq_bench_collection() -> Collection:
     return db[settings.MONGODB_RQ_BENCH_COLLECTION]
 
 
+def get_lhjx_position_collection() -> Collection:
+    """量化精选一号持仓明细：库 MONGODB_POSITION_FUND_REAL_DB，集合 LHJX（可配）。"""
+    client = get_mongo_client()
+    db_name = getattr(settings, "MONGODB_POSITION_FUND_REAL_DB", "position_fund_real")
+    coll_name = getattr(settings, "MONGODB_LHJX_POSITION_COLLECTION", "LHJX")
+    return client[db_name][coll_name]
+
+
+def get_wzsl_position_collection() -> Collection:
+    """吾执三零号持仓明细：库 MONGODB_POSITION_FUND_REAL_DB，集合 WZSL（可配）。"""
+    client = get_mongo_client()
+    db_name = getattr(settings, "MONGODB_POSITION_FUND_REAL_DB", "position_fund_real")
+    coll_name = getattr(settings, "MONGODB_WZSL_POSITION_COLLECTION", "WZSL")
+    return client[db_name][coll_name]
+
+
 def get_mail_logs_collection() -> Collection:
     """定时任务运行日志：{MONGODB_MAIL_LOGS_DB}.{MONGODB_MAIL_LOGS_COLLECTION}（默认 mail_logs.MAIL_LOGS）。
     文档含 log_type（success|failure|skipped）、import_succeeded、failure_reason、scheduler_job_key、

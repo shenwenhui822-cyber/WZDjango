@@ -12,6 +12,7 @@ from typing import Any
 # 邮件类任务在各自命令内校验「查询日～运行日」闭区间交易日个数 ≤ MAIL_JOB_MAX_TRADING_DAY_SPAN（默认 3）。
 # auto_import_qichat_t0_mail：IMAP 动态主题拉取上周 CSV + 入库（仅调度：每周首个交易日，见 alpha_mail_scheduler._should_skip_scheduled_job）。
 DEFAULT_MAIL_SCHEDULER_SCHEDULES: list[tuple[str, str, dict[str, Any]]] = [
+    ("08:40", "auto_import_lhjx_position_mail", {"scheduler_job_key": "lhjx_position"}),
     ("09:00", "auto_import_htzq_ht1_capital_mail", {"scheduler_job_key": "htzq_ht1_capital"}),
     ("09:30", "update_rq_bench", {"scheduler_job_key": "rq_bench"}),
     ("09:31", "auto_import_fund_nav_mail", {"scheduler_job_key": "fund_nav_boshiyihao"}),
@@ -25,6 +26,7 @@ DEFAULT_MAIL_SCHEDULER_SCHEDULES: list[tuple[str, str, dict[str, Any]]] = [
     ("12:10", "auto_import_dylx_nav_mail", {"scheduler_job_key": "dylx_nav"}),
     ("14:10", "auto_import_dyctayh_nav_mail", {"scheduler_job_key": "dyctayh_nav"}),
     ("14:30", "auto_import_ylh_nav_mail", {"scheduler_job_key": "ylh_nav"}),
+    ("14:40", "auto_import_wzsl_position_mail", {"scheduler_job_key": "wzsl_position"}),
     ("18:05", "sync_t0_performance", {"scheduler_job_key": "sync_t0_ftp"}),
     ("17:10", "auto_import_wz_lyh_nav_mail", {"scheduler_job_key": "wz_lyh_nav"}),
     ("17:20", "auto_import_slh_nav_mail", {"scheduler_job_key": "slh_nav"}),
@@ -40,6 +42,10 @@ DEFAULT_MAIL_SCHEDULER_SCHEDULES: list[tuple[str, str, dict[str, Any]]] = [
 
 def _env_enabled(env_name: str, *, default: str = "1") -> bool:
     return os.getenv(env_name, default).strip() not in ("0", "false", "False")
+
+
+def _lhjx_position_mail_enabled() -> bool:
+    return _env_enabled("LHJX_POSITION_MAIL_SCHEDULER_ENABLED")
 
 
 def _htzq_ht1_capital_mail_enabled() -> bool:
@@ -102,6 +108,10 @@ def _jlh_nav_mail_enabled() -> bool:
     return _env_enabled("JLH_NAV_MAIL_SCHEDULER_ENABLED")
 
 
+def _wzsl_position_mail_enabled() -> bool:
+    return _env_enabled("WZSL_POSITION_MAIL_SCHEDULER_ENABLED")
+
+
 def _ylh_nav_mail_enabled() -> bool:
     return _env_enabled("YLH_NAV_MAIL_SCHEDULER_ENABLED")
 
@@ -133,6 +143,8 @@ def _t0_qichat_weekly_sync_enabled() -> bool:
 def get_active_mail_scheduler_schedules() -> list[tuple[str, str, dict[str, Any]]]:
     """按环境变量剔除关闭项后的当日调度表（顺序与时间即 DEFAULT_MAIL_SCHEDULER_SCHEDULES）。"""
     s = list(DEFAULT_MAIL_SCHEDULER_SCHEDULES)
+    if not _lhjx_position_mail_enabled():
+        s = [x for x in s if x[1] != "auto_import_lhjx_position_mail"]
     if not _htzq_ht1_capital_mail_enabled():
         s = [x for x in s if x[1] != "auto_import_htzq_ht1_capital_mail"]
     if not _fund_nav_enabled():
@@ -169,6 +181,8 @@ def get_active_mail_scheduler_schedules() -> list[tuple[str, str, dict[str, Any]
         s = [x for x in s if x[1] != "auto_import_dyctayh_nav_mail"]
     if not _dwyh_nav_mail_enabled():
         s = [x for x in s if x[1] != "auto_import_dwyh_nav_mail"]
+    if not _wzsl_position_mail_enabled():
+        s = [x for x in s if x[1] != "auto_import_wzsl_position_mail"]
     if not _ylh_nav_mail_enabled():
         s = [x for x in s if x[1] != "auto_import_ylh_nav_mail"]
     if not _wz_lyh_nav_mail_enabled():

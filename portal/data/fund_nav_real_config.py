@@ -17,6 +17,8 @@ class FundNavProduct(TypedDict):
     asset_code: str
     # 同表多行且主/子份额产品代码相同时：仅「产品名称」列与该值完全一致才导入（排除 A/B 行）
     nav_import_exact_product_name: NotRequired[str]
+    # 子份额默认不在基金净值页侧栏展示；设为 True 时强制展示（如零零号 A 类）
+    portal_show_in_sidebar: NotRequired[bool]
 
 
 # 与净值表文件名/邮件主题一致：{name_prefix}_{asset_code}_基金每日净值表YYYY-MM-DD
@@ -55,8 +57,15 @@ def is_fund_nav_share_class_product(fund: FundNavProduct) -> bool:
 
 
 def fund_nav_portal_sidebar_products() -> list[FundNavProduct]:
-    """基金净值页左侧：仅主份额，单层单选（不含 A/B/C 子份额）。"""
-    return [f for f in FUND_NAV_PRODUCTS if not is_fund_nav_share_class_product(f)]
+    """基金净值页左侧：默认仅主份额；portal_show_in_sidebar=True 的子份额亦展示。"""
+    out: list[FundNavProduct] = []
+    for f in FUND_NAV_PRODUCTS:
+        if f.get("portal_show_in_sidebar"):
+            out.append(f)
+            continue
+        if not is_fund_nav_share_class_product(f):
+            out.append(f)
+    return out
 
 
 def fund_nav_portal_sidebar_allowed_keys() -> frozenset[str]:
@@ -146,6 +155,7 @@ FUND_NAV_PRODUCTS: list[FundNavProduct] = [
         "name_prefix": "吾执零零号私募证券投资基金A类",
         "asset_code": "SNP584",
         "nav_import_exact_product_name": "吾执零零号私募证券投资基金A",
+        "portal_show_in_sidebar": True,
     },
     {
         "product_key": getattr(

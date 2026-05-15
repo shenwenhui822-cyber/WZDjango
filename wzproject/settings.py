@@ -106,6 +106,17 @@ MONGODB_DB_NAME = "alpha_product"
 MONGODB_COLLECTION_NAME = "alpha_sim_nav"
 # 博士一号真实净值：独立库 fund_nav_real；集合名 = 下方逻辑产品编码
 MONGODB_FUND_NAV_REAL_DB = "fund_nav_real"
+# 量化精选一号证券持仓：fareport 对账单附件 → position_fund_real.LHJX（auto_import_lhjx_position_mail）
+MONGODB_POSITION_FUND_REAL_DB = os.getenv(
+    "MONGODB_POSITION_FUND_REAL_DB", "position_fund_real"
+)
+MONGODB_LHJX_POSITION_COLLECTION = os.getenv(
+    "MONGODB_LHJX_POSITION_COLLECTION", "LHJX"
+)
+# 吾执三零号东北证券持仓：fareport RAR 内 xls → position_fund_real.WZSL（auto_import_wzsl_position_mail）
+MONGODB_WZSL_POSITION_COLLECTION = os.getenv(
+    "MONGODB_WZSL_POSITION_COLLECTION", "WZSL"
+)
 # alpha_mail_scheduler：每次定时任务结束后写入 mail_logs.MAIL_LOGS（log_type/import_succeeded/failure_reason/target_* 等；每次执行插入一条），并按 ALPHA_NOTIFY_* 发送汇总邮件（可配关闭）
 MONGODB_MAIL_LOGS_DB = os.getenv("MONGODB_MAIL_LOGS_DB", "mail_logs")
 MONGODB_MAIL_LOGS_COLLECTION = os.getenv("MONGODB_MAIL_LOGS_COLLECTION", "MAIL_LOGS")

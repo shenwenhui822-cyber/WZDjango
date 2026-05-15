@@ -49,6 +49,7 @@ def _resolve_log_target_fields(doc: dict[str, Any]) -> tuple[str, str]:
             "target_trade_day",
             "subject_date",
             "statement_date",
+            "position_date",
         ):
             raw = snap.get(key)
             if raw is None or str(raw).strip() == "":

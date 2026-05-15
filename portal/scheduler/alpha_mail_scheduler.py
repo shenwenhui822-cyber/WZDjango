@@ -118,6 +118,7 @@ def _extract_mail_log_target_fields(stdout_text: str) -> tuple[str | None, str |
             target_date = m_rep.group(1)
     if target_date is None:
         for pat in (
+            r"持仓日期\(position_date\)[:：]\s*(\d{4}-\d{2}-\d{2})",
             r"目标净值日\(nav_date\)[:：]\s*(\d{4}-\d{2}-\d{2})",
             r"目标行情日[^:：\n]{0,24}[:：]\s*(\d{4}-\d{2}-\d{2})",
             r"报告日\(report_date\)[:：]\s*(\d{4}-\d{2}-\d{2})",
@@ -170,6 +171,7 @@ def _merge_mail_log_target_fields_from_notify_snapshot(
             "target_trade_day",
             "subject_date",
             "statement_date",
+            "position_date",
         ):
             ymd = _normalize_target_date_ymd(notify_snapshot.get(key))
             if ymd:
@@ -210,6 +212,9 @@ _SCHED_FAILURE_MARKERS: tuple[str, ...] = (
     "未找到 INTERNALDATE 为",
     "邮件中未找到 .xlsx 附件",
     "邮件中无 Excel 附件",
+    "邮件中无 RAR 附件",
+    "未找到可用解压命令",
+    "RAR 解压失败",
     "邮件中无 CSV 附件（Content-Disposition: attachment）",
     "无法读取邮件正文",
     "邮件内容格式异常",
