@@ -1,4 +1,4 @@
-"""吾执零零号 SNP584：资产净值公告主题邮件（同表 A/B 行产品代码可能同为 SNP584 时仅落库主基金全称行）。"""
+"""吾执零零号 SNP584：资产净值公告主题邮件（同表 A/B 行产品代码可能同为 SNP584 时按产品名称/分级名称区分主基金与 A 类）。"""
 from __future__ import annotations
 
 from django.conf import settings
@@ -18,3 +18,16 @@ def get_llh_fund_product() -> FundNavProduct:
         if f["product_key"] == key:
             return f
     raise RuntimeError("未配置吾执零零号 WZ_LLH_MASTER 产品")
+
+
+def get_llh_a_fund_product() -> FundNavProduct:
+    key = getattr(settings, "NAV_REAL_WZ_LLH_A", "WZ_LLH_A")
+    for f in FUND_NAV_PRODUCTS:
+        if f["product_key"] == key:
+            return f
+    raise RuntimeError("未配置吾执零零号 A 类 WZ_LLH_A 产品")
+
+
+def llh_nav_mail_import_products() -> list[FundNavProduct]:
+    """同一封资产净值公告邮件：主基金 + A 类。"""
+    return [get_llh_fund_product(), get_llh_a_fund_product()]

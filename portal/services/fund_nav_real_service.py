@@ -23,6 +23,8 @@ _HEADER_KEYS = {
     "产品代码": "asset_code",
     "资产名称": "asset_name",
     "产品名称": "asset_name",
+    "分级产品": "share_class_code",
+    "分级名称": "share_class_name",
     "资产份额净值(元)": "unit_nav",
     "资产份额净值 (元)": "unit_nav",
     "单位净值": "unit_nav",
@@ -55,6 +57,12 @@ _HEADER_KEYS = {
     "累计单位净值(元/份)": "cumulative_unit_nav",
     "产品资产净值": "net_asset_value",
     "产品总份额": "total_shares",
+    "上一年度日均资产净值(元)": "prev_year_avg_net_asset_value",
+    "上一年度日均资产净值 (元)": "prev_year_avg_net_asset_value",
+    "上年总层面日均规模": "prev_year_avg_net_asset_value",
+    "本年度日均资产净值(元)": "current_year_avg_net_asset_value",
+    "本年度日均资产净值 (元)": "current_year_avg_net_asset_value",
+    "本年总层面日均规模": "current_year_avg_net_asset_value",
 }
 
 
@@ -82,22 +90,47 @@ def _fund_nav_exact_import_product_name(fund: FundNavProduct) -> str | None:
     return s or None
 
 
+def _row_effective_product_name(row: Any, col_map: dict[str, str]) -> str:
+    """优先「分级名称」，否则取「产品名称/资产名称」。"""
+    if "share_class_name" in col_map:
+        sc = str(row[col_map["share_class_name"]]).strip()
+        if sc and sc.lower() not in ("nan", "none"):
+            return sc
+    if "asset_name" in col_map:
+        return str(row[col_map["asset_name"]]).strip()
+    return ""
+
+
+def _row_asset_codes_for_match(row: Any, col_map: dict[str, str]) -> list[str]:
+    codes: list[str] = []
+    if "asset_code" in col_map:
+        c = _normalize_fund_nav_asset_code_cell(row[col_map["asset_code"]])
+        if c:
+            codes.append(c)
+    if "share_class_code" in col_map:
+        c = _normalize_fund_nav_asset_code_cell(row[col_map["share_class_code"]])
+        if c and c not in codes:
+            codes.append(c)
+    return codes
+
+
 def _row_matches_fund_asset_code(row: Any, col_map: dict[str, str], fund: FundNavProduct) -> bool:
     """无产品代码列时保持原样（首行即主表）；有列时只处理与 fund 配置一致的那一行（如多份额同表只落库主代码）。"""
-    if "asset_code" not in col_map:
+    if "asset_code" not in col_map and "share_class_code" not in col_map:
         return True
-    raw_code = _normalize_fund_nav_asset_code_cell(row[col_map["asset_code"]])
     expected = _normalize_fund_nav_asset_code_cell(fund["asset_code"])
     short = expected.replace("(总)", "").replace("（总）", "").strip()
     exact_name = _fund_nav_exact_import_product_name(fund)
+    row_codes = _row_asset_codes_for_match(row, col_map)
     if exact_name:
-        if raw_code != expected:
+        if row_codes and expected not in row_codes and short not in row_codes:
             return False
-        if "asset_name" not in col_map:
+        if not row_codes and "asset_code" in col_map:
             return False
-        if str(row[col_map["asset_name"]]).strip() != exact_name:
-            return False
-        return True
+        return _row_effective_product_name(row, col_map) == exact_name
+    if not row_codes:
+        return "asset_code" not in col_map
+    raw_code = row_codes[0]
     if raw_code == expected:
         return True
     return raw_code == short
@@ -177,7 +210,8 @@ def _fund_nav_doc_from_row(
     nav_iso = _parse_date_to_iso(row[col_map["nav_date"]])
     if not nav_iso:
         return None
-    raw_code = _normalize_fund_nav_asset_code_cell(row[col_map["asset_code"]])
+    row_codes = _row_asset_codes_for_match(row, col_map)
+    raw_code = row_codes[0] if row_codes else ""
     expected = _normalize_fund_nav_asset_code_cell(fund["asset_code"])
     short = (
         expected.replace("(总)", "")
@@ -185,30 +219,37 @@ def _fund_nav_doc_from_row(
         .strip()
     )
     exact_name = _fund_nav_exact_import_product_name(fund)
+    effective_name = _row_effective_product_name(row, col_map)
     if exact_name:
-        if raw_code != expected:
+        if row_codes and expected not in row_codes and short not in row_codes:
             raise ValueError(
-                f"资产代码 {raw_code} 与期望 {expected} 不一致（主基金行须与配置代码完全一致）"
+                f"资产代码 {row_codes} 与期望 {expected} 不一致（须与配置代码完全一致）"
             )
-        if str(row[col_map["asset_name"]]).strip() != exact_name:
+        if effective_name != exact_name:
             raise ValueError(
-                f"产品名称与要求不符（须为 {exact_name!r}，当前为 "
-                f"{str(row[col_map['asset_name']]).strip()!r}）"
+                f"产品名称与要求不符（须为 {exact_name!r}，当前为 {effective_name!r}）"
             )
         code = expected
+        asset_name = effective_name
     elif raw_code != expected:
         if raw_code != short:
             raise ValueError(
                 f"资产代码 {raw_code} 与期望 {expected}（或简称 {short}）不一致"
             )
         code = expected
+        asset_name = effective_name or (
+            str(row[col_map["asset_name"]]).strip() if "asset_name" in col_map else ""
+        )
     else:
         code = expected
+        asset_name = effective_name or (
+            str(row[col_map["asset_name"]]).strip() if "asset_name" in col_map else ""
+        )
 
     doc: dict[str, Any] = {
         "nav_date": nav_iso,
         "asset_code": code,
-        "asset_name": str(row[col_map["asset_name"]]).strip(),
+        "asset_name": asset_name,
         "unit_nav": _parse_decimal(row[col_map["unit_nav"]]),
         "cumulative_unit_nav": _parse_decimal(row[col_map["cumulative_unit_nav"]]),
     }
@@ -227,6 +268,14 @@ def _fund_nav_doc_from_row(
     if "reference_market_value" in col_map:
         doc["reference_market_value"] = _parse_decimal(
             row[col_map["reference_market_value"]]
+        )
+    if "prev_year_avg_net_asset_value" in col_map:
+        doc["prev_year_avg_net_asset_value"] = _parse_decimal(
+            row[col_map["prev_year_avg_net_asset_value"]]
+        )
+    if "current_year_avg_net_asset_value" in col_map:
+        doc["current_year_avg_net_asset_value"] = _parse_decimal(
+            row[col_map["current_year_avg_net_asset_value"]]
         )
 
     for k, v in list(doc.items()):

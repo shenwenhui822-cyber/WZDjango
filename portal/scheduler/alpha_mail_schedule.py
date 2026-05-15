@@ -32,6 +32,7 @@ DEFAULT_MAIL_SCHEDULER_SCHEDULES: list[tuple[str, str, dict[str, Any]]] = [
     ("16:05", "auto_import_cjqh_settle_mail", {"scheduler_job_key": "cjqh_settle"}),
     ("18:10", "auto_import_stz053_nav_mail", {"scheduler_job_key": "stz053_nav"}),
     ("19:00", "auto_import_htqh_settle_mail", {"scheduler_job_key": "htqh_settle"}),
+    ("19:40", "auto_import_dwyh_nav_mail", {"scheduler_job_key": "dwyh_nav"}),
     ("20:00", "auto_import_qichat_t0_mail", {"scheduler_job_key": "qichat_t0_weekly"}),
     ("21:00", "auto_import_alpha_mail", {"scheduler_job_key": "alpha_mail"}),
 ]
@@ -117,6 +118,10 @@ def _dyctayh_nav_mail_enabled() -> bool:
     return _env_enabled("DYCTAYH_NAV_MAIL_SCHEDULER_ENABLED")
 
 
+def _dwyh_nav_mail_enabled() -> bool:
+    return _env_enabled("DWYH_NAV_MAIL_SCHEDULER_ENABLED")
+
+
 def _t0_ftp_sync_enabled() -> bool:
     return _env_enabled("T0_FTP_SYNC_SCHEDULER_ENABLED")
 
@@ -162,6 +167,8 @@ def get_active_mail_scheduler_schedules() -> list[tuple[str, str, dict[str, Any]
         s = [x for x in s if x[1] != "auto_import_ctayh_nav_mail"]
     if not _dyctayh_nav_mail_enabled():
         s = [x for x in s if x[1] != "auto_import_dyctayh_nav_mail"]
+    if not _dwyh_nav_mail_enabled():
+        s = [x for x in s if x[1] != "auto_import_dwyh_nav_mail"]
     if not _ylh_nav_mail_enabled():
         s = [x for x in s if x[1] != "auto_import_ylh_nav_mail"]
     if not _wz_lyh_nav_mail_enabled():

@@ -25,6 +25,42 @@ def _fmt_cell(val: Any) -> str:
     return str(val)
 
 
+def _resolve_log_target_fields(doc: dict[str, Any]) -> tuple[str, str]:
+    """列表展示：优先顶层字段，旧日志从 notify_snapshot 回填。"""
+    snap = doc.get("notify_snapshot")
+    if not isinstance(snap, dict):
+        snap = None
+
+    target_subject = doc.get("target_subject")
+    if (target_subject is None or str(target_subject).strip() == "") and snap:
+        for key in ("target_subject", "matched_subject"):
+            raw = snap.get(key)
+            if raw is not None and str(raw).strip():
+                target_subject = raw
+                break
+
+    target_date = doc.get("target_date")
+    if (target_date is None or str(target_date).strip() == "") and snap:
+        for key in (
+            "target_date",
+            "nav_date",
+            "report_date",
+            "ymd",
+            "target_trade_day",
+            "subject_date",
+            "statement_date",
+        ):
+            raw = snap.get(key)
+            if raw is None or str(raw).strip() == "":
+                continue
+            s = str(raw).strip().replace("-", "")[:8]
+            if len(s) == 8 and s.isdigit():
+                target_date = s
+                break
+
+    return _fmt_cell(target_subject), _fmt_cell(target_date)
+
+
 def _import_succeeded_filter(request) -> tuple[dict[str, Any] | None, str]:
     """返回 (Mongo 查询片段, 当前筛选标签)。无片段表示不按该字段过滤。"""
     raw = (request.GET.get("import_succeeded") or "false").strip().lower()
@@ -60,6 +96,7 @@ def mail_scheduler_logs(request):
                     "command_name": 1,
                     "target_subject": 1,
                     "failure_reason": 1,
+                    "notify_snapshot": 1,
                 },
             )
             .sort("finished_at", -1)
@@ -67,14 +104,15 @@ def mail_scheduler_logs(request):
         )
         for doc in cursor:
             ok = doc.get("import_succeeded")
+            target_subject, target_date = _resolve_log_target_fields(doc)
             rows.append(
                 {
                     "log_id": str(doc.get("_id")),
-                    "target_date": _fmt_cell(doc.get("target_date")),
+                    "target_date": target_date,
                     "log_type": _fmt_cell(doc.get("log_type")),
                     "import_succeeded": ok if isinstance(ok, bool) else bool(ok),
                     "command_name": _fmt_cell(doc.get("command_name")),
-                    "target_subject": _fmt_cell(doc.get("target_subject")),
+                    "target_subject": target_subject,
                     "failure_reason": _fmt_cell(doc.get("failure_reason")),
                 }
             )

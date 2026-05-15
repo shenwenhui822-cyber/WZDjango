@@ -76,13 +76,37 @@ def _valid_calendar_ymd(ymd: str) -> bool:
         return False
 
 
+def _normalize_target_date_ymd(val: object) -> str | None:
+    """将 nav_date / YYYY-MM-DD / YYYYMMDD 等统一为 YYYYMMDD。"""
+    if val is None:
+        return None
+    s = str(val).strip()
+    if not s:
+        return None
+    if re.fullmatch(r"\d{8}", s) and _valid_calendar_ymd(s):
+        return s
+    m_iso = re.match(r"^(\d{4})-(\d{2})-(\d{2})", s)
+    if m_iso:
+        compact = "".join(m_iso.groups())
+        if _valid_calendar_ymd(compact):
+            return compact
+    return None
+
+
 def _extract_mail_log_target_fields(stdout_text: str) -> tuple[str | None, str | None]:
     """从命令 stdout 解析「目标主题」「目标日期」，写入 MAIL_LOGS（目标日期统一为 YYYYMMDD 字符串）。"""
     text = stdout_text or ""
     target_subject: str | None = None
-    m_sub = re.search(r"^\s*目标主题[:：]\s*(.+?)(?:\r?\n|$)", text, flags=re.MULTILINE)
-    if m_sub:
-        target_subject = (m_sub.group(1) or "").strip() or None
+    for pat in (
+        r"^\s*目标主题[:：]\s*(.+?)(?:\r?\n|$)",
+        r"^\s*主题[:：]\s*(.+?)(?:\r?\n|$)",
+        r"^\s*已命中主题[:：]\s*(.+?)(?:\r?\n|$)",
+    ):
+        m_sub = re.search(pat, text, flags=re.MULTILINE)
+        if m_sub:
+            target_subject = (m_sub.group(1) or "").strip() or None
+            if target_subject:
+                break
 
     target_date: str | None = None
     m_day = re.search(r"主题日\s+(\d{8})\b", text)
@@ -92,12 +116,23 @@ def _extract_mail_log_target_fields(stdout_text: str) -> tuple[str | None, str |
         m_rep = re.search(r"报告日\D*(\d{8})\b", text)
         if m_rep and _valid_calendar_ymd(m_rep.group(1)):
             target_date = m_rep.group(1)
+    if target_date is None:
+        for pat in (
+            r"目标净值日\(nav_date\)[:：]\s*(\d{4}-\d{2}-\d{2})",
+            r"目标行情日[^:：\n]{0,24}[:：]\s*(\d{4}-\d{2}-\d{2})",
+            r"报告日\(report_date\)[:：]\s*(\d{4}-\d{2}-\d{2})",
+            r"主题日期\(ymd\)[:：]\s*(\d{8})",
+        ):
+            m = re.search(pat, text)
+            if not m:
+                continue
+            target_date = _normalize_target_date_ymd(m.group(1))
+            if target_date:
+                break
     if target_date is None and target_subject:
         m_iso = re.search(r"(\d{4}-\d{2}-\d{2})", target_subject)
         if m_iso:
-            compact = m_iso.group(1).replace("-", "")
-            if _valid_calendar_ymd(compact):
-                target_date = compact
+            target_date = _normalize_target_date_ymd(m_iso.group(1))
     if target_date is None and target_subject:
         m_tail = re.search(r"(\d{8})\s*$", target_subject)
         if m_tail and _valid_calendar_ymd(m_tail.group(1)):
@@ -108,6 +143,55 @@ def _extract_mail_log_target_fields(stdout_text: str) -> tuple[str | None, str |
         if ok:
             target_date = ok[-1]
     return target_subject, target_date
+
+
+def _merge_mail_log_target_fields_from_notify_snapshot(
+    target_subject: str | None,
+    target_date: str | None,
+    notify_snapshot: dict | None,
+) -> tuple[str | None, str | None]:
+    """stdout 未解析到时，从 __MAIL_LOG_RESULT_JSON__ 回填 target_subject / target_date。"""
+    if not notify_snapshot:
+        return target_subject, target_date
+
+    if not target_subject:
+        for key in ("target_subject", "matched_subject"):
+            raw = notify_snapshot.get(key)
+            if raw is not None and str(raw).strip():
+                target_subject = str(raw).strip()
+                break
+
+    if not target_date:
+        for key in (
+            "target_date",
+            "nav_date",
+            "report_date",
+            "ymd",
+            "target_trade_day",
+            "subject_date",
+            "statement_date",
+        ):
+            ymd = _normalize_target_date_ymd(notify_snapshot.get(key))
+            if ymd:
+                target_date = ymd
+                break
+
+    if not target_date and target_subject:
+        _, inferred = _extract_mail_log_target_fields(f"目标主题: {target_subject}\n")
+        target_date = inferred
+
+    return target_subject, target_date
+
+
+def _resolve_mail_log_target_fields(
+    stdout_text: str,
+    notify_snapshot: dict | None,
+) -> tuple[str | None, str | None]:
+    """统一解析 MAIL_LOGS 的 target_subject / target_date（stdout + notify_snapshot）。"""
+    target_subject, target_date = _extract_mail_log_target_fields(stdout_text)
+    return _merge_mail_log_target_fields_from_notify_snapshot(
+        target_subject, target_date, notify_snapshot
+    )
 
 
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
@@ -449,7 +533,9 @@ def _run_job(command_name: str, *, force: bool, extra_kwargs: dict | None = None
         out_text_raw = out_buf.getvalue()
         out_text, notify_snapshot = strip_mail_job_result_json(out_text_raw)
         err_text = err_buf.getvalue()
-        target_subject, target_date = _extract_mail_log_target_fields(out_text)
+        target_subject, target_date = _resolve_mail_log_target_fields(
+            out_text, notify_snapshot
+        )
         outcome, soft_reason = _infer_scheduled_job_outcome(
             command_name, out_text, err_text
         )
@@ -494,7 +580,9 @@ def _run_job(command_name: str, *, force: bool, extra_kwargs: dict | None = None
         out_text_raw = out_buf.getvalue()
         out_text, notify_snapshot = strip_mail_job_result_json(out_text_raw)
         err_text = err_buf.getvalue()
-        target_subject, target_date = _extract_mail_log_target_fields(out_text)
+        target_subject, target_date = _resolve_mail_log_target_fields(
+            out_text, notify_snapshot
+        )
         fr = str(exc)
         _persist_mail_scheduler_run(
             command_name=command_name,

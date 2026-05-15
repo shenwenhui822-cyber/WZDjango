@@ -1,26 +1,24 @@
 """
-交易日 11:30 拉取 wangkan（ALPHA_MAIL_*）邮箱中主题
-「资产净值公告_SNP584_吾执零零号私募证券投资基金_{YYYY-MM-DD}」
-的邮件，从附件 xlsx/xls 解析净值表，写入 fund_nav_real.WZ_LLH_MASTER 与 WZ_LLH_A。
-同表多行时：主基金行（产品名称「吾执零零号私募证券投资基金」）→ WZ_LLH_MASTER；
-A 类行（产品名称或分级名称「吾执零零号私募证券投资基金A」）→ WZ_LLH_A。
+交易日 19:40 拉取 wangkan（ALPHA_MAIL_*）邮箱中主题
+「资产净值公告_SASA22_吾执多维一号私募证券投资基金_{YYYY-MM-DD}」
+的邮件，从附件 xlsx 解析净值表，写入 fund_nav_real.WZ_DWYH_MASTER。
+附件可为多行（含 A/B/C 份额）；仅落库产品代码为 SASA22 且产品名称完全匹配主基金的行。
 
 IMAP：`.env` 中 ALPHA_MAIL_USER / ALPHA_MAIL_PASS、ALPHA_IMAP_SERVER、ALPHA_IMAP_PORT。
 
 业务约定：仅运行日为交易日时执行；非交易日不执行、不通知。净值日 nav_date 默认取运行日之前
-最近一个交易日（上一交易日，与 auto_import_dylx_nav_mail 一致）。
+最近一个交易日（上一交易日）。
 
-调度：alpha_mail_scheduler 默认 11:30（环境变量 LLH_NAV_MAIL_SCHEDULER_ENABLED）。
+调度：alpha_mail_scheduler 默认 19:40（环境变量 DWYH_NAV_MAIL_SCHEDULER_ENABLED）。
 
 用法：
-  python manage.py auto_import_llh_nav_mail
-  python manage.py auto_import_llh_nav_mail --force
-  python manage.py auto_import_llh_nav_mail --nav-date 2026-05-07
+  python manage.py auto_import_dwyh_nav_mail
+  python manage.py auto_import_dwyh_nav_mail --force
+  python manage.py auto_import_dwyh_nav_mail --nav-date 2026-05-13
 """
 from __future__ import annotations
 
 import imaplib
-from datetime import timedelta
 from pathlib import Path
 
 from django.conf import settings
@@ -28,12 +26,12 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from portal.config.mail_imap import resolve_imap_credentials
+from portal.services.dwyh_nav_mail_service import (
+    build_dwyh_nav_mail_subject,
+    get_dwyh_fund_product,
+)
 from portal.services.fund_nav_real_service import parse_fund_nav_excel, upsert_fund_nav_doc
 from portal.services.imap_common import find_latest_mail_id_by_exact_subject
-from portal.services.llh_nav_mail_service import (
-    build_llh_nav_mail_subject,
-    llh_nav_mail_import_products,
-)
 from portal.services.mail_import_common import (
     emit_mail_job_result_line,
     format_mail_job_notify_body,
@@ -50,8 +48,8 @@ from portal.services.trade_calendar_service import (
 )
 
 
-def _pick_llh_nav_xlsx(files: list[Path]) -> Path | None:
-    """优先文件名含 SNP584 / 吾执零零号 / 资产净值公告 的 Excel。"""
+def _pick_dwyh_nav_xlsx(files: list[Path]) -> Path | None:
+    """优先文件名含 SASA22 / 吾执多维一号 / 资产净值公告 的 Excel。"""
     if not files:
         return None
     scored: list[tuple[int, Path]] = []
@@ -61,9 +59,9 @@ def _pick_llh_nav_xlsx(files: list[Path]) -> Path | None:
         if not lower.endswith((".xlsx", ".xls", ".xlsm")):
             continue
         score = 0
-        if "SNP584" in name.upper():
+        if "SASA22" in name.upper():
             score += 3
-        if "吾执零零号" in name:
+        if "吾执多维一号" in name:
             score += 3
         if "资产净值公告" in name:
             score += 2
@@ -71,14 +69,14 @@ def _pick_llh_nav_xlsx(files: list[Path]) -> Path | None:
     scored.sort(key=lambda x: -x[0])
     if scored and scored[0][0] > 0:
         return scored[0][1]
-    excels = [p for p in files if p.suffix.lower() in (".xlsx", ".xls", ".xlsm")]
-    return excels[0] if excels else None
+    return files[0]
 
 
 class Command(BaseCommand):
     help = (
-        "仅运行日为交易日时执行：抓取吾执零零号 SNP584 资产净值公告邮件并写入 "
-        "fund_nav_real.WZ_LLH_MASTER 与 WZ_LLH_A；nav_date 默认为运行日之前最近一个交易日。"
+        "仅运行日为交易日时执行：抓取吾执多维一号 SASA22 资产净值公告邮件 xlsx 并写入 "
+        "fund_nav_real.WZ_DWYH_MASTER（同表仅导入 SASA22 主基金行）；"
+        "nav_date 默认为运行日之前最近一个交易日。"
     )
 
     def add_arguments(self, parser):
@@ -102,10 +100,10 @@ class Command(BaseCommand):
     ) -> None:
         status = str(report.get("status") or "UNKNOWN")
         mail_subject = (
-            f"[{status}] 吾执零零号净值邮件导入 "
+            f"[{status}] 吾执多维一号净值邮件导入 "
             f"{timezone.localdate().strftime('%Y-%m-%d')}"
         )
-        title = "吾执零零号 SNP584（fund_nav_real / WZ_LLH_MASTER + WZ_LLH_A）自动导入结果"
+        title = "吾执多维一号 SASA22（fund_nav_real / WZ_DWYH_MASTER）自动导入结果"
         data_ok = status == "SUCCESS"
         body = format_mail_job_notify_body(
             title=title,
@@ -192,7 +190,7 @@ class Command(BaseCommand):
 
             report["nav_date"] = nav_iso
             nav_td = is_trade_date_iso(nav_iso)
-            target_subject = build_llh_nav_mail_subject(nav_iso)
+            target_subject = build_dwyh_nav_mail_subject(nav_iso)
             report["target_subject"] = target_subject
 
             self.stdout.write(f"目标净值日(nav_date): {nav_iso}")
@@ -217,12 +215,12 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.WARNING(report["message"]))
                 return
 
-            fund_products = llh_nav_mail_import_products()
+            fund = get_dwyh_fund_product()
             email_user, email_pass, imap_server, imap_port = resolve_imap_credentials()
             self.stdout.write(f"IMAP: {email_user} @ {imap_server}:{imap_port}")
 
             ymd = nav_iso.replace("-", "")
-            save_root = Path(settings.ALPHADATA_DIR) / "llh_nav_mail" / ymd
+            save_root = Path(settings.ALPHADATA_DIR) / "dwyh_nav_mail" / ymd
 
             mailbox: imaplib.IMAP4_SSL | None = None
             try:
@@ -260,7 +258,7 @@ class Command(BaseCommand):
                     self.stderr.write(self.style.ERROR(report["message"]))
                     return
 
-                fp = _pick_llh_nav_xlsx(files)
+                fp = _pick_dwyh_nav_xlsx(files)
                 if not fp:
                     report["status"] = "FAILED"
                     report["message"] = "未选择到附件。"
@@ -269,23 +267,20 @@ class Command(BaseCommand):
 
                 report["source_file"] = fp.name
                 data = fp.read_bytes()
-                upserted: list[str] = []
-                for fund in fund_products:
-                    doc = parse_fund_nav_excel(
-                        data,
-                        filename=fp.name,
-                        fund=fund,
-                        expected_nav_iso=nav_iso,
-                    )
-                    upsert_fund_nav_doc(
-                        doc,
-                        fund=fund,
-                        source_subject=target_subject,
-                    )
-                    upserted.append(f"{fund['product_key']}(nav_date={doc['nav_date']})")
+                doc = parse_fund_nav_excel(
+                    data,
+                    filename=fp.name,
+                    fund=fund,
+                    expected_nav_iso=nav_iso,
+                )
+                upsert_fund_nav_doc(
+                    doc,
+                    fund=fund,
+                    source_subject=target_subject,
+                )
                 report["status"] = "SUCCESS"
                 report["message"] = (
-                    f"已落库 {'、'.join(upserted)} <- {fp.name}"
+                    f"已落库 nav_date={doc['nav_date']}（SASA22）<- {fp.name}"
                 )
                 self.stdout.write(self.style.SUCCESS(report["message"]))
             finally:

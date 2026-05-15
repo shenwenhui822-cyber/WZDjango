@@ -13,11 +13,11 @@ from django.utils import timezone
 from portal.db.mongo import get_mail_logs_collection
 from portal.scheduler.alpha_mail_schedule import DEFAULT_MAIL_SCHEDULER_SCHEDULES
 from portal.scheduler.alpha_mail_scheduler import (
-    _extract_mail_log_target_fields,
     _infer_scheduled_job_outcome,
     _kwargs_bson_safe,
     _merge_outcome_with_notify_snapshot,
     _notify_snapshot_for_mongo,
+    _resolve_mail_log_target_fields,
     _scheduler_mail_log_max_chars,
     _truncate_log_text,
 )
@@ -131,7 +131,9 @@ def rerun_and_update_mail_log(log_id: str) -> tuple[bool, str]:
     out_text_raw = out_buf.getvalue()
     out_text, notify_snapshot = strip_mail_job_result_json(out_text_raw)
     err_text = err_buf.getvalue()
-    target_subject, target_date = _extract_mail_log_target_fields(out_text)
+    target_subject, target_date = _resolve_mail_log_target_fields(
+        out_text, notify_snapshot
+    )
     if not target_subject:
         target_subject = doc.get("target_subject")
     if not target_date:

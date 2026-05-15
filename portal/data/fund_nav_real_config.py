@@ -142,6 +142,12 @@ FUND_NAV_PRODUCTS: list[FundNavProduct] = [
         "nav_import_exact_product_name": "吾执零零号私募证券投资基金",
     },
     {
+        "product_key": getattr(settings, "NAV_REAL_WZ_LLH_A", "WZ_LLH_A"),
+        "name_prefix": "吾执零零号私募证券投资基金A类",
+        "asset_code": "SNP584",
+        "nav_import_exact_product_name": "吾执零零号私募证券投资基金A",
+    },
+    {
         "product_key": getattr(
             settings, "NAV_REAL_WZ_LYH_MASTER", "WZ_LYH_MASTER"
         ),
@@ -163,6 +169,14 @@ FUND_NAV_PRODUCTS: list[FundNavProduct] = [
         "name_prefix": "吾执CTA一号私募证券投资基金",
         "asset_code": "SNG191",
     },
+    {
+        "product_key": getattr(
+            settings, "NAV_REAL_WZ_DWYH_MASTER", "WZ_DWYH_MASTER"
+        ),
+        "name_prefix": "吾执多维一号私募证券投资基金",
+        "asset_code": "SASA22",
+        "nav_import_exact_product_name": "吾执多维一号私募证券投资基金",
+    },
 ]
 
 
@@ -180,11 +194,13 @@ def fund_nav_products_for_mail_import() -> list[FundNavProduct]:
             getattr(settings, "NAV_REAL_WZ_DYLX_MASTER", "WZ_DYLX_MASTER"),
             getattr(settings, "NAV_REAL_WZ_YSH_MASTER", "WZ_YSH_MASTER"),
             getattr(settings, "NAV_REAL_WZ_LLH_MASTER", "WZ_LLH_MASTER"),
+            getattr(settings, "NAV_REAL_WZ_LLH_A", "WZ_LLH_A"),
             getattr(settings, "NAV_REAL_WZ_LYH_MASTER", "WZ_LYH_MASTER"),
             getattr(settings, "NAV_REAL_WZ_LHJXYH_MASTER", "WZ_LHJXYH_MASTER"),
             getattr(settings, "NAV_REAL_WZ_JLH_MASTER", "WZ_JLH_MASTER"),
             getattr(settings, "NAV_REAL_WZ_CTAYH_MASTER", "WZ_CTAYH_MASTER"),
             getattr(settings, "NAV_REAL_WZ_DYCTAYH_MASTER", "WZ_DYCTAYH_MASTER"),
+            getattr(settings, "NAV_REAL_WZ_DWYH_MASTER", "WZ_DWYH_MASTER"),
         }
     )
     return [f for f in FUND_NAV_PRODUCTS if f["product_key"] not in skip]

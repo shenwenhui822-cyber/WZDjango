@@ -134,12 +134,16 @@ NAV_REAL_WZ_DYLX_MASTER = "WZ_DYLX_MASTER"
 NAV_REAL_WZ_YSH_MASTER = "WZ_YSH_MASTER"
 # 吾执零零号 SNP584：资产净值公告邮件 → fund_nav_real.WZ_LLH_MASTER（auto_import_llh_nav_mail；同表仅主基金全称 + SNP584）
 NAV_REAL_WZ_LLH_MASTER = "WZ_LLH_MASTER"
+# 吾执零零号 A 类：同邮件/附件 → fund_nav_real.WZ_LLH_A（产品名称或分级名称为「吾执零零号私募证券投资基金A」）
+NAV_REAL_WZ_LLH_A = "WZ_LLH_A"
 # 吾执九零号 SXR194：资产净值公告邮件 → fund_nav_real.WZ_JLH_MASTER（auto_import_jlh_nav_mail；同表多份额仅落库 SXR194）
 NAV_REAL_WZ_JLH_MASTER = "WZ_JLH_MASTER"
 # 吾执 CTA 一号 SNG191：ALPHA_MAIL「净值表邮件…【国信托管】」zip/xlsx → fund_nav_real.WZ_CTAYH_MASTER（auto_import_ctayh_nav_mail）
 NAV_REAL_WZ_CTAYH_MASTER = "WZ_CTAYH_MASTER"
 # 吾执多元 CTA 一号 SXE021(总)：wangkan「【基金净值】…」→ fund_nav_real.WZ_DYCTAYH_MASTER（auto_import_dyctayh_nav_mail，每个交易日 T-1）
 NAV_REAL_WZ_DYCTAYH_MASTER = "WZ_DYCTAYH_MASTER"
+# 吾执多维一号 SASA22：wangkan「资产净值公告…」→ fund_nav_real.WZ_DWYH_MASTER（auto_import_dwyh_nav_mail，每个交易日 19:40 T-1）
+NAV_REAL_WZ_DWYH_MASTER = "WZ_DWYH_MASTER"
 # 华泰证券 HT1 普通账单资金情况（吾执博士一号 666810103835）→ auto_import_htzq_ht1_capital_mail
 HTZQ_666810103835_SETTLE_DB = "fstock_settle_real"
 HTZQ_666810103835_SETTLE_COLLECTION = "HTZQ_666810103835"

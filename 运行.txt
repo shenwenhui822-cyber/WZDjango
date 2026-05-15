@@ -287,8 +287,10 @@
 
   --- 吾执零零号私募证券投资基金 SNP584（IMAP 用 .env：ALPHA_MAIL_USER / ALPHA_MAIL_PASS）---
     主题格式（精确匹配）：资产净值公告_SNP584_吾执零零号私募证券投资基金_{YYYY-MM-DD}
-    附件可能多行（含 A/B：产品代码可能同为 SNP584 或存在 SNP584B）：仅导入产品代码为 SNP584 且产品名称完全为「吾执零零号私募证券投资基金」的主基金行
-    落库：fund_nav_real.WZ_LLH_MASTER（settings.NAV_REAL_WZ_LLH_MASTER）
+    附件可能多行（含 A/B：产品代码可能同为 SNP584 或存在 SNP584B）：
+      主基金行（产品名称「吾执零零号私募证券投资基金」）→ WZ_LLH_MASTER
+      A 类行（产品名称或分级名称「吾执零零号私募证券投资基金A」）→ WZ_LLH_A
+    落库：fund_nav_real.WZ_LLH_MASTER、WZ_LLH_A（settings.NAV_REAL_WZ_LLH_MASTER / NAV_REAL_WZ_LLH_A）
     约定：仅运行日为交易日时执行；默认 nav_date = 运行日上一交易日（T-1）；成功/失败发结果通知（ALPHA_NOTIFY_*）
     附件落盘：Alphadata/llh_nav_mail/YYYYMMDD/
     python manage.py auto_import_llh_nav_mail
@@ -311,6 +313,22 @@
     本地历史净值批量导入（图二模板：首行可为「产品基金净值数据」标题、第二行为列名；亦支持首行即表头）：
     python manage.py import_jlh_nav_series --file "九零号净值.xlsx"
     关闭定时：环境变量 JLH_NAV_MAIL_SCHEDULER_ENABLED=0
+
+  --- 吾执多维一号私募证券投资基金 SASA22（IMAP 用 .env：ALPHA_MAIL_USER / ALPHA_MAIL_PASS）---
+    主题格式：资产净值公告_SASA22_吾执多维一号私募证券投资基金_{YYYY-MM-DD}
+    附件可能多行（含 A/B/C 份额）：仅将产品代码为 SASA22 且产品名称完全为「吾执多维一号私募证券投资基金」的主基金行落入库
+    落库：fund_nav_real.WZ_DWYH_MASTER（settings.NAV_REAL_WZ_DWYH_MASTER）
+    表头支持：净值日期、产品代码、产品名称、单位净值、累计单位净值、产品总份额、产品资产净值、
+      上一年度/本年度日均资产净值、上年/本年总层面日均规模 等
+    约定：仅运行日为交易日时执行；默认 nav_date=运行日上一交易日；每个交易日 19:40 定时；成功/失败发结果通知
+    附件落盘：Alphadata/dwyh_nav_mail/YYYYMMDD/
+    python manage.py auto_import_dwyh_nav_mail
+    python manage.py auto_import_dwyh_nav_mail --nav-date 2026-05-13
+    python manage.py auto_import_dwyh_nav_mail --force
+    本地多行序列（图二「产品基金净值数据」：首行标题、第二行表头；表头须含净值日期、产品代码、产品名称等）：
+    python manage.py import_dwyh_nav_series --file "多维一号净值.xlsx"
+    亦可：python scripts/import_dwyh_nav_series.py --file "xxx.xlsx"
+    关闭定时：环境变量 DWYH_NAV_MAIL_SCHEDULER_ENABLED=0
 
   --- 吾执多元 CTA 一号私募证券投资基金 SXE021(总)（IMAP 用 .env：ALPHA_MAIL_USER / ALPHA_MAIL_PASS）---
     主题格式（精确匹配）：【基金净值】SXE021(总)_吾执多元CTA一号私募证券投资基金_{YYYY-MM-DD}
