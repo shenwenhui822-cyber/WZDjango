@@ -11,7 +11,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from portal.db.mongo import get_mongo_client
+from portal.db.mongo import close_mongo_client, get_mongo_client
 from portal.services.htqh_settle_service import extract_htqh_record_from_zip
 from portal.services.imap_common import (
     decode_mime_header,
@@ -292,7 +292,7 @@ class Command(BaseCommand):
                         upsert=True,
                     )
                 finally:
-                    client.close()
+                    close_mongo_client()
 
                 report["status"] = "SUCCESS"
                 report["message"] = (

@@ -193,6 +193,8 @@ MONGODB_RQ_BENCH_CALC_PREFIX = "calc_"
 # 产品净值 vs 基准对比（日频行、区间汇总）；名称可扩展，须以 calc_ 开头
 MONGODB_RQ_BENCH_CALC_NAV_BENCH_DAILY = "calc_nav_bench_daily"
 MONGODB_RQ_BENCH_CALC_NAV_BENCH_SUMMARY = "calc_nav_bench_summary"
+# 净值 vs 基准对比缓存：calc_* 末日与 alpha_sim_nav 末日相差超过该交易日数则删缓存并重算
+NAV_BENCH_CACHE_MAX_TRADING_DAY_LAG = 2
 # 泽鑫多维等五列净值表：与博士一号相同库 fund_nav_real，独立四个集合（与 WZ_BSYH_* 并列）
 MONGODB_ZXDW_NAV_COLLECTIONS = (
     "WZ_ZXDW_MASTER",

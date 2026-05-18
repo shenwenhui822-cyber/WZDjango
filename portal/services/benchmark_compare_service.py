@@ -7,12 +7,17 @@ from django.conf import settings
 
 from portal.db.mongo import get_rq_bench_calc_collection, get_rq_bench_collection
 from portal.services.rq_bench_calc_store import (
+    delete_nav_bench_cache,
     ensure_nav_bench_daily_indexes,
     ensure_nav_bench_summary_indexes,
     upsert_nav_bench_daily_row,
     upsert_nav_bench_summary_row,
 )
-from portal.services.trade_calendar_service import fetch_nav_curve_series
+from portal.services.trade_calendar_service import (
+    count_trading_days_inclusive,
+    fetch_latest_alpha_nav_report_date,
+    fetch_nav_curve_series,
+)
 
 # 产品前缀 -> 基准 code（按业务映射）
 _BENCH_RULES: list[tuple[str, str]] = [
@@ -108,6 +113,40 @@ def _summary_from_rows(
     }
 
 
+def _nav_bench_cache_max_trading_day_lag() -> int:
+    try:
+        n = int(getattr(settings, "NAV_BENCH_CACHE_MAX_TRADING_DAY_LAG", 2))
+    except (TypeError, ValueError):
+        n = 2
+    return max(0, n)
+
+
+def _cache_latest_report_date(rows: list[dict[str, Any]]) -> str | None:
+    if not rows:
+        return None
+    day = str(rows[-1].get("report_date") or "")[:10]
+    return day if len(day) == 10 else None
+
+
+def _nav_bench_cache_is_stale(
+    *,
+    cache_latest: str | None,
+    source_latest: str | None,
+) -> bool:
+    """
+    缓存末日落后于 alpha_sim_nav 最新末日超过 NAV_BENCH_CACHE_MAX_TRADING_DAY_LAG 个交易日则视为过期。
+    落后交易日数 = 闭区间 [cache_latest, source_latest] 内交易日个数 - 1。
+    """
+    if not cache_latest or not source_latest:
+        return False
+    c = cache_latest[:10]
+    s = source_latest[:10]
+    if s <= c:
+        return False
+    lag = count_trading_days_inclusive(c, s) - 1
+    return lag > _nav_bench_cache_max_trading_day_lag()
+
+
 def _load_cached_compare(
     *,
     product_name: str,
@@ -157,10 +196,16 @@ def build_and_store_nav_bench_compare(
     if not pn:
         raise ValueError("请选择产品名称")
     bench_code = resolve_bench_code(pn)
+    source_latest = fetch_latest_alpha_nav_report_date(pn, only_trading_days=True)
 
     cached = _load_cached_compare(product_name=pn, bench_code=bench_code)
     if cached is not None:
-        return cached
+        cache_latest = _cache_latest_report_date(cached.get("rows") or [])
+        if _nav_bench_cache_is_stale(cache_latest=cache_latest, source_latest=source_latest):
+            delete_nav_bench_cache(product_name=pn, bench_code=bench_code)
+            cached = None
+        else:
+            return cached
 
     nav_points = fetch_nav_curve_series(
         product_name=pn,

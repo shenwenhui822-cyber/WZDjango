@@ -245,9 +245,8 @@ def _build_market_neutral_pair(
 
 def _extract_latest_market_neutral_snapshot() -> dict[str, Any]:
     client = get_mongo_client()
-    try:
-        products: list[dict[str, Any]] = []
-        for name, fut_coll, stk_coll in (
+    products: list[dict[str, Any]] = []
+    for name, fut_coll, stk_coll in (
             (
                 "吾执二二号",
                 "GMQH_59000028",
@@ -290,9 +289,6 @@ def _extract_latest_market_neutral_snapshot() -> dict[str, Any]:
                     **hedge_meta,
                 }
             )
-    finally:
-        client.close()
-
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     return {"generated_at": generated_at, "products": products}
 

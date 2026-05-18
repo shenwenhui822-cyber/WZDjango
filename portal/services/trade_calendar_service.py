@@ -229,6 +229,44 @@ def _iso_day(v: Any) -> str | None:
     return s[:10] if len(s) >= 10 else s
 
 
+def fetch_latest_alpha_nav_report_date(
+    product_name: str,
+    *,
+    only_trading_days: bool = True,
+) -> str | None:
+    """alpha_sim_nav 中该产品有净值记录的最新 report_date（YYYY-MM-DD）。"""
+    pn = (product_name or "").strip()
+    if not pn or is_alpha_daily_product_name_excluded(pn):
+        return None
+    coll = get_app_collection()
+    doc = coll.find_one(
+        {
+            "_schema": ALPHA_DAILY_SCHEMA,
+            "product_name": pn,
+            "current_nav": {"$ne": None},
+        },
+        {"report_date": 1, "_id": 0},
+        sort=[("report_date", -1)],
+    )
+    day = _iso_day(doc.get("report_date")) if doc else None
+    if not day:
+        return None
+    if only_trading_days and not is_trade_date_iso(day):
+        tset = trading_date_iso_set()
+        if not tset:
+            return day
+        dates: list[str] = []
+        for d in coll.find(
+            {"_schema": ALPHA_DAILY_SCHEMA, "product_name": pn, "current_nav": {"$ne": None}},
+            {"report_date": 1, "_id": 0},
+        ):
+            rd = _iso_day(d.get("report_date"))
+            if rd and rd in tset:
+                dates.append(rd)
+        return max(dates) if dates else None
+    return day
+
+
 def fetch_nav_curve_series(
     *,
     product_name: str,

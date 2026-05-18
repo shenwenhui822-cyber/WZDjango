@@ -114,46 +114,43 @@ def _import_qichat_csv_paths(csv_files: list[Path]) -> QichatImportResult:
         return QichatImportResult(0, 0, errors)
 
     mongo = get_mongo_client()
-    try:
-        coll = mongo[settings.MONGODB_T0_PERFORMANCE_DB][
-            settings.MONGODB_T0_ORDER_COLLECTION
-        ]
-        coll.create_index(
-            [("trade_date", 1), ("product_name", 1)],
-            unique=True,
-        )
-        now = datetime.now(tz=dt_timezone.utc)
+    coll = mongo[settings.MONGODB_T0_PERFORMANCE_DB][
+        settings.MONGODB_T0_ORDER_COLLECTION
+    ]
+    coll.create_index(
+        [("trade_date", 1), ("product_name", 1)],
+        unique=True,
+    )
+    now = datetime.now(tz=dt_timezone.utc)
 
-        for p in csv_files:
-            try:
-                if not p.is_file():
-                    errors.append(f"{p.name}: 文件不存在")
-                    continue
-                rows = parse_qichat_csv(p)
-                if not rows:
-                    files_processed += 1
-                    continue
-                for rec in rows:
-                    doc = {
-                        **rec,
-                        "source_file": p.name,
-                        "imported_at": now,
-                    }
-                    coll.update_one(
-                        {
-                            "trade_date": doc["trade_date"],
-                            "product_name": doc["product_name"],
-                        },
-                        {"$set": doc},
-                        upsert=True,
-                    )
-                    rows_upserted += 1
+    for p in csv_files:
+        try:
+            if not p.is_file():
+                errors.append(f"{p.name}: 文件不存在")
+                continue
+            rows = parse_qichat_csv(p)
+            if not rows:
                 files_processed += 1
-            except Exception as ex:
-                errors.append(f"{p.name}: {ex}")
-                logger.exception("qichat CSV 导入失败: %s", p)
-    finally:
-        mongo.close()
+                continue
+            for rec in rows:
+                doc = {
+                    **rec,
+                    "source_file": p.name,
+                    "imported_at": now,
+                }
+                coll.update_one(
+                    {
+                        "trade_date": doc["trade_date"],
+                        "product_name": doc["product_name"],
+                    },
+                    {"$set": doc},
+                    upsert=True,
+                )
+                rows_upserted += 1
+            files_processed += 1
+        except Exception as ex:
+            errors.append(f"{p.name}: {ex}")
+            logger.exception("qichat CSV 导入失败: %s", p)
 
     return QichatImportResult(files_processed, rows_upserted, errors)
 
@@ -184,45 +181,35 @@ def fetch_t0_order_rows(
     product_name_filter: str | None = None,
 ) -> list[dict[str, Any]]:
     """按产品名称升序、日期降序；附加 *_display 百分比文案。不返回 source_file。"""
-    client = get_mongo_client()
-    try:
-        coll = client[settings.MONGODB_T0_PERFORMANCE_DB][
-            settings.MONGODB_T0_ORDER_COLLECTION
-        ]
-        q: dict[str, Any] = {}
-        if product_name_filter and product_name_filter.strip():
-            q["product_name"] = product_name_filter.strip()
-        cur = coll.find(
-            q,
-            {"imported_at": 0, "_id": 0, "source_file": 0},
-        ).sort([("product_name", 1), ("trade_date", -1)])
-        items: list[dict[str, Any]] = []
-        for doc in cur:
-            ar = doc.get("annualized_return")
-            tr = doc.get("turnover_ratio")
-            doc["annualized_return_display"] = (
-                f"{float(ar) * 100:.2f}%" if ar is not None else "—"
-            )
-            doc["turnover_ratio_display"] = (
-                f"{float(tr) * 100:.2f}%" if tr is not None else "—"
-            )
-            items.append(doc)
-            if len(items) >= limit:
-                break
-        return items
-    finally:
-        client.close()
+    coll = get_mongo_client()[settings.MONGODB_T0_PERFORMANCE_DB][
+        settings.MONGODB_T0_ORDER_COLLECTION
+    ]
+    q: dict[str, Any] = {}
+    if product_name_filter and product_name_filter.strip():
+        q["product_name"] = product_name_filter.strip()
+    cur = coll.find(
+        q,
+        {"imported_at": 0, "_id": 0, "source_file": 0},
+    ).sort([("product_name", 1), ("trade_date", -1)])
+    items: list[dict[str, Any]] = []
+    for doc in cur:
+        ar = doc.get("annualized_return")
+        tr = doc.get("turnover_ratio")
+        doc["annualized_return_display"] = (
+            f"{float(ar) * 100:.2f}%" if ar is not None else "—"
+        )
+        doc["turnover_ratio_display"] = (
+            f"{float(tr) * 100:.2f}%" if tr is not None else "—"
+        )
+        items.append(doc)
+        if len(items) >= limit:
+            break
+    return items
 
 
 def distinct_t0_order_product_names() -> list[str]:
-    client = get_mongo_client()
-    try:
-        coll = client[settings.MONGODB_T0_PERFORMANCE_DB][
-            settings.MONGODB_T0_ORDER_COLLECTION
-        ]
-        raw = coll.distinct("product_name")
-        return sorted(
-            str(x).strip() for x in raw if x is not None and str(x).strip()
-        )
-    finally:
-        client.close()
+    coll = get_mongo_client()[settings.MONGODB_T0_PERFORMANCE_DB][
+        settings.MONGODB_T0_ORDER_COLLECTION
+    ]
+    raw = coll.distinct("product_name")
+    return sorted(str(x).strip() for x in raw if x is not None and str(x).strip())

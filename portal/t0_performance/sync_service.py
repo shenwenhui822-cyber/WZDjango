@@ -119,48 +119,44 @@ def sync_t0_from_ftp() -> SyncResult:
             return SyncResult(0, 0, errors)
 
         mongo = get_mongo_client()
-        try:
-            coll = mongo[settings.MONGODB_T0_PERFORMANCE_DB][
-                settings.MONGODB_T0_PERFORMANCE_COLLECTION
-            ]
-            coll.create_index(
-                [("account_name", 1), ("trade_date", 1)],
-                unique=True,
-            )
-            now = datetime.now(tz=dt_timezone.utc)
+        coll = mongo[settings.MONGODB_T0_PERFORMANCE_DB][
+            settings.MONGODB_T0_PERFORMANCE_COLLECTION
+        ]
+        coll.create_index(
+            [("account_name", 1), ("trade_date", 1)],
+            unique=True,
+        )
+        now = datetime.now(tz=dt_timezone.utc)
 
-            for remote_name in targets:
-                try:
-                    buf = BytesIO()
-                    ftp.retrbinary(f"RETR {remote_name}", buf.write)
-                    buf.seek(0)
-                    parsed = parse_wuzhi_xlsx_bytes(remote_name, buf.read())
-                    if not parsed:
-                        files_processed += 1
-                        continue
-                    for rec in parsed:
-                        doc = {
-                            **rec,
-                            "source_file": remote_name,
-                            "imported_at": now,
-                        }
-                        coll.update_one(
-                            {
-                                "account_name": doc["account_name"],
-                                "trade_date": doc["trade_date"],
-                            },
-                            {"$set": doc},
-                            upsert=True,
-                        )
-                        rows_upserted += 1
+        for remote_name in targets:
+            try:
+                buf = BytesIO()
+                ftp.retrbinary(f"RETR {remote_name}", buf.write)
+                buf.seek(0)
+                parsed = parse_wuzhi_xlsx_bytes(remote_name, buf.read())
+                if not parsed:
                     files_processed += 1
-                except Exception as ex:
-                    msg = f"{remote_name}: {ex}"
-                    errors.append(msg)
-                    logger.exception("T0 FTP 导入失败: %s", remote_name)
-        finally:
-            mongo.close()
-
+                    continue
+                for rec in parsed:
+                    doc = {
+                        **rec,
+                        "source_file": remote_name,
+                        "imported_at": now,
+                    }
+                    coll.update_one(
+                        {
+                            "account_name": doc["account_name"],
+                            "trade_date": doc["trade_date"],
+                        },
+                        {"$set": doc},
+                        upsert=True,
+                    )
+                    rows_upserted += 1
+                files_processed += 1
+            except Exception as ex:
+                msg = f"{remote_name}: {ex}"
+                errors.append(msg)
+                logger.exception("T0 FTP 导入失败: %s", remote_name)
     except Exception as ex:
         errors.append(str(ex))
         logger.exception("T0 FTP 同步失败")
@@ -182,37 +178,27 @@ def fetch_performance_rows(
     account_name_filter: str | None = None,
 ) -> list[dict[str, Any]]:
     """按账户名升序、日期降序。不包含 source_file / imported_at。"""
-    client = get_mongo_client()
-    try:
-        coll = client[settings.MONGODB_T0_PERFORMANCE_DB][
-            settings.MONGODB_T0_PERFORMANCE_COLLECTION
-        ]
-        q: dict[str, Any] = {}
-        if account_name_filter and account_name_filter.strip():
-            q["account_name"] = account_name_filter.strip()
-        cursor = coll.find(
-            q,
-            {"imported_at": 0, "_id": 0, "source_file": 0},
-        ).sort([("account_name", 1), ("trade_date", -1)])
-        items: list[dict[str, Any]] = []
-        for doc in cursor:
-            items.append(doc)
-            if len(items) >= limit:
-                break
-        return items
-    finally:
-        client.close()
+    coll = get_mongo_client()[settings.MONGODB_T0_PERFORMANCE_DB][
+        settings.MONGODB_T0_PERFORMANCE_COLLECTION
+    ]
+    q: dict[str, Any] = {}
+    if account_name_filter and account_name_filter.strip():
+        q["account_name"] = account_name_filter.strip()
+    cursor = coll.find(
+        q,
+        {"imported_at": 0, "_id": 0, "source_file": 0},
+    ).sort([("account_name", 1), ("trade_date", -1)])
+    items: list[dict[str, Any]] = []
+    for doc in cursor:
+        items.append(doc)
+        if len(items) >= limit:
+            break
+    return items
 
 
 def distinct_performance_account_names() -> list[str]:
-    client = get_mongo_client()
-    try:
-        coll = client[settings.MONGODB_T0_PERFORMANCE_DB][
-            settings.MONGODB_T0_PERFORMANCE_COLLECTION
-        ]
-        raw = coll.distinct("account_name")
-        return sorted(
-            str(x).strip() for x in raw if x is not None and str(x).strip()
-        )
-    finally:
-        client.close()
+    coll = get_mongo_client()[settings.MONGODB_T0_PERFORMANCE_DB][
+        settings.MONGODB_T0_PERFORMANCE_COLLECTION
+    ]
+    raw = coll.distinct("account_name")
+    return sorted(str(x).strip() for x in raw if x is not None and str(x).strip())

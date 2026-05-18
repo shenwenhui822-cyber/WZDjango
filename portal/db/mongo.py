@@ -1,7 +1,9 @@
 """MongoDB 连接与 BSON 兼容转换。"""
 from __future__ import annotations
 
+import atexit
 import re
+import threading
 from typing import Any
 
 from django.conf import settings
@@ -10,9 +12,31 @@ _ALPHA_TARGET_TABLE_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]{0,63}$")
 from pymongo import MongoClient
 from pymongo.collection import Collection
 
+_client: MongoClient | None = None
+_client_lock = threading.Lock()
+
 
 def get_mongo_client() -> MongoClient:
-    return MongoClient(settings.MONGODB_URI)
+    """进程内复用单个 MongoClient（含连接池），避免每次请求新建连接导致端口耗尽。"""
+    global _client
+    if _client is not None:
+        return _client
+    with _client_lock:
+        if _client is None:
+            _client = MongoClient(settings.MONGODB_URI)
+        return _client
+
+
+def close_mongo_client() -> None:
+    """关闭并释放全局 MongoClient（管理命令结束或进程退出时调用）。"""
+    global _client
+    with _client_lock:
+        if _client is not None:
+            _client.close()
+            _client = None
+
+
+atexit.register(close_mongo_client)
 
 
 def get_app_collection() -> Collection:

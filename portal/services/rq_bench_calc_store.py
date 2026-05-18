@@ -72,6 +72,19 @@ def upsert_nav_bench_daily_row(doc: dict[str, Any]) -> None:
     coll.update_one(flt, {"$set": payload}, upsert=True)
 
 
+def delete_nav_bench_cache(*, product_name: str, bench_code: str) -> dict[str, int]:
+    """删除某产品+基准下的 calc_nav_bench_daily / calc_nav_bench_summary 缓存。"""
+    flt = {"product_name": product_name, "bench_code": bench_code}
+    daily_coll = get_rq_bench_calc_collection(settings.MONGODB_RQ_BENCH_CALC_NAV_BENCH_DAILY)
+    summary_coll = get_rq_bench_calc_collection(settings.MONGODB_RQ_BENCH_CALC_NAV_BENCH_SUMMARY)
+    dr = daily_coll.delete_many(flt)
+    sr = summary_coll.delete_many(flt)
+    return {
+        "daily_deleted": int(dr.deleted_count),
+        "summary_deleted": int(sr.deleted_count),
+    }
+
+
 def upsert_nav_bench_summary_row(doc: dict[str, Any]) -> None:
     """写入/更新一条区间汇总行。"""
     coll = get_rq_bench_calc_collection(settings.MONGODB_RQ_BENCH_CALC_NAV_BENCH_SUMMARY)

@@ -11,7 +11,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from portal.db.mongo import get_mongo_client
+from portal.db.mongo import close_mongo_client, get_mongo_client
 from portal.services.imap_common import (
     decode_mime_header,
     find_latest_mail_id_by_exact_subject,
@@ -282,7 +282,7 @@ class Command(BaseCommand):
                         upsert=True,
                     )
                 finally:
-                    client.close()
+                    close_mongo_client()
 
                 report["status"] = "SUCCESS"
                 report["message"] = (
