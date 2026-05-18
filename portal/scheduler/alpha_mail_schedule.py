@@ -14,6 +14,7 @@ from typing import Any
 DEFAULT_MAIL_SCHEDULER_SCHEDULES: list[tuple[str, str, dict[str, Any]]] = [
     ("08:40", "auto_import_lhjx_position_mail", {"scheduler_job_key": "lhjx_position"}),
     ("09:00", "auto_import_htzq_ht1_capital_mail", {"scheduler_job_key": "htzq_ht1_capital"}),
+    ("09:20", "auto_import_alpha_target_position_mail", {"scheduler_job_key": "alpha_target_position"}),
     ("09:30", "update_rq_bench", {"scheduler_job_key": "rq_bench"}),
     ("09:31", "auto_import_fund_nav_mail", {"scheduler_job_key": "fund_nav_boshiyihao"}),
     ("09:33", "auto_import_ghzq_settle_mail", {"scheduler_job_key": "ghzq_settle"}),
@@ -50,6 +51,10 @@ def _lhjx_position_mail_enabled() -> bool:
 
 def _htzq_ht1_capital_mail_enabled() -> bool:
     return _env_enabled("HTZQ_HT1_CAPITAL_MAIL_SCHEDULER_ENABLED")
+
+
+def _alpha_target_position_mail_enabled() -> bool:
+    return _env_enabled("ALPHA_TARGET_POSITION_MAIL_SCHEDULER_ENABLED")
 
 
 def _fund_nav_enabled() -> bool:
@@ -147,6 +152,8 @@ def get_active_mail_scheduler_schedules() -> list[tuple[str, str, dict[str, Any]
         s = [x for x in s if x[1] != "auto_import_lhjx_position_mail"]
     if not _htzq_ht1_capital_mail_enabled():
         s = [x for x in s if x[1] != "auto_import_htzq_ht1_capital_mail"]
+    if not _alpha_target_position_mail_enabled():
+        s = [x for x in s if x[1] != "auto_import_alpha_target_position_mail"]
     if not _fund_nav_enabled():
         s = [x for x in s if x[1] != "auto_import_fund_nav_mail"]
     if not _rq_bench_enabled():

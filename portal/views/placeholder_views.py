@@ -47,50 +47,77 @@ def _fmt_pct(v: Any, digits: int = 2) -> str:
         return "-"
 
 
-def _normalize_future_collections(future_collections: str | Sequence[str]) -> list[str]:
-    if isinstance(future_collections, str):
-        return [future_collections]
-    return list(future_collections)
+def _normalize_collections(collections: str | Sequence[str]) -> list[str]:
+    if isinstance(collections, str):
+        return [collections]
+    return list(collections)
 
 
 def _build_market_neutral_pair(
     future_collections: str | Sequence[str],
-    stock_collection: str,
+    stock_collections: str | Sequence[str],
     client: Any,
-) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any]]:
-    cols = _normalize_future_collections(future_collections)
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+    fut_cols = _normalize_collections(future_collections)
+    stk_cols = _normalize_collections(stock_collections)
 
-    stock_doc = (
-        client["rt_stock"][stock_collection]
-        .find({}, {"_id": 0})
-        .sort([("ts", -1), ("date", -1), ("time", -1), ("_id", -1)])
-        .limit(1)
-    )
-    stock_latest = next(iter(stock_doc), {})
+    stock_market_value_total = 0.0
+    stock_rows: list[dict[str, Any]] = []
+    stock_timestamps: list[str] = []
 
-    stock_market_value = (
-        stock_latest.get("stock_market_value")
-        or stock_latest.get("market_value")
-        or stock_latest.get("total_market_value")
-    )
-    stock_available_cash = stock_latest.get("available_cash")
-    stock_ts = (
-        f"{stock_latest.get('date') or '-'} {stock_latest.get('time') or '-'}".strip()
-        if stock_latest
-        else "-"
-    )
-    stock_remark = (
-        f"资产总额 {_fmt_num(stock_latest.get('total_asset'))}\n"
-        f"股票市值 {_fmt_num(stock_market_value)}"
-        if stock_latest
-        else "-"
-    )
+    for coll in stk_cols:
+        stock_doc = (
+            client["rt_stock"][coll]
+            .find({}, {"_id": 0})
+            .sort([("ts", -1), ("date", -1), ("time", -1), ("_id", -1)])
+            .limit(1)
+        )
+        stock_latest = next(iter(stock_doc), {})
+
+        stock_mv = (
+            stock_latest.get("stock_market_value")
+            or stock_latest.get("market_value")
+            or stock_latest.get("total_market_value")
+        )
+        try:
+            if stock_mv is not None:
+                stock_market_value_total += float(stock_mv)
+        except (TypeError, ValueError):
+            pass
+
+        stock_ts = (
+            f"{stock_latest.get('date') or '-'} {stock_latest.get('time') or '-'}".strip()
+            if stock_latest
+            else "-"
+        )
+        if stock_ts != "- -":
+            stock_timestamps.append(stock_ts)
+
+        if stock_latest:
+            stock_remark = (
+                f"资产总额 {_fmt_num(stock_latest.get('total_asset'))}\n"
+                f"股票市值 {_fmt_num(stock_mv)}"
+            )
+        else:
+            stock_remark = "-"
+
+        stock_rows.append(
+            {
+                "account": coll,
+                "market_value": _fmt_num(stock_mv),
+                "available_funds": _fmt_num(stock_latest.get("available_cash")),
+                "remark": stock_remark,
+            }
+        )
+
+    stock_market_value = stock_market_value_total if stk_cols else None
+    stock_ts = "；".join(stock_timestamps) if stock_timestamps else "-"
 
     future_market_value_total = 0.0
     future_rows: list[dict[str, Any]] = []
     timestamps: list[str] = []
 
-    for coll in cols:
+    for coll in fut_cols:
         future_doc = (
             client["rt_future"][coll]
             .find({}, {"_id": 0})
@@ -202,16 +229,6 @@ def _build_market_neutral_pair(
         ratio_deviation = None
         net_exposure_ratio = None
 
-    stock_row = {
-        "account": stock_collection,
-        "market_value": _fmt_num(stock_market_value),
-        "available_funds": _fmt_num(stock_available_cash),
-        "remark": stock_remark,
-        "hedge_ratio": "-",
-        "appendix": f"采集时间: {stock_ts}",
-        "target_hedge_ratio": _fmt_pct(target_ratio),
-        "error": "-",
-    }
     hedge_meta = {
         "hedge_ratio": _fmt_pct(future_ratio),
         "target_hedge_ratio": _fmt_pct(target_ratio),
@@ -221,8 +238,9 @@ def _build_market_neutral_pair(
         "hedge_deviation_class": hedge_deviation_class,
         "net_exposure_class": net_exposure_class,
         "snapshot_ts": future_ts,
+        "stock_snapshot_ts": stock_ts,
     }
-    return stock_row, future_rows, hedge_meta
+    return stock_rows, future_rows, hedge_meta
 
 
 def _extract_latest_market_neutral_snapshot() -> dict[str, Any]:
@@ -230,15 +248,20 @@ def _extract_latest_market_neutral_snapshot() -> dict[str, Any]:
     try:
         products: list[dict[str, Any]] = []
         for name, fut_coll, stk_coll in (
-            # (
-            #     "吾执二二号",
-            #     "GMQH_59000028",
-            #     "SWZQ_1673088777",
-            # ),
+            (
+                "吾执二二号",
+                "GMQH_59000028",
+                ("SWZQ_1673088777","ZSZQ_1702057978"),
+            ),
             (
                 "博士一号",
                 ("HTQH_80017209",),
                 "HTZQ_666810103835",
+            ),
+            (
+                "吾执多元一号",
+                ("RQQH_1001002772",),
+                ("DWZQ_015000094443",),
             ),
             (
                 "吾执一三号",
@@ -255,14 +278,14 @@ def _extract_latest_market_neutral_snapshot() -> dict[str, Any]:
                 "GJZQ_86014577",
             ),
         ):
-            stock_row, future_rows, hedge_meta = _build_market_neutral_pair(
+            stock_rows, future_rows, hedge_meta = _build_market_neutral_pair(
                 fut_coll, stk_coll, client
             )
             products.append(
                 {
                     "name": name,
-                    "body_rowspan": 1 + len(future_rows),
-                    "stock_row": stock_row,
+                    "body_rowspan": len(stock_rows) + len(future_rows),
+                    "stock_rows": stock_rows,
                     "future_rows": future_rows,
                     **hedge_meta,
                 }

@@ -70,11 +70,15 @@
             </thead>
             <tbody>
                 {% for product in products %}
+                {% for sr in product.stock_rows %}
                 <tr>
+                    {% if forloop.first %}
                     <td rowspan="{{ product.body_rowspan }}" class="text-center align-middle">{{ product.name }}</td>
-                    <td>{{ product.stock_row.account }}</td>
-                    <td>{{ product.stock_row.market_value }}</td>
-                    <td>{{ product.stock_row.available_funds }}</td>
+                    {% endif %}
+                    <td>{{ sr.account }}</td>
+                    <td>{{ sr.market_value }}</td>
+                    <td>{{ sr.available_funds }}</td>
+                    {% if forloop.first %}
                     <td rowspan="{{ product.body_rowspan }}" class="text-center align-middle">
                         {{ product.hedge_ratio|default:"-" }}
                     </td>
@@ -86,8 +90,10 @@
                             {{ product.net_exposure_ratio|default:"-" }}
                         </span>
                     </td>
-                    <td>{{ product.stock_row.remark|linebreaksbr }}</td>
+                    {% endif %}
+                    <td>{{ sr.remark|linebreaksbr }}</td>
                 </tr>
+                {% endfor %}
                 {% for fr in product.future_rows %}
                 <tr>
                     <td>{{ fr.account }}</td>

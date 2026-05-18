@@ -117,6 +117,10 @@ MONGODB_LHJX_POSITION_COLLECTION = os.getenv(
 MONGODB_WZSL_POSITION_COLLECTION = os.getenv(
     "MONGODB_WZSL_POSITION_COLLECTION", "WZSL"
 )
+# Alpha 股票目标持仓 zip/csv → position_alpha_target.<csv 文件名去后缀>（auto_import_alpha_target_position_mail）
+MONGODB_ALPHA_TARGET_POSITION_DB = os.getenv(
+    "MONGODB_ALPHA_TARGET_POSITION_DB", "position_alpha_target"
+)
 # alpha_mail_scheduler：每次定时任务结束后写入 mail_logs.MAIL_LOGS（log_type/import_succeeded/failure_reason/target_* 等；每次执行插入一条），并按 ALPHA_NOTIFY_* 发送汇总邮件（可配关闭）
 MONGODB_MAIL_LOGS_DB = os.getenv("MONGODB_MAIL_LOGS_DB", "mail_logs")
 MONGODB_MAIL_LOGS_COLLECTION = os.getenv("MONGODB_MAIL_LOGS_COLLECTION", "MAIL_LOGS")

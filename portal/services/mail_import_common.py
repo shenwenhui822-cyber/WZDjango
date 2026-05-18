@@ -206,9 +206,51 @@ def save_rar_attachments_from_rfc822(msg_bytes: bytes, save_dir: Path) -> list[P
     return saved
 
 
+def zip_ext_ok(filename: str) -> bool:
+    return os.path.splitext((filename or "").lower())[1] == ".zip"
+
+
 def excel_or_zip_ext_ok(filename: str) -> bool:
     _, ext = os.path.splitext((filename or "").lower())
     return ext in (".xlsx", ".xls", ".xlsm", ".zip")
+
+
+def save_zip_attachments_from_rfc822(msg_bytes: bytes, save_dir: Path) -> list[Path]:
+    """从整封邮件 RFC822 字节流中保存 .zip 附件。"""
+    msg = email.message_from_bytes(msg_bytes)
+    save_dir.mkdir(parents=True, exist_ok=True)
+    saved: list[Path] = []
+    for part in msg.walk():
+        disp = str(part.get("Content-Disposition", ""))
+        if "attachment" not in disp.lower():
+            continue
+        filename_raw = part.get_filename()
+        filename = normalize_attachment_filename(
+            decode_mime_header(filename_raw) if filename_raw else ""
+        )
+        if not zip_ext_ok(filename):
+            continue
+        payload = part.get_payload(decode=True)
+        if payload is None:
+            continue
+        output = save_dir / filename
+        if output.exists():
+            stem, ext = output.stem, output.suffix
+            i = 1
+            while True:
+                candidate = save_dir / f"{stem}_{i}{ext}"
+                if not candidate.exists():
+                    output = candidate
+                    break
+                i += 1
+        output.write_bytes(payload)
+        saved.append(output)
+    return saved
+
+
+def extract_zip_archive(zip_path: Path, dest_dir: Path) -> None:
+    """解压 zip 到 dest_dir（兼容中文 Windows 压缩包文件名编码）。"""
+    _extract_zip_preserving_cn_filenames(zip_path, dest_dir)
 
 
 def _extract_zip_preserving_cn_filenames(zip_path: Path, dest_dir: Path) -> None:

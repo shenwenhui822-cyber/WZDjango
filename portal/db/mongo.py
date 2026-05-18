@@ -1,9 +1,12 @@
 """MongoDB 连接与 BSON 兼容转换。"""
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from django.conf import settings
+
+_ALPHA_TARGET_TABLE_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]{0,63}$")
 from pymongo import MongoClient
 from pymongo.collection import Collection
 
@@ -93,6 +96,20 @@ def get_wzsl_position_collection() -> Collection:
     db_name = getattr(settings, "MONGODB_POSITION_FUND_REAL_DB", "position_fund_real")
     coll_name = getattr(settings, "MONGODB_WZSL_POSITION_COLLECTION", "WZSL")
     return client[db_name][coll_name]
+
+
+def get_alpha_target_position_collection(table_name: str) -> Collection:
+    """Alpha 目标持仓：库 MONGODB_ALPHA_TARGET_POSITION_DB，集合名 = csv 文件名（去 .csv）。"""
+    name = (table_name or "").strip()
+    if not _ALPHA_TARGET_TABLE_RE.fullmatch(name):
+        raise ValueError(
+            f"非法 Alpha 目标持仓集合名: {table_name!r}（须为字母开头、仅含字母数字下划线）"
+        )
+    client = get_mongo_client()
+    db_name = getattr(
+        settings, "MONGODB_ALPHA_TARGET_POSITION_DB", "position_alpha_target"
+    )
+    return client[db_name][name]
 
 
 def get_mail_logs_collection() -> Collection:
