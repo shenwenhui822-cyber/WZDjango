@@ -255,26 +255,47 @@ def parse_lhjx_position_excel(
     return rows_out
 
 
-def pick_lhjx_position_xlsx(files: list[Path]) -> Path | None:
-    """优先文件名含托管账户号 / T_0003 / 量化精选 的 Excel。"""
-    if not files:
+def _lhjx_position_xlsx_score(path: Path) -> int | None:
+    """Excel 附件评分；非 Excel 返回 None。"""
+    lower = path.name.lower()
+    if not lower.endswith((".xlsx", ".xls", ".xlsm")):
         return None
+    score = 0
+    name = path.name
+    if "0311020009225553" in name:
+        score += 5
+    if "T_0003" in name.upper() or "t_0003" in name:
+        score += 3
+    if "量化精选" in name:
+        score += 2
+    return score
+
+
+def list_lhjx_position_xlsx_files(files: list[Path]) -> list[Path]:
+    """返回全部可导入 Excel，按托管账户号/T_0003 等规则评分降序。"""
     scored: list[tuple[int, Path]] = []
     for p in files:
-        name = p.name
-        lower = name.lower()
-        if not lower.endswith((".xlsx", ".xls", ".xlsm")):
-            continue
-        score = 0
-        if "0311020009225553" in name:
-            score += 5
-        if "T_0003" in name.upper() or "t_0003" in name:
-            score += 3
-        if "量化精选" in name:
-            score += 2
-        scored.append((score, p))
-    scored.sort(key=lambda x: -x[0])
-    if scored and scored[0][0] > 0:
-        return scored[0][1]
-    excels = [p for p in files if p.suffix.lower() in (".xlsx", ".xls", ".xlsm")]
-    return excels[0] if excels else None
+        s = _lhjx_position_xlsx_score(p)
+        if s is not None:
+            scored.append((s, p))
+    scored.sort(key=lambda x: (-x[0], x[1].name))
+    return [p for _, p in scored]
+
+
+def pick_lhjx_position_xlsx(files: list[Path]) -> Path | None:
+    """优先文件名含托管账户号 / T_0003 / 量化精选 的 Excel。"""
+    ordered = list_lhjx_position_xlsx_files(files)
+    return ordered[0] if ordered else None
+
+
+def merge_lhjx_position_docs(
+    doc_lists: list[list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """多份 xlsx 解析结果按 code 合并，后出现的文件覆盖同 code。"""
+    by_code: dict[str, dict[str, Any]] = {}
+    for docs in doc_lists:
+        for d in docs:
+            code = str(d.get("code") or "").strip()
+            if code:
+                by_code[code] = d
+    return list(by_code.values())

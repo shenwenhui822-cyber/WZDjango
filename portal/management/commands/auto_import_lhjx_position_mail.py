@@ -1,7 +1,8 @@
 """
 交易日 08:40 拉取 fareport（FARPORT_MAIL_*）邮箱中主题
 「0311020009225553上海吾执投资管理有限公司－吾执量化精选一号私募证券投资基金{YYYYMMDD}」
-的邮件，从附件 xlsx/xls 解析「资金、证券资产持有明细」，写入 position_fund_real.LHJX。
+的最近 2 封邮件（同主题重复投递时可能各带附件），仅保存并解析直接附带的 .xlsx/.xls
+（忽略 .zip，券商 zip 内 xlsx 常为加密压缩），合并写入 position_fund_real.LHJX。
 
 持仓日 position_date 默认取运行日之前最近一个交易日（T-1），与主题末尾日期对齐。
 证券代码统一为 code 字段：SZ002008、SH600660、BJ430047 等；position_size 为持有数量（股数）；
@@ -30,11 +31,12 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from portal.db.mongo import get_lhjx_position_collection
-from portal.services.imap_common import find_latest_mail_id_by_exact_subject
+from portal.services.imap_common import find_recent_mail_ids_by_exact_subject
 from portal.services.lhjx_position_mail_service import (
     build_lhjx_position_mail_subject,
+    list_lhjx_position_xlsx_files,
+    merge_lhjx_position_docs,
     parse_lhjx_position_excel,
-    pick_lhjx_position_xlsx,
 )
 from portal.services.mail_import_common import (
     emit_mail_job_result_line,
@@ -66,10 +68,12 @@ def _resolve_farport_imap_credentials() -> tuple[str, str, str, int]:
 
 class Command(BaseCommand):
     help = (
-        "仅运行日为交易日时执行：抓取 fareport 量化精选一号对账单邮件，"
-        "解析证券持仓明细并写入 position_fund_real.LHJX；"
+        "仅运行日为交易日时执行：抓取 fareport 量化精选一号对账单最近 2 封同主题邮件，"
+        "解析全部直接附带的 xlsx 持仓明细（忽略 zip）并写入 position_fund_real.LHJX；"
         "position_date 默认为运行日之前最近一个交易日。"
     )
+
+    LHJX_MAIL_FETCH_LIMIT = 2
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -106,6 +110,7 @@ class Command(BaseCommand):
             field_rows=[
                 ("持仓日(position_date)", report.get("position_date")),
                 ("邮件主题", report.get("target_subject")),
+                ("匹配邮件数", report.get("mails_matched")),
                 ("附件文件", report.get("source_file")),
                 ("写入条数", report.get("rows_written")),
                 ("结果说明", report.get("message")),
@@ -148,6 +153,7 @@ class Command(BaseCommand):
             "position_date": "",
             "notify": True,
             "target_subject": "",
+            "mails_matched": 0,
             "source_file": "",
             "rows_written": 0,
             "message": "",
@@ -222,50 +228,75 @@ class Command(BaseCommand):
                 mailbox = imap_open_inbox(
                     email_user, email_pass, imap_server, imap_port
                 )
-                mail_id = find_latest_mail_id_by_exact_subject(
-                    mailbox, target_subject
+                mail_ids = find_recent_mail_ids_by_exact_subject(
+                    mailbox,
+                    target_subject,
+                    limit=self.LHJX_MAIL_FETCH_LIMIT,
                 )
-                if not mail_id:
+                report["mails_matched"] = len(mail_ids)
+                if not mail_ids:
                     report["status"] = "FAILED"
                     report["message"] = "未找到匹配主题的邮件。"
                     self.stderr.write(self.style.ERROR(report["message"]))
                     return
 
-                st2, msg_data = mailbox.fetch(mail_id, "(RFC822)")
-                if st2 != "OK" or not msg_data or not msg_data[0]:
-                    report["status"] = "FAILED"
-                    report["message"] = "无法读取邮件正文。"
-                    self.stderr.write(self.style.ERROR(report["message"]))
-                    return
-
-                raw = msg_data[0][1]
-                if not isinstance(raw, (bytes, bytearray)):
-                    report["status"] = "FAILED"
-                    report["message"] = "邮件内容格式异常。"
-                    self.stderr.write(self.style.ERROR(report["message"]))
-                    return
-
-                files = save_excel_attachments_from_rfc822(raw, save_root)
-                if not files:
-                    report["status"] = "FAILED"
-                    report["message"] = "邮件中无 Excel 附件（.xlsx/.xls/.xlsm）。"
-                    self.stderr.write(self.style.ERROR(report["message"]))
-                    return
-
-                fp = pick_lhjx_position_xlsx(files)
-                if not fp:
-                    report["status"] = "FAILED"
-                    report["message"] = "未选择到附件。"
-                    self.stderr.write(self.style.ERROR(report["message"]))
-                    return
-
-                report["source_file"] = fp.name
-                data = fp.read_bytes()
-                docs = parse_lhjx_position_excel(
-                    data,
-                    filename=fp.name,
-                    position_date_iso=pos_iso,
+                self.stdout.write(
+                    f"匹配主题邮件 {len(mail_ids)} 封（最多 {self.LHJX_MAIL_FETCH_LIMIT} 封）"
                 )
+
+                all_xlsx: list[Path] = []
+                for idx, mail_id in enumerate(mail_ids, start=1):
+                    st2, msg_data = mailbox.fetch(mail_id, "(RFC822)")
+                    if st2 != "OK" or not msg_data or not msg_data[0]:
+                        self.stderr.write(
+                            self.style.WARNING(f"邮件 #{idx} ({mail_id}) 无法读取，跳过。")
+                        )
+                        continue
+                    raw = msg_data[0][1]
+                    if not isinstance(raw, (bytes, bytearray)):
+                        self.stderr.write(
+                            self.style.WARNING(f"邮件 #{idx} ({mail_id}) 内容格式异常，跳过。")
+                        )
+                        continue
+                    mail_dir = save_root / f"mail_{idx}_{mail_id}"
+                    excels = save_excel_attachments_from_rfc822(raw, mail_dir)
+                    if excels:
+                        all_xlsx.extend(excels)
+                        self.stdout.write(
+                            f"邮件 #{idx}: Excel 附件 {len(excels)} 个 -> "
+                            + ", ".join(p.name for p in excels)
+                        )
+                    else:
+                        self.stdout.write(
+                            self.style.WARNING(
+                                f"邮件 #{idx} ({mail_id}) 无直接附带的 xlsx/xls，跳过（已忽略 zip）。"
+                            )
+                        )
+
+                xlsx_files = list_lhjx_position_xlsx_files(all_xlsx)
+                if not xlsx_files:
+                    report["status"] = "FAILED"
+                    report["message"] = (
+                        f"共 {len(mail_ids)} 封邮件，未得到可导入的 Excel（.xlsx/.xls/.xlsm）。"
+                    )
+                    self.stderr.write(self.style.ERROR(report["message"]))
+                    return
+
+                report["source_file"] = "; ".join(p.name for p in xlsx_files)
+                doc_batches: list[list[dict]] = []
+                # 低分文件先解析，高分（如 T_0003）后写入，合并时同 code 保留高分文件
+                for fp in reversed(xlsx_files):
+                    self.stdout.write(f"解析: {fp}")
+                    batch = parse_lhjx_position_excel(
+                        fp.read_bytes(),
+                        filename=fp.name,
+                        position_date_iso=pos_iso,
+                    )
+                    doc_batches.append(batch)
+                    self.stdout.write(
+                        f"  <- {fp.name}: {len(batch)} 条持仓"
+                    )
+                docs = merge_lhjx_position_docs(doc_batches)
 
                 now = timezone.now()
                 if isinstance(now, datetime) and timezone.is_naive(now):
@@ -292,7 +323,9 @@ class Command(BaseCommand):
                 report["rows_written"] = n
                 report["status"] = "SUCCESS"
                 report["message"] = (
-                    f"已写入 position_fund_real.LHJX 共 {n} 条（date={pos_iso}）<- {fp.name}"
+                    f"已写入 position_fund_real.LHJX 共 {n} 条（date={pos_iso}），"
+                    f"来自 {len(mail_ids)} 封邮件、{len(xlsx_files)} 个 xlsx："
+                    f"{report['source_file']}"
                 )
                 self.stdout.write(self.style.SUCCESS(report["message"]))
             finally:

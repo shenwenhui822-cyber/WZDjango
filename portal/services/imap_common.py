@@ -93,6 +93,39 @@ def find_mail_id_by_fuzzy_fund_subject(
     return None
 
 
+def find_recent_mail_ids_by_exact_subject(
+    mailbox: imaplib.IMAP4_SSL,
+    target_subject: str,
+    *,
+    limit: int = 2,
+    since_calendar_date: date | None = None,
+) -> list[str]:
+    """从较新到较旧遍历，主题与 target_subject 完全一致则收集，最多返回 limit 封。"""
+    if limit <= 0:
+        return []
+    if since_calendar_date is not None:
+        crit = f'SINCE "{since_calendar_date.strftime("%d-%b-%Y")}"'
+    else:
+        crit = "ALL"
+    status, data = mailbox.search(None, crit)
+    if status != "OK" or not data or not data[0]:
+        return []
+    want = (target_subject or "").strip()
+    matched: list[str] = []
+    for raw_id in reversed(data[0].split()):
+        mail_id = raw_id.decode()
+        status, msg_data = mailbox.fetch(mail_id, "(BODY[HEADER.FIELDS (SUBJECT)])")
+        if status != "OK" or not msg_data or not msg_data[0]:
+            continue
+        msg = email.message_from_bytes(msg_data[0][1])
+        subject = decode_mime_header(msg.get("Subject", "")).strip()
+        if subject == want:
+            matched.append(mail_id)
+            if len(matched) >= limit:
+                break
+    return matched
+
+
 def find_latest_mail_id_by_exact_subject(
     mailbox: imaplib.IMAP4_SSL,
     target_subject: str,
@@ -103,24 +136,13 @@ def find_latest_mail_id_by_exact_subject(
 
     since_calendar_date：若给定，则只在该日历日及之后的邮件中搜索（IMAP SINCE），避免全箱扫描。
     """
-    if since_calendar_date is not None:
-        crit = f'SINCE "{since_calendar_date.strftime("%d-%b-%Y")}"'
-    else:
-        crit = "ALL"
-    status, data = mailbox.search(None, crit)
-    if status != "OK" or not data or not data[0]:
-        return None
-    want = (target_subject or "").strip()
-    for raw_id in reversed(data[0].split()):
-        mail_id = raw_id.decode()
-        status, msg_data = mailbox.fetch(mail_id, "(BODY[HEADER.FIELDS (SUBJECT)])")
-        if status != "OK" or not msg_data or not msg_data[0]:
-            continue
-        msg = email.message_from_bytes(msg_data[0][1])
-        subject = decode_mime_header(msg.get("Subject", "")).strip()
-        if subject == want:
-            return mail_id
-    return None
+    ids = find_recent_mail_ids_by_exact_subject(
+        mailbox,
+        target_subject,
+        limit=1,
+        since_calendar_date=since_calendar_date,
+    )
+    return ids[0] if ids else None
 
 
 def _imap_en_month_date(d: date) -> str:
