@@ -422,7 +422,7 @@ def _persist_mail_scheduler_run(
     except Exception as log_exc:
         ts = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
         print(
-            f"[alpha-scheduler] [{ts}] 写入 mail_logs 运行记录失败（不影响任务）: {log_exc}"
+            f"[{ts}] 写入 mail_logs 运行记录失败（不影响任务）: {log_exc}"
         )
 
 
@@ -488,17 +488,17 @@ def _send_scheduler_result_email(
         outcome, "UNKNOWN"
     )
     mail_subject = (
-        f"[alpha-scheduler][{tag}] {command_name} "
+        f"[{tag}] {command_name} "
         f"{timezone.localtime(finished_at).strftime('%Y-%m-%d %H:%M')}"
     )
 
     def _log_out(s: str) -> None:
         ts = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"[alpha-scheduler] [{ts}] {s}")
+        print(f" [{ts}] {s}")
 
     def _log_warn(s: str) -> None:
         ts = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"[alpha-scheduler] [{ts}] {s}")
+        print(f" [{ts}] {s}")
 
     try:
         send_alpha_notify_result_email(
@@ -510,7 +510,7 @@ def _send_scheduler_result_email(
     except Exception as notify_exc:
         ts = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
         print(
-            f"[alpha-scheduler] [{ts}] 调度汇总邮件发送异常（不影响任务）: {notify_exc}"
+            f" [{ts}] 调度汇总邮件发送异常（不影响任务）: {notify_exc}"
         )
 
 
@@ -522,7 +522,7 @@ _scheduler_started = False
 
 def _run_job(command_name: str, *, force: bool, extra_kwargs: dict | None = None) -> None:
     ts = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[alpha-scheduler] [{ts}] 触发执行 {command_name} ...")
+    print(f" [{ts}] 触发执行 {command_name} ...")
     call_kw, sched_job_key = _split_scheduler_call_kwargs(extra_kwargs)
     kwargs = dict(call_kw)
     if force:
@@ -533,7 +533,7 @@ def _run_job(command_name: str, *, force: bool, extra_kwargs: dict | None = None
     try:
         call_command(command_name, stdout=out_buf, stderr=err_buf, **kwargs)
         ts2 = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"[alpha-scheduler] [{ts2}] {command_name} 本次执行结束。")
+        print(f" [{ts2}] {command_name} 本次执行结束。")
         finished_at = timezone.now()
         out_text_raw = out_buf.getvalue()
         out_text, notify_snapshot = strip_mail_job_result_json(out_text_raw)
@@ -580,7 +580,7 @@ def _run_job(command_name: str, *, force: bool, extra_kwargs: dict | None = None
         )
     except Exception as exc:
         ts2 = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"[alpha-scheduler] [{ts2}] {command_name} 执行失败: {exc}")
+        print(f" [{ts2}] {command_name} 执行失败: {exc}")
         finished_at = timezone.now()
         out_text_raw = out_buf.getvalue()
         out_text, notify_snapshot = strip_mail_job_result_json(out_text_raw)
@@ -637,14 +637,14 @@ def _should_skip_scheduled_job(command_name: str, *, today_iso: str) -> bool:
     if not is_trade_date_iso(today_iso):
         ts = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
         print(
-            f"[alpha-scheduler] [{ts}] {today_iso} 非交易日，跳过 {command_name} 调度执行。"
+            f" [{ts}] {today_iso} 非交易日，跳过 {command_name} 调度执行。"
         )
         return True
     if command_name == "auto_import_qichat_t0_mail":
         if not is_first_trading_day_of_iso_week(today_iso):
             ts = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
             print(
-                f"[alpha-scheduler] [{ts}] {today_iso} 非本周首个交易日，"
+                f" [{ts}] {today_iso} 非本周首个交易日，"
                 f"跳过 {command_name}（T0 周度 CSV / 深度秩序）。"
             )
             return True
@@ -666,7 +666,7 @@ def run_scheduler_loop(
 
     desc = ", ".join(f"{t}->{cmd}" for t, cmd, _ in schedules)
     print(
-        f"[alpha-scheduler] 调度器已启动：{desc}（轮询 {poll_seconds}s）"
+        f" 调度器已启动：{desc}（轮询 {poll_seconds}s）"
     )
 
     last_run_date: dict[str, str | None] = {f"{cmd}@{tm}": None for tm, cmd, _ in schedules}
