@@ -200,6 +200,8 @@ def rerun_and_update_mail_log(log_id: str) -> tuple[bool, str]:
         unset_doc["error_message"] = ""
         unset_doc["traceback"] = ""
 
+    # call_command 内部分管理命令会 close_mongo_client()，须用新连接写回日志
+    coll = get_mail_logs_collection()
     if unset_doc:
         coll.update_one({"_id": oid}, {"$set": set_doc, "$unset": unset_doc})
     else:

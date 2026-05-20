@@ -79,11 +79,11 @@
                     <td class="col-reason">{{ r.failure_reason }}</td>
                     <td class="text-nowrap">
                         {% if not r.import_succeeded %}
-                        <form method="post" action="{% url 'portal:mail_log_rerun' %}" class="d-inline">
+                        <form method="post" action="{% url 'portal:mail_log_rerun' %}" class="d-inline mail-log-rerun-form">
                             {% csrf_token %}
                             <input type="hidden" name="log_id" value="{{ r.log_id }}">
                             <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                            <button type="submit" class="btn btn-sm btn-primary">更新</button>
+                            <button type="submit" class="btn btn-sm btn-primary mail-log-rerun-btn">更新</button>
                         </form>
                         {% else %}
                         <span class="text-muted">—</span>
@@ -99,4 +99,44 @@
         </table>
     </div>
 </div>
+
+<div class="modal fade" id="mailLogRerunModal" tabindex="-1" aria-labelledby="mailLogRerunModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body text-center py-4 px-4">
+                <div class="spinner-border text-primary mb-3" role="status" aria-hidden="true"></div>
+                <h2 class="h6 mb-2" id="mailLogRerunModalLabel">正在更新</h2>
+                <p class="text-muted small mb-0">任务执行中，请稍候…</p>
+                <p class="text-muted small mb-0">请勿关闭页面或重复点击其他「更新」按钮。</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+(function () {
+    var modalEl = document.getElementById("mailLogRerunModal");
+    var modal = modalEl && typeof bootstrap !== "undefined"
+        ? bootstrap.Modal.getOrCreateInstance(modalEl)
+        : null;
+    var updating = false;
+
+    document.querySelectorAll(".mail-log-rerun-form").forEach(function (form) {
+        form.addEventListener("submit", function (e) {
+            if (updating) {
+                e.preventDefault();
+                return;
+            }
+            updating = true;
+            document.querySelectorAll(".mail-log-rerun-btn").forEach(function (btn) {
+                btn.disabled = true;
+            });
+            if (modal) {
+                modal.show();
+            }
+        });
+    });
+})();
+</script>
 {% endblock %}

@@ -11,7 +11,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from portal.db.mongo import close_mongo_client, get_mongo_client
+from portal.db.mongo import get_mongo_client
 from portal.services.htqh_settle_service import extract_htqh_record_from_zip
 from portal.services.imap_common import (
     decode_mime_header,
@@ -277,23 +277,19 @@ class Command(BaseCommand):
                     raise RuntimeError("资金状况(Account Summary) 指标解析为空，请检查附件内容。")
 
                 client = get_mongo_client()
-                try:
-                    db_name = getattr(settings, "MONGODB_HTQH_SETTLE_DB", "future_settle_real")
-                    coll_name = getattr(settings, "MONGODB_HTQH_SETTLE_COLLECTION", "HTQH-80017209")
-                    coll = client[db_name][coll_name]
-                    coll.create_index(
-                        [("trade_date", 1), ("account_id", 1)],
-                        unique=True,
-                        background=True,
-                    )
-                    result = coll.update_one(
-                        {"trade_date": trade_date, "account_id": payload["account_id"]},
-                        {"$set": payload},
-                        upsert=True,
-                    )
-                finally:
-                    close_mongo_client()
-
+                db_name = getattr(settings, "MONGODB_HTQH_SETTLE_DB", "future_settle_real")
+                coll_name = getattr(settings, "MONGODB_HTQH_SETTLE_COLLECTION", "HTQH-80017209")
+                coll = client[db_name][coll_name]
+                coll.create_index(
+                    [("trade_date", 1), ("account_id", 1)],
+                    unique=True,
+                    background=True,
+                )
+                result = coll.update_one(
+                    {"trade_date": trade_date, "account_id": payload["account_id"]},
+                    {"$set": payload},
+                    upsert=True,
+                )
                 report["status"] = "SUCCESS"
                 report["message"] = (
                     f"入库完成: {db_name}.{coll_name} "

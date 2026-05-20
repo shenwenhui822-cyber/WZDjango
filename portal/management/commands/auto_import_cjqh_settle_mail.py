@@ -11,7 +11,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from portal.db.mongo import close_mongo_client, get_mongo_client
+from portal.db.mongo import get_mongo_client
 from portal.services.imap_common import (
     decode_mime_header,
     find_latest_mail_id_by_exact_subject,
@@ -277,23 +277,19 @@ class Command(BaseCommand):
                     )
 
                 client = get_mongo_client()
-                try:
-                    db_name = getattr(settings, "MONGODB_CJQH_SETTLE_DB", "future_settle_real")
-                    coll_name = getattr(settings, "MONGODB_CJQH_SETTLE_COLLECTION", "CJQH_81801575")
-                    coll = client[db_name][coll_name]
-                    coll.create_index(
-                        [("trade_date", 1), ("account_id", 1)],
-                        unique=True,
-                        background=True,
-                    )
-                    result = coll.update_one(
-                        {"trade_date": trade_date, "account_id": payload["account_id"]},
-                        {"$set": payload},
-                        upsert=True,
-                    )
-                finally:
-                    close_mongo_client()
-
+                db_name = getattr(settings, "MONGODB_CJQH_SETTLE_DB", "future_settle_real")
+                coll_name = getattr(settings, "MONGODB_CJQH_SETTLE_COLLECTION", "CJQH_81801575")
+                coll = client[db_name][coll_name]
+                coll.create_index(
+                    [("trade_date", 1), ("account_id", 1)],
+                    unique=True,
+                    background=True,
+                )
+                result = coll.update_one(
+                    {"trade_date": trade_date, "account_id": payload["account_id"]},
+                    {"$set": payload},
+                    upsert=True,
+                )
                 report["status"] = "SUCCESS"
                 report["message"] = (
                     f"入库完成: {db_name}.{coll_name} "

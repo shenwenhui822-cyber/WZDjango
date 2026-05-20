@@ -16,23 +16,42 @@ _client: MongoClient | None = None
 _client_lock = threading.Lock()
 
 
+def _mongo_client_closed(client: MongoClient) -> bool:
+    """判断单例是否已被 close()（管理命令或 atexit 可能关闭）。"""
+    try:
+        topology = client._topology  # noqa: SLF001 — pymongo 内部状态
+        return bool(getattr(topology, "_closed", False))
+    except Exception:
+        return True
+
+
 def get_mongo_client() -> MongoClient:
     """进程内复用单个 MongoClient（含连接池），避免每次请求新建连接导致端口耗尽。"""
     global _client
-    if _client is not None:
+    if _client is not None and not _mongo_client_closed(_client):
         return _client
     with _client_lock:
-        if _client is None:
-            _client = MongoClient(settings.MONGODB_URI)
+        if _client is not None and not _mongo_client_closed(_client):
+            return _client
+        if _client is not None:
+            try:
+                _client.close()
+            except Exception:
+                pass
+            _client = None
+        _client = MongoClient(settings.MONGODB_URI)
         return _client
 
 
 def close_mongo_client() -> None:
-    """关闭并释放全局 MongoClient（管理命令结束或进程退出时调用）。"""
+    """关闭并释放全局 MongoClient（仅进程退出时由 atexit 调用；运行中 Web/调度勿关）。"""
     global _client
     with _client_lock:
         if _client is not None:
-            _client.close()
+            try:
+                _client.close()
+            except Exception:
+                pass
             _client = None
 
 
