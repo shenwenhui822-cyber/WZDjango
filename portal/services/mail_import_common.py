@@ -449,6 +449,16 @@ def emit_mail_job_result_line(write: Callable[[str], None], payload: dict[str, A
     write(line + "\n")
 
 
+def command_reported_result_email(notify_snapshot: dict[str, Any] | None) -> bool:
+    """
+    导入类命令在 _send_result_email 中已写出 notify_snapshot（并发送业务结果邮件）。
+    调度器据此跳过重复的汇总邮件。
+    """
+    return bool(
+        notify_snapshot and str(notify_snapshot.get("notify_title") or "").strip()
+    )
+
+
 def strip_mail_job_result_json(stdout_text: str) -> tuple[str, dict[str, Any] | None]:
     """从 stdout 剥离最后一行 MAIL_LOG JSON，返回 (剩余 stdout, 解析出的 dict)。"""
     text = stdout_text or ""

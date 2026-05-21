@@ -18,6 +18,7 @@ from portal.db.mongo import bson_safe_value, get_mail_logs_collection
 from portal.scheduler.alpha_mail_job_runner import submit_mail_scheduler_job
 from portal.scheduler.alpha_mail_schedule import get_active_mail_scheduler_schedules
 from portal.services.mail_import_common import (
+    command_reported_result_email,
     send_alpha_notify_result_email,
     strip_mail_job_result_json,
 )
@@ -426,6 +427,44 @@ def _persist_mail_scheduler_run(
         )
 
 
+def _maybe_send_scheduler_result_email(
+    *,
+    outcome: str,
+    command_name: str,
+    started_at,
+    finished_at,
+    stdout_text: str,
+    stderr_text: str,
+    exc: BaseException | None = None,
+    target_subject: str | None = None,
+    target_date: str | None = None,
+    failure_reason: str | None = None,
+    scheduler_job_key: str | None = None,
+    notify_snapshot: dict | None = None,
+) -> None:
+    """命令已发业务结果邮件时不再发调度汇总邮件，避免同一任务两封通知。"""
+    if command_reported_result_email(notify_snapshot):
+        ts = timezone.localtime().strftime("%Y-%m-%d %H:%M:%S")
+        print(
+            f" [{ts}] {command_name} 已由命令发送结果邮件，跳过调度汇总邮件。"
+        )
+        return
+    _send_scheduler_result_email(
+        outcome=outcome,
+        command_name=command_name,
+        started_at=started_at,
+        finished_at=finished_at,
+        stdout_text=stdout_text,
+        stderr_text=stderr_text,
+        exc=exc,
+        target_subject=target_subject,
+        target_date=target_date,
+        failure_reason=failure_reason,
+        scheduler_job_key=scheduler_job_key,
+        notify_snapshot=notify_snapshot,
+    )
+
+
 def _send_scheduler_result_email(
     *,
     outcome: str,
@@ -564,7 +603,7 @@ def _run_job(command_name: str, *, force: bool, extra_kwargs: dict | None = None
             scheduler_job_key=sched_job_key,
             notify_snapshot=notify_snapshot,
         )
-        _send_scheduler_result_email(
+        _maybe_send_scheduler_result_email(
             outcome=outcome,
             command_name=command_name,
             started_at=started_at,
@@ -606,7 +645,7 @@ def _run_job(command_name: str, *, force: bool, extra_kwargs: dict | None = None
             scheduler_job_key=sched_job_key,
             notify_snapshot=notify_snapshot,
         )
-        _send_scheduler_result_email(
+        _maybe_send_scheduler_result_email(
             outcome="failure",
             command_name=command_name,
             started_at=started_at,
