@@ -101,8 +101,14 @@ MONGODB_RQ_BENCH_CALC_PREFIX = "calc_"
 # 产品净值 vs 基准对比（日频行、区间汇总）；名称可扩展，须以 calc_ 开头
 MONGODB_RQ_BENCH_CALC_NAV_BENCH_DAILY = "calc_nav_bench_daily"
 MONGODB_RQ_BENCH_CALC_NAV_BENCH_SUMMARY = "calc_nav_bench_summary"
-# 净值 vs 基准对比缓存：calc_* 末日与 alpha_sim_nav 末日相差超过该交易日数则删缓存并重算
-NAV_BENCH_CACHE_MAX_TRADING_DAY_LAG = 2
+# 净值 vs 基准对比缓存：calc_* 末日落后 alpha_sim_nav 超过该交易日数则删缓存并重算（0=有更新即重算）
+NAV_BENCH_CACHE_MAX_TRADING_DAY_LAG = int(
+    os.getenv("NAV_BENCH_CACHE_MAX_TRADING_DAY_LAG", "0")
+)
+# alpha产品表现页定时 AJAX 刷新间隔（秒）；0 表示关闭
+NAV_BENCH_COMPARE_AUTO_REFRESH_SEC = int(
+    os.getenv("NAV_BENCH_COMPARE_AUTO_REFRESH_SEC", "600")
+)
 # 泽鑫多维等五列净值表：与博士一号相同库 fund_nav_real，独立四个集合（与 WZ_BSYH_* 并列）
 MONGODB_ZXDW_NAV_COLLECTIONS = (
     "WZ_ZXDW_MASTER",
@@ -141,3 +147,9 @@ WKQH_SETTLE_ATTACH_DIR = BASE_DIR / "downloaded_attachments_wkqh"
 GHZQ_17190083_SETTLE_DB = "fstock_settle_real"
 GHZQ_17190083_SETTLE_COLLECTION = "GHZQ_17190083"
 GHZQ_17190083_SETTLE_ATTACH_DIR = BASE_DIR / "downloaded_attachments_ghzq"
+
+# 期权指标：库 option，集合 volatility（字段 date、volatility_num）
+MONGODB_OPTION_DB = os.getenv("MONGODB_OPTION_DB", "option")
+MONGODB_OPTION_VOLATILITY_COLLECTION = os.getenv(
+    "MONGODB_OPTION_VOLATILITY_COLLECTION", "volatility"
+)

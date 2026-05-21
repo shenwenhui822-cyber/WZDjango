@@ -144,7 +144,9 @@ def _nav_bench_cache_is_stale(
     if s <= c:
         return False
     lag = count_trading_days_inclusive(c, s) - 1
-    return lag > _nav_bench_cache_max_trading_day_lag()
+    max_lag = _nav_bench_cache_max_trading_day_lag()
+    # lag=0 同日；lag=1 表示缓存末日之后至少还有 1 个交易日有新净值
+    return lag > max_lag
 
 
 def _load_cached_compare(

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import datetime as std_datetime
 from typing import Any
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils import timezone as dj_timezone
 from django.views.decorators.http import require_POST
 
 from portal.db.mongo import get_mail_logs_collection
@@ -23,6 +25,33 @@ def _fmt_cell(val: Any) -> str:
         except Exception:
             return str(val)
     return str(val)
+
+
+def _fmt_finished_at_shanghai(val: Any) -> str:
+    """
+    将 finished_at 格式化为上海时间。
+    MAIL_LOGS 中多为 UTC 写入后由 PyMongo 读出的 naive datetime，或 Unix 时间戳。
+    """
+    if val is None:
+        return "—"
+    try:
+        if isinstance(val, (int, float)):
+            ts = float(val)
+            if ts > 1e12:
+                ts /= 1000.0
+            dt = std_datetime.datetime.fromtimestamp(
+                ts, tz=std_datetime.timezone.utc
+            )
+        elif hasattr(val, "strftime"):
+            dt = val
+            if dj_timezone.is_naive(dt):
+                dt = dj_timezone.make_aware(dt, std_datetime.timezone.utc)
+        else:
+            return str(val)
+        local = dj_timezone.localtime(dt)
+        return local.strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return str(val)
 
 
 def _resolve_log_target_fields(doc: dict[str, Any]) -> tuple[str, str]:
@@ -91,6 +120,7 @@ def mail_scheduler_logs(request):
                 query,
                 projection={
                     "_id": 1,
+                    "finished_at": 1,
                     "target_date": 1,
                     "log_type": 1,
                     "import_succeeded": 1,
@@ -109,6 +139,7 @@ def mail_scheduler_logs(request):
             rows.append(
                 {
                     "log_id": str(doc.get("_id")),
+                    "finished_at": _fmt_finished_at_shanghai(doc.get("finished_at")),
                     "target_date": target_date,
                     "log_type": _fmt_cell(doc.get("log_type")),
                     "import_succeeded": ok if isinstance(ok, bool) else bool(ok),

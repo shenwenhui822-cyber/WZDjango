@@ -53,6 +53,7 @@
         <table class="table table-sm table-striped table-hover mb-0">
             <thead>
                 <tr>
+                    <th>finished_at（上海）</th>
                     <th>target_date</th>
                     <th>log_type</th>
                     <th>import_succeeded</th>
@@ -65,6 +66,7 @@
             <tbody>
                 {% for r in rows %}
                 <tr>
+                    <td class="text-nowrap">{{ r.finished_at }}</td>
                     <td>{{ r.target_date }}</td>
                     <td>{{ r.log_type }}</td>
                     <td>
@@ -92,7 +94,7 @@
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="7" class="text-center text-muted py-4">暂无数据</td>
+                    <td colspan="8" class="text-center text-muted py-4">暂无数据</td>
                 </tr>
                 {% endfor %}
             </tbody>

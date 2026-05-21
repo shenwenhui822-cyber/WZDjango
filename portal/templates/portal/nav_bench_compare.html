@@ -164,7 +164,8 @@
                     </div>
                     <div class="small text-muted mb-2">
                         行数：<strong id="cmpRowCount">{{ row_count }}</strong>；
-                        <!-- 数据来源：{% if from_cache %}<strong>已落库结果</strong>{% else %}<strong>实时计算并自动落库</strong>{% endif %} -->
+                        {% if auto_refresh_sec %}<span id="cmpAutoRefreshHint">每 {{ auto_refresh_sec }} 秒自动刷新</span>；{% endif %}
+                        <span id="cmpDataSourceHint">{% if from_cache %}图表数据：已落库缓存（有新净值日将自动重算）{% else %}图表数据：本次已重算并落库{% endif %}</span>
                     </div>
                     <!-- <div class="small text-muted mb-2">
                         基准口径：使用 `rq_bench.pct_chg` 日收益累乘归一化（起点=1）；日历对齐：以产品交易日为主轴，若当日基准缺失则沿用前一日。
@@ -259,6 +260,7 @@
 <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/zh.js"></script>
 <script id="cmp-data" type="application/json">{{ chart_json|safe }}</script>
+<script id="cmp-page-config" type="application/json">{"auto_refresh_sec":{{ auto_refresh_sec|default:0 }}}</script>
 <script>
 (function () {
     var fromEl = document.getElementById('id_cmp_date_from');
@@ -347,6 +349,10 @@
     var chartIns = null;
     var requestInFlight = false;
     var loadingTimer = null;
+    var autoRefreshTimer = null;
+    var pageCfgEl = document.getElementById('cmp-page-config');
+    var pageCfg = pageCfgEl ? JSON.parse(pageCfgEl.textContent || '{}') : {};
+    var autoRefreshSec = parseInt(pageCfg.auto_refresh_sec, 10) || 0;
 
     function esc(value) {
         return String(value == null ? '' : value)
@@ -531,6 +537,12 @@
                 if (kpiSharpeEl) kpiSharpeEl.textContent = formatNum(data.metrics && data.metrics.sharpe, 2, '');
                 renderChart(data.chart_data || { labels: [], datasets: [] });
                 renderAlphaTable(data.alpha_headers_zh || [], data.alpha_table_rows || [], data.alpha_column_en_keys || []);
+                var srcHint = document.getElementById('cmpDataSourceHint');
+                if (srcHint) {
+                    srcHint.textContent = data.from_cache
+                        ? '图表数据：已落库缓存（有新净值日将自动重算）'
+                        : '图表数据：本次已重算并落库';
+                }
                 setActiveProductClass();
                 syncLeftPanelHeight();
             })
@@ -593,6 +605,26 @@
             setMode('recent');
             submitAjax('recent');
         });
+    });
+
+    function scheduleAutoRefresh() {
+        if (autoRefreshTimer) {
+            window.clearInterval(autoRefreshTimer);
+            autoRefreshTimer = null;
+        }
+        if (!autoRefreshSec || autoRefreshSec < 5) return;
+        autoRefreshTimer = window.setInterval(function () {
+            if (requestInFlight || document.hidden) return;
+            var currentMode = (modeEl && modeEl.value) ? modeEl.value : 'recent';
+            submitAjax(currentMode);
+        }, autoRefreshSec * 1000);
+    }
+    scheduleAutoRefresh();
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden && autoRefreshSec >= 5 && !requestInFlight) {
+            var currentMode = (modeEl && modeEl.value) ? modeEl.value : 'recent';
+            submitAjax(currentMode);
+        }
     });
 })();
 </script>

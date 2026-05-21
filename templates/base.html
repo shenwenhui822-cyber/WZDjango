@@ -175,6 +175,7 @@
             <li><a href="{% url 'portal:nav_bench_compare' %}" class="{% if request.resolver_match.url_name == 'nav_bench_compare' %}active{% endif %}">alpha产品表现</a></li>
             <li><a href="{% url 'portal:alpha_t0' %}" class="{% if request.resolver_match.url_name == 'alpha_t0' %}active{% endif %}">T0表现</a></li>
             <li><a href="{% url 'portal:market_neutral_product' %}" class="{% if request.resolver_match.url_name == 'market_neutral_product' %}active{% endif %}">对冲中性产品</a></li>
+            <li><a href="{% url 'portal:option_metrics' %}" class="{% if request.resolver_match.url_name == 'option_metrics' %}active{% endif %}">期权指标</a></li>
         </ul>
         <div class="site-nav-user">
             <span class="user-greet" title="{{ user.username }}">你好，{{ user.username }}</span>

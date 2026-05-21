@@ -6,6 +6,7 @@ from portal.views import (
     auth_views,
     mail_logs_views,
     nav_curve_views,
+    option_metrics_views,
     placeholder_views,
 )
 
@@ -25,6 +26,11 @@ web_urlpatterns = [
         "products/market-neutral/",
         placeholder_views.placeholder_market_neutral,
         name="market_neutral_product",
+    ),
+    path(
+        "products/option-metrics/",
+        option_metrics_views.option_metrics,
+        name="option_metrics",
     ),
     path("nav/raw/", nav_curve_views.raw_nav, name="raw_nav"),
     path("logs/rerun/", mail_logs_views.mail_log_rerun, name="mail_log_rerun"),

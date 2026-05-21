@@ -155,6 +155,16 @@ def get_alpha_target_position_collection(table_name: str) -> Collection:
     return client[db_name][name]
 
 
+def get_option_volatility_collection() -> Collection:
+    """期权波动率：{MONGODB_OPTION_DB}.volatility（字段 date、volatility_num）。"""
+    client = get_mongo_client()
+    db_name = getattr(settings, "MONGODB_OPTION_DB", "option")
+    coll_name = getattr(
+        settings, "MONGODB_OPTION_VOLATILITY_COLLECTION", "volatility"
+    )
+    return client[db_name][coll_name]
+
+
 def get_mail_logs_collection() -> Collection:
     """定时任务运行日志：{MONGODB_MAIL_LOGS_DB}.{MONGODB_MAIL_LOGS_COLLECTION}（默认 mail_logs.MAIL_LOGS）。
     文档含 log_type（success|failure|skipped）、import_succeeded、failure_reason、scheduler_job_key、

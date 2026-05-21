@@ -708,8 +708,17 @@ def nav_bench_compare(request):
     alpha_header_pairs = list(zip(alpha_headers_zh, alpha_field_keys))
     alpha_body_rows = [list(zip(r, alpha_field_keys)) for r in alpha_table_rows]
 
+    try:
+        auto_refresh_sec = int(
+            getattr(settings, "NAV_BENCH_COMPARE_AUTO_REFRESH_SEC", 60)
+        )
+    except (TypeError, ValueError):
+        auto_refresh_sec = 60
+    auto_refresh_sec = max(0, min(auto_refresh_sec, 3600))
+
     context = {
         "error_msg": error_msg,
+        "auto_refresh_sec": auto_refresh_sec,
         "products": products,
         "product_groups": _group_compare_products(products, selected),
         "selected_product": selected,
@@ -744,6 +753,7 @@ def nav_bench_compare(request):
             {
                 "ok": error_msg is None,
                 "error_msg": error_msg,
+                "from_cache": from_cache,
                 "selected_product": selected,
                 "bench_name": bench_name or bench_code,
                 "row_count": len(rows),
