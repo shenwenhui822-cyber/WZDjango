@@ -32,7 +32,7 @@ DEFAULT_MAIL_SCHEDULER_SCHEDULES: list[tuple[str, str, dict[str, Any]]] = [
     ("17:10", "auto_import_wz_lyh_nav_mail", {"scheduler_job_key": "wz_lyh_nav"}),
     ("17:20", "auto_import_slh_nav_mail", {"scheduler_job_key": "slh_nav"}),
     ("18:00", "auto_import_wkqh_settle_mail", {"scheduler_job_key": "wkqh_settle"}),
-    ("16:05", "auto_import_cjqh_settle_mail", {"scheduler_job_key": "cjqh_settle"}),
+    ("18:05", "auto_import_cjqh_settle_mail", {"scheduler_job_key": "cjqh_settle"}),
     ("18:10", "auto_import_stz053_nav_mail", {"scheduler_job_key": "stz053_nav"}),
     ("19:00", "auto_import_htqh_settle_mail", {"scheduler_job_key": "htqh_settle"}),
     ("19:40", "auto_import_dwyh_nav_mail", {"scheduler_job_key": "dwyh_nav"}),

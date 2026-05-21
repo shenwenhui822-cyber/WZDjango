@@ -440,7 +440,7 @@
     14:10  auto_import_dyctayh_nav_mail（多元 CTA 一号 SXE021(总)；每个交易日；T-1）
     14:30  auto_import_ylh_nav_mail（吾执一零号 SQL632(总)；T-1）
     14:40  auto_import_wzsl_position_mail（吾执三零号 fareport 东北证券对账单 RAR → position_fund_real.WZSL；T-1）
-    16:05  auto_import_cjqh_settle_mail
+    18:05  auto_import_cjqh_settle_mail
     17:10  auto_import_wz_lyh_nav_mail（零一号 STZ049 + 量化精选一号 SASQ16；nav_date=T-1；两产品均落库即停）
     17:20  auto_import_slh_nav_mail
     18:00  auto_import_wkqh_settle_mail
