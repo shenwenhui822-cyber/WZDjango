@@ -460,23 +460,26 @@ def command_reported_result_email(notify_snapshot: dict[str, Any] | None) -> boo
 
 
 def strip_mail_job_result_json(stdout_text: str) -> tuple[str, dict[str, Any] | None]:
-    """从 stdout 剥离最后一行 MAIL_LOG JSON，返回 (剩余 stdout, 解析出的 dict)。"""
+    """
+    从 stdout 剥离 MAIL_LOG JSON 行，返回 (剩余 stdout, 解析出的 dict)。
+    自底向上查找带 __MAIL_LOG_RESULT_JSON__: 前缀的行（JSON 后可能还有「邮件已发送」等日志）。
+    """
     text = stdout_text or ""
     marker = MAIL_LOG_RESULT_PREFIX
     lines = text.splitlines()
-    while lines and not lines[-1].strip():
-        lines.pop()
-    if not lines:
+    json_idx = -1
+    for i in range(len(lines) - 1, -1, -1):
+        if lines[i].strip().startswith(marker):
+            json_idx = i
+            break
+    if json_idx < 0:
         return text, None
-    last = lines[-1].strip()
-    if not last.startswith(marker):
-        return text, None
-    raw = last[len(marker) :]
+    raw = lines[json_idx].strip()[len(marker) :]
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
         return text, None
-    rest_lines = lines[:-1]
+    rest_lines = lines[:json_idx] + lines[json_idx + 1 :]
     rest = "\n".join(rest_lines)
     if rest_lines and text.endswith("\n"):
         rest += "\n"
