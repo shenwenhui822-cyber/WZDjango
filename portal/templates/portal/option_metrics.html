@@ -158,12 +158,12 @@
         <div class="col-12 col-lg-9">
             <div class="opt-main-stack">
                 <details class="opt-chart-details" id="optChartPanel" open>
-                    <summary class="opt-chart-summary">指标走势 — <span id="optChartTitle">{{ selected_metric_label|default:selected_metric }}</span></summary>
+                    <summary class="opt-chart-summary">指标波动 — <span id="optChartTitle">{{ selected_metric_label|default:selected_metric }}</span></summary>
                     <div class="opt-chart-content">
                         <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-2">
                             <div class="small text-muted">
                                 点数：<strong id="optPointCount">{{ point_count }}</strong>；
-                                数值保留两位小数
+                                <!-- 数值保留两位小数 -->
                             </div>
                             <div class="btn-group btn-group-sm" role="group" aria-label="区间选择">
                                 <input type="radio" class="btn-check opt-recent" name="recent" id="opt_r1m" value="21" {% if recent == "21" %}checked{% endif %}>
