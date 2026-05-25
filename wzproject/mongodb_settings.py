@@ -148,7 +148,7 @@ GHZQ_17190083_SETTLE_DB = "fstock_settle_real"
 GHZQ_17190083_SETTLE_COLLECTION = "GHZQ_17190083"
 GHZQ_17190083_SETTLE_ATTACH_DIR = BASE_DIR / "downloaded_attachments_ghzq"
 
-# 期权指标：库 option，集合 volatility（字段 date、volatility_num）
+# 股指期货指标：库 option，集合 volatility（date + 9 个 ETF_* 字段）
 MONGODB_OPTION_DB = os.getenv("MONGODB_OPTION_DB", "option")
 MONGODB_OPTION_VOLATILITY_COLLECTION = os.getenv(
     "MONGODB_OPTION_VOLATILITY_COLLECTION", "volatility"

@@ -156,7 +156,7 @@ def get_alpha_target_position_collection(table_name: str) -> Collection:
 
 
 def get_option_volatility_collection() -> Collection:
-    """期权波动率：{MONGODB_OPTION_DB}.volatility（字段 date、volatility_num）。"""
+    """股指期货 ETF 指标：{MONGODB_OPTION_DB}.volatility（date + ETF_510050 等 9 列）。"""
     client = get_mongo_client()
     db_name = getattr(settings, "MONGODB_OPTION_DB", "option")
     coll_name = getattr(

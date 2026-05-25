@@ -9,6 +9,18 @@ from pathlib import Path
 CSV_FILES = "sample_volatility.csv"
 MONGODB_URI = "mongodb://option:volatility@192.168.110.199:27017/?authSource=admin"
 
+ETF_COLUMNS = (
+    "ETF_510050",
+    "ETF_510300",
+    "ETF_510500",
+    "ETF_588000",
+    "ETF_588080",
+    "ETF_159901",
+    "ETF_159915",
+    "ETF_159919",
+    "ETF_159922",
+)
+
 _DIR = Path(__file__).resolve().parent
 
 try:
@@ -73,13 +85,30 @@ def _read_rows(path: Path) -> list[dict]:
             sys.exit("CSV 无表头。")
         cols = {c.strip().lstrip("\ufeff").lower(): c for c in reader.fieldnames}
         date_k = cols.get("date") or cols.get("日期")
-        vol_k = cols.get("volatility_num") or cols.get("波动率")
-        if not date_k or not vol_k:
-            sys.exit("CSV 须含 date、volatility_num 列（或 日期、波动率）。")
+        if not date_k:
+            sys.exit("CSV 须含 date 列（或 日期）。")
+        etf_keys: dict[str, str | None] = {}
+        missing = []
+        for col in ETF_COLUMNS:
+            k = cols.get(col.lower())
+            if not k:
+                missing.append(col)
+            etf_keys[col] = k
+        if missing:
+            sys.exit(f"CSV 缺少 ETF 列: {', '.join(missing)}")
         for row in reader:
-            day, vol = _parse_date(row.get(date_k)), _parse_vol(row.get(vol_k))
-            if day and vol is not None:
-                rows.append({"date": day, "volatility_num": vol})
+            day = _parse_date(row.get(date_k))
+            if not day:
+                continue
+            doc: dict = {"date": day}
+            has_any = False
+            for field, csv_k in etf_keys.items():
+                v = _parse_vol(row.get(csv_k)) if csv_k else None
+                doc[field] = v
+                if v is not None:
+                    has_any = True
+            if has_any:
+                rows.append(doc)
     if not rows:
         sys.exit("无有效数据行。")
     return rows
@@ -106,7 +135,10 @@ def main() -> None:
         elif r.modified_count:
             upd += 1
 
-    print(f"完成: {path.name} → option.volatility，{len(rows)} 条，新增 {new}，更新 {upd}")
+    print(
+        f"完成: {path.name} → option.volatility，"
+        f"{len(rows)} 条（date + {len(ETF_COLUMNS)} ETF），新增 {new}，更新 {upd}"
+    )
 
 
 if __name__ == "__main__":

@@ -2,26 +2,92 @@
 {% block title %}{{ page_title }} - 吾执产品平台{% endblock %}
 {% block extra_css %}
 <style>
-    .panel-card { border: 1px solid #dee2e6; border-radius: 0.5rem; background: #fff; }
-    .panel-card .panel-hd { padding: 0.625rem 0.75rem; border-bottom: 1px solid #eef0f2; font-weight: 600; font-size: 0.95rem; }
-    .panel-card .panel-bd { padding: 0.75rem; }
-    .opt-metric-item {
-        display: block;
-        padding: 0.65rem 0.75rem;
-        border-bottom: 1px solid #eef0f2;
-        text-decoration: none;
-        color: inherit;
+    .panel-card { border: 1px solid #dee2e6; border-radius: 0.75rem; background: #fff; }
+    .panel-card .panel-hd { padding: 0.65rem 0.85rem; border-bottom: 1px solid #eef0f2; font-weight: 700; font-size: 0.95rem; }
+    .cmp-left-panel {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        min-height: 0;
     }
-    .opt-metric-item:last-child { border-bottom: 0; }
-    .opt-metric-item.is-active {
-        background: #eaf3ff;
-        color: #0d6efd;
+    .cmp-left-panel .panel-bd {
+        flex: 1 1 auto;
+        min-height: 0;
+        padding: 0;
+        overflow: hidden;
+    }
+    @media (min-width: 992px) {
+        .opt-layout-row { align-items: flex-start; }
+        .opt-sidebar-panel {
+            height: var(--opt-main-stack-h, auto);
+            min-height: 0;
+        }
+    }
+    .product-list {
+        height: 100%;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding: 0.5rem;
+    }
+    .opt-tier1-row {
+        border: 1px solid #e9ecef;
+        border-radius: 0.5rem;
+        background: #fff;
+        overflow: hidden;
+    }
+    .opt-tier1-row + .opt-tier1-row { margin-top: 0.45rem; }
+    .opt-tier1-summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding: 0.6rem 0.75rem;
         font-weight: 600;
+        cursor: pointer;
+        margin: 0;
+        transition: background-color 0.2s ease, color 0.2s ease;
     }
-    .opt-metric-item .metric-name { font-size: 0.95rem; }
-    .opt-metric-item .metric-meta { font-size: 0.8rem; color: #6c757d; margin-top: 0.25rem; }
-    .opt-metric-item.is-active .metric-meta { color: #5c8fd6; }
-    .chart-wrap { max-width: 100%; height: 460px; }
+    .opt-tier1-radio {
+        position: absolute;
+        opacity: 0;
+        width: 0;
+        height: 0;
+        pointer-events: none;
+    }
+    .opt-tier1-text {
+        flex: 1;
+        min-width: 0;
+        line-height: 1.25;
+        font-size: 0.95rem;
+    }
+    .opt-tier1-meta {
+        font-size: 0.75rem;
+        font-weight: 400;
+        color: #6c757d;
+        margin-top: 0.15rem;
+    }
+    .opt-tier1-row:hover .opt-tier1-summary,
+    .opt-tier1-row.active .opt-tier1-summary {
+        background-color: #eaf4ff;
+        color: #4f8cff;
+    }
+    .opt-tier1-row.active .opt-tier1-meta { color: #5c8fd6; }
+    .opt-chart-details {
+        border: 1px solid #dee2e6;
+        border-radius: 0.5rem;
+        background: #fff;
+    }
+    .opt-chart-summary {
+        list-style: none;
+        cursor: pointer;
+        font-weight: 600;
+        padding: 0.6rem 0.8rem;
+        border-bottom: 1px solid #eef0f2;
+    }
+    .opt-chart-summary::-webkit-details-marker { display: none; }
+    .opt-chart-content { padding: 0.7rem 0.8rem; }
+    .chart-wrap { max-width: 100%; height: 400px; }
 </style>
 {% endblock %}
 {% block content %}
@@ -32,100 +98,260 @@
     </ol>
 </nav>
 
-<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-    <h1 class="h4 mb-0">{{ page_title }}</h1>
-    <span class="text-muted small">页面时间：{{ generated_at }}（上海）</span>
+<div id="optErrorWrap">
+    {% if error %}
+    <div class="alert alert-danger">{{ error }}</div>
+    {% endif %}
 </div>
 
-{% if error %}
-<div class="alert alert-danger">{{ error }}</div>
-{% endif %}
-
-<div class="row g-3 align-items-stretch">
-    <div class="col-12 col-lg-3">
-        <div class="panel-card h-100">
-            <div class="panel-hd">指标</div>
-            <div class="panel-bd p-0">
-                {% for ind in indicators %}
-                <a href="?metric={{ ind.key }}"
-                   class="opt-metric-item {% if selected_metric == ind.key %}is-active{% endif %}">
-                    <div class="metric-name">{{ ind.label }}</div>
-                    <div class="metric-meta">
-                        最新：{{ ind.latest_value|default:"—" }}
-                        {% if ind.latest_date %}（{{ ind.latest_date }}）{% endif %}
+<form method="get" action="" id="optMetricsForm" class="mb-3">
+    <div class="row g-3 opt-layout-row">
+        <div class="col-12 col-lg-3">
+            <div class="panel-card cmp-left-panel opt-sidebar-panel">
+                <div class="panel-hd">指标</div>
+                <div class="panel-bd p-0">
+                    <div class="product-list" id="optMetricList">
+                        {% for ind in indicators %}
+                        <div class="opt-tier1-row opt-metric-item {% if selected_metric == ind.key %}active{% endif %}">
+                            <label class="opt-tier1-summary" for="opt_metric_{{ forloop.counter }}">
+                                <input class="opt-tier1-radio" type="radio" name="metric" value="{{ ind.key }}"
+                                       id="opt_metric_{{ forloop.counter }}"
+                                       {% if selected_metric == ind.key %}checked{% endif %}>
+                                <span class="opt-tier1-text">
+                                    {{ ind.label }}
+                                    <div class="opt-tier1-meta">
+                                        最新 {{ ind.latest_value|default:"—" }}
+                                        {% if ind.latest_date %}（{{ ind.latest_date }}）{% endif %}
+                                    </div>
+                                </span>
+                            </label>
+                        </div>
+                        {% empty %}
+                        <div class="text-muted small p-3">暂无指标</div>
+                        {% endfor %}
                     </div>
-                    <div class="metric-meta text-truncate" title="{{ ind.description }}">{{ ind.description }}</div>
-                </a>
-                {% empty %}
-                <div class="text-muted small p-3">暂无指标</div>
-                {% endfor %}
-            </div>
-            {% if summary.count %}
-            <div class="panel-bd border-top small text-muted">
-                <div>数据点数：{{ summary.count }}</div>
-                <div>日期范围：{{ summary.date_min }} ~ {{ summary.date_max }}</div>
-            </div>
-            {% endif %}
-        </div>
-    </div>
-    <div class="col-12 col-lg-9">
-        <div class="panel-card h-100">
-            <div class="panel-hd d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <span>效果图 — {% for ind in indicators %}{% if selected_metric == ind.key %}{{ ind.label }}{% endif %}{% endfor %}</span>
-                <span class="text-muted fw-normal small">MongoDB：option.volatility</span>
-            </div>
-            <div class="panel-bd">
-                <div class="text-muted small mb-2">点数：<strong>{{ point_count }}</strong></div>
-                <div class="chart-wrap border rounded p-2 bg-white">
-                    <canvas id="optionVolChart"></canvas>
                 </div>
-                {% if not point_count and not error %}
-                <p class="text-muted small mt-2 mb-0">集合中暂无有效 date / volatility_num 记录。</p>
-                {% endif %}
+            </div>
+        </div>
+        <div class="col-12 col-lg-9">
+            <div class="opt-main-stack">
+                <details class="opt-chart-details" id="optChartPanel" open>
+                    <summary class="opt-chart-summary">指标走势 — <span id="optChartTitle">{{ selected_metric_label|default:selected_metric }}</span></summary>
+                    <div class="opt-chart-content">
+                        <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-2">
+                            <div class="small text-muted">
+                                点数：<strong id="optPointCount">{{ point_count }}</strong>；
+                                数值保留两位小数
+                            </div>
+                            <div class="btn-group btn-group-sm" role="group" aria-label="区间选择">
+                                <input type="radio" class="btn-check opt-recent" name="recent" id="opt_r1m" value="21" {% if recent == "21" %}checked{% endif %}>
+                                <label class="btn btn-outline-primary" for="opt_r1m">近1月</label>
+                                <input type="radio" class="btn-check opt-recent" name="recent" id="opt_r3m" value="63" {% if recent == "63" or not recent %}checked{% endif %}>
+                                <label class="btn btn-outline-primary" for="opt_r3m">近3月</label>
+                                <input type="radio" class="btn-check opt-recent" name="recent" id="opt_r6m" value="126" {% if recent == "126" %}checked{% endif %}>
+                                <label class="btn btn-outline-primary" for="opt_r6m">近6月</label>
+                                <input type="radio" class="btn-check opt-recent" name="recent" id="opt_r1y" value="252" {% if recent == "252" %}checked{% endif %}>
+                                <label class="btn btn-outline-primary" for="opt_r1y">近1年</label>
+                                <input type="radio" class="btn-check opt-recent" name="recent" id="opt_rall" value="all" {% if recent == "all" %}checked{% endif %}>
+                                <label class="btn btn-outline-primary" for="opt_rall">成立以来</label>
+                            </div>
+                        </div>
+                        <div class="chart-wrap border rounded p-2 bg-white">
+                            <canvas id="optionVolChart"></canvas>
+                        </div>
+                        <p class="text-muted small mt-2 mb-0">数据源：MongoDB option.volatility</p>
+                    </div>
+                </details>
             </div>
         </div>
     </div>
-</div>
+</form>
 {% endblock %}
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script id="option-vol-data" type="application/json">{{ chart_json|safe }}</script>
 <script>
 (function () {
-    var el = document.getElementById("option-vol-data");
-    if (!el) return;
-    var cfg = JSON.parse(el.textContent || "{}");
-    var labels = cfg.labels || [];
-    var datasetsRaw = cfg.datasets || [];
-    var ctx = document.getElementById("optionVolChart");
-    if (!ctx || typeof Chart === "undefined") return;
+    var form = document.getElementById("optMetricsForm");
+    var errorWrap = document.getElementById("optErrorWrap");
+    var chartTitleEl = document.getElementById("optChartTitle");
+    var pointCountEl = document.getElementById("optPointCount");
+    var metricListEl = document.getElementById("optMetricList");
+    var chartPanelEl = document.getElementById("optChartPanel");
+    var chartCanvasEl = document.getElementById("optionVolChart");
+    var dataEl = document.getElementById("option-vol-data");
+    var chartIns = null;
+    var requestInFlight = false;
 
-    var datasets = datasetsRaw.map(function (ds) {
-        return {
-            label: ds.label || "波动率",
-            data: ds.data || [],
-            borderColor: "rgb(0, 51, 102)",
-            backgroundColor: "rgba(0, 51, 102, 0.08)",
-            tension: 0.15,
-            fill: true,
-            pointRadius: labels.length > 120 ? 0 : 2,
-            spanGaps: true
-        };
-    });
+    function esc(s) {
+        return String(s == null ? "" : s)
+            .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
 
-    new Chart(ctx, {
-        type: "line",
-        data: { labels: labels, datasets: datasets },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                x: { ticks: { maxRotation: 45, minRotation: 0 } },
-                y: { title: { display: true, text: "volatility_num" } }
-            },
-            plugins: { legend: { display: true } }
+    function fmt2(v) {
+        if (v === null || v === undefined || Number.isNaN(Number(v))) return "—";
+        return Number(v).toFixed(2);
+    }
+
+    function renderChart(chartData) {
+        if (!chartCanvasEl || typeof Chart === "undefined") return;
+        var labels = (chartData && chartData.labels) ? chartData.labels : [];
+        var datasetsRaw = (chartData && chartData.datasets) ? chartData.datasets : [];
+        if (!labels.length) {
+            if (chartPanelEl) chartPanelEl.style.display = "none";
+            if (chartIns) { chartIns.destroy(); chartIns = null; }
+            syncSidebarHeight();
+            return;
         }
+        if (chartPanelEl) chartPanelEl.style.display = "";
+        var datasets = datasetsRaw.map(function (ds) {
+            return {
+                label: ds.label || "指标",
+                data: ds.data || [],
+                borderColor: "rgb(0, 51, 102)",
+                backgroundColor: "rgba(0, 51, 102, 0.08)",
+                tension: 0.15,
+                fill: true,
+                pointRadius: labels.length > 120 ? 0 : 2,
+                spanGaps: true
+            };
+        });
+        if (chartIns) chartIns.destroy();
+        chartIns = new Chart(chartCanvasEl, {
+            type: "line",
+            data: { labels: labels, datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { ticks: { maxRotation: 45, minRotation: 0 } },
+                    y: {
+                        title: { display: true, text: datasetsRaw[0] && datasetsRaw[0].label ? datasetsRaw[0].label : "指标值" },
+                        ticks: { callback: function (v) { return fmt2(v); } }
+                    }
+                },
+                plugins: {
+                    legend: { display: true },
+                    tooltip: {
+                        callbacks: {
+                            label: function (item) {
+                                return (item.dataset.label || "") + ": " + fmt2(item.parsed.y);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        syncSidebarHeight();
+    }
+
+    function renderMetricList(indicators, selectedKey) {
+        if (!metricListEl || !indicators || !indicators.length) return;
+        var html = indicators.map(function (ind, idx) {
+            var active = ind.key === selectedKey ? " active" : "";
+            var checked = ind.key === selectedKey ? " checked" : "";
+            var meta = "最新 " + esc(ind.latest_value || "—");
+            if (ind.latest_date) meta += "（" + esc(ind.latest_date) + "）";
+            return [
+                '<div class="opt-tier1-row opt-metric-item' + active + '">',
+                '<label class="opt-tier1-summary" for="opt_metric_' + idx + '">',
+                '<input class="opt-tier1-radio" type="radio" name="metric" value="' + esc(ind.key) + '"',
+                ' id="opt_metric_' + idx + '"' + checked + '>',
+                '<span class="opt-tier1-text">' + esc(ind.label),
+                '<div class="opt-tier1-meta">' + meta + '</div></span>',
+                '</label></div>'
+            ].join("");
+        }).join("");
+        metricListEl.innerHTML = html;
+        bindMetricRadios();
+    }
+
+    function refreshMetricActive() {
+        document.querySelectorAll(".opt-metric-item").forEach(function (item) {
+            var radio = item.querySelector('input[name="metric"]');
+            item.classList.toggle("active", !!(radio && radio.checked));
+        });
+    }
+
+    function submitAjax() {
+        if (!form || requestInFlight) return;
+        requestInFlight = true;
+        var params = new URLSearchParams(new FormData(form));
+        fetch(window.location.pathname + "?" + params.toString(), {
+            method: "GET",
+            headers: { "X-Requested-With": "XMLHttpRequest" },
+            credentials: "same-origin"
+        })
+            .then(function (res) {
+                if (!res.ok) throw new Error("请求失败，状态码：" + res.status);
+                return res.json();
+            })
+            .then(function (data) {
+                if (errorWrap) {
+                    errorWrap.innerHTML = data.error
+                        ? '<div class="alert alert-danger">' + esc(data.error) + "</div>"
+                        : "";
+                }
+                if (chartTitleEl) chartTitleEl.textContent = data.selected_metric_label || data.selected_metric || "";
+                if (pointCountEl) pointCountEl.textContent = String(data.point_count || 0);
+                renderChart(data.chart_data || {});
+                renderMetricList(data.indicators || [], data.selected_metric);
+            })
+            .catch(function (err) {
+                if (errorWrap) {
+                    errorWrap.innerHTML = '<div class="alert alert-danger">' + esc(err.message) + "</div>";
+                }
+            })
+            .finally(function () {
+                requestInFlight = false;
+            });
+    }
+
+    function bindMetricRadios() {
+        document.querySelectorAll('input[name="metric"]').forEach(function (radio) {
+            radio.addEventListener("change", function () {
+                refreshMetricActive();
+                submitAjax();
+            });
+        });
+        refreshMetricActive();
+    }
+
+    document.querySelectorAll(".opt-recent").forEach(function (control) {
+        control.addEventListener("change", submitAjax);
     });
+
+    if (form) {
+        form.addEventListener("submit", function (e) {
+            e.preventDefault();
+            submitAjax();
+        });
+    }
+
+    bindMetricRadios();
+
+    if (dataEl) {
+        try { renderChart(JSON.parse(dataEl.textContent || "{}")); } catch (_e) {}
+    }
+
+    function syncSidebarHeight() {
+        var layoutRow = document.querySelector(".opt-layout-row");
+        var mainStack = document.querySelector(".opt-main-stack");
+        if (!layoutRow || !mainStack) return;
+        if (window.innerWidth < 992) {
+            layoutRow.style.removeProperty("--opt-main-stack-h");
+            return;
+        }
+        var h = Math.ceil(mainStack.getBoundingClientRect().height);
+        if (h > 0) layoutRow.style.setProperty("--opt-main-stack-h", h + "px");
+    }
+    if (typeof ResizeObserver !== "undefined") {
+        var mainStack = document.querySelector(".opt-main-stack");
+        if (mainStack) new ResizeObserver(syncSidebarHeight).observe(mainStack);
+    }
+    window.addEventListener("resize", syncSidebarHeight);
+    window.addEventListener("load", syncSidebarHeight);
 })();
 </script>
 {% endblock %}
