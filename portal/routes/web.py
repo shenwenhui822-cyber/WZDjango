@@ -7,7 +7,6 @@ from portal.views import (
     mail_logs_views,
     nav_curve_views,
     option_metrics_views,
-    placeholder_views,
 )
 
 web_urlpatterns = [
@@ -22,11 +21,12 @@ web_urlpatterns = [
     path("nav/curve/", nav_curve_views.nav_curve, name="nav_curve"),
     path("nav/bench-compare/", nav_curve_views.nav_bench_compare, name="nav_bench_compare"),
     path("alpha/t0/", t0_views.t0_performance, name="alpha_t0"),
-    path(
-        "products/market-neutral/",
-        placeholder_views.placeholder_market_neutral,
-        name="market_neutral_product",
-    ),
+    # 前端暂不展示：对冲中性产品（取消注释可恢复 /products/market-neutral/）
+    # path(
+    #     "products/market-neutral/",
+    #     placeholder_views.placeholder_market_neutral,
+    #     name="market_neutral_product",
+    # ),
     path(
         "products/option-metrics/",
         option_metrics_views.option_metrics,
