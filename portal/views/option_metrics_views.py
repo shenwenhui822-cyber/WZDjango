@@ -9,11 +9,11 @@ from django.shortcuts import render
 from django.utils import timezone
 
 from portal.services.option_volatility_service import (
+    DEFAULT_TABLE_DISPLAY_LIMIT,
     ETF_METRIC_DEFINITIONS,
     ETF_METRIC_KEYS,
     format_metric_display,
-    load_etf_latest_snapshot,
-    load_etf_volatility_series,
+    load_etf_volatility_bundle,
     parse_recent_window,
 )
 
@@ -40,6 +40,7 @@ def _build_page_context(
     recent_raw: str,
     recent_window: int,
     limit: int,
+    table_limit: int,
 ) -> dict:
     error: str | None = None
     chart_data: dict = {"labels": [], "datasets": []}
@@ -47,18 +48,24 @@ def _build_page_context(
     selected_label = selected_metric
     indicators: list[dict] = []
 
-    try:
-        snap = load_etf_latest_snapshot(limit=limit)
-        latest_by_key = snap.get("latest_by_key") or {}
-        latest_date = snap.get("latest_date") or ""
-        indicators = _build_indicators(latest_by_key, latest_date=latest_date)
+    table_headers_zh: list[str] = []
+    table_rows: list[list[str]] = []
+    table_column_keys: list[str] = []
+    table_total_count = 0
 
-        series = load_etf_volatility_series(
+    try:
+        bundle = load_etf_volatility_bundle(
             metric_key=selected_metric,
             recent_window=recent_window,
             limit=limit,
+            table_limit=table_limit,
         )
-        selected_label = series["summary"].get("metric_label") or selected_metric
+        latest_by_key = bundle.get("latest_by_key") or {}
+        latest_date = bundle.get("latest_date") or ""
+        indicators = _build_indicators(latest_by_key, latest_date=latest_date)
+
+        series = bundle.get("series") or {}
+        selected_label = series.get("summary", {}).get("metric_label") or selected_metric
         summary = series.get("summary") or {}
         chart_data = {
             "labels": series.get("labels") or [],
@@ -69,6 +76,10 @@ def _build_page_context(
                 }
             ],
         }
+        table_headers_zh = bundle.get("table_headers_zh") or []
+        table_rows = bundle.get("table_rows") or []
+        table_column_keys = bundle.get("table_column_keys") or []
+        table_total_count = int(bundle.get("table_total_count") or len(table_rows))
         for ind in indicators:
             if ind["key"] == selected_metric:
                 ind["latest_value"] = format_metric_display(
@@ -96,6 +107,12 @@ def _build_page_context(
         "chart_json": json.dumps(chart_data, ensure_ascii=False),
         "point_count": summary.get("count", 0),
         "recent": recent_raw,
+        "table_headers_zh": table_headers_zh,
+        "table_rows": table_rows,
+        "table_column_keys": table_column_keys,
+        "table_row_count": len(table_rows),
+        "table_total_count": table_total_count,
+        "table_limit": table_limit,
     }
 
 
@@ -114,11 +131,18 @@ def option_metrics(request):
 
     recent_window, recent_raw = parse_recent_window(request.GET.get("recent"))
 
+    try:
+        tbl_lim = int((request.GET.get("table_limit") or str(DEFAULT_TABLE_DISPLAY_LIMIT)).strip())
+    except ValueError:
+        tbl_lim = DEFAULT_TABLE_DISPLAY_LIMIT
+    tbl_lim = max(0, min(tbl_lim, 5000))
+
     ctx = _build_page_context(
         selected_metric=selected_metric,
         recent_raw=recent_raw,
         recent_window=recent_window,
         limit=lim,
+        table_limit=tbl_lim,
     )
 
     if request.headers.get("x-requested-with") == "XMLHttpRequest":
@@ -133,6 +157,12 @@ def option_metrics(request):
                 "summary": ctx["summary"],
                 "chart_data": json.loads(ctx["chart_json"]),
                 "indicators": ctx["indicators"],
+                "table_headers_zh": ctx["table_headers_zh"],
+                "table_rows": ctx["table_rows"],
+                "table_column_keys": ctx["table_column_keys"],
+                "table_row_count": ctx["table_row_count"],
+                "table_total_count": ctx["table_total_count"],
+                "table_limit": ctx["table_limit"],
             },
             json_dumps_params={"ensure_ascii": False},
         )

@@ -22,6 +22,9 @@ ETF_METRIC_DEFINITIONS: tuple[tuple[str, str], ...] = (
 
 ETF_METRIC_KEYS: frozenset[str] = frozenset(k for k, _ in ETF_METRIC_DEFINITIONS)
 
+# 数据明细表默认最多展示行数（最新在上，即最近 N 个交易日）
+DEFAULT_TABLE_DISPLAY_LIMIT = 100
+
 
 def _parse_date_key(val: Any) -> date | None:
     if val is None:
@@ -152,8 +155,8 @@ def load_etf_volatility_series(
     return _rows_to_series_payload(rows, metric_key=key)
 
 
-def load_etf_latest_snapshot(*, limit: int = 5000) -> dict[str, Any]:
-    """读取全量序列，供左侧九个指标展示各自最新值。"""
+def _fetch_all_rows_by_date(*, limit: int) -> list[tuple[date, dict[str, float]]]:
+    """按 date 升序读取全部 ETF 列。"""
     lim = max(100, min(int(limit), 20_000))
     coll = get_option_volatility_collection()
     keys = [k for k, _ in ETF_METRIC_DEFINITIONS]
@@ -172,11 +175,83 @@ def load_etf_latest_snapshot(*, limit: int = 5000) -> dict[str, Any]:
             by_date.append((d, vals))
     if len(by_date) > lim:
         by_date = by_date[-lim:]
-    labels = [d.isoformat() for d, _ in by_date]
-    latest_date = labels[-1] if labels else ""
-    latest_row = by_date[-1][1] if by_date else {}
+    return by_date
+
+
+def build_etf_table_payload(
+    rows_by_date: list[tuple[date, dict[str, float]]],
+    *,
+    table_limit: int = DEFAULT_TABLE_DISPLAY_LIMIT,
+) -> dict[str, Any]:
+    """将按日数据转为页面表格（日期 + 9 列 ETF，最新日期在上，默认仅展示前 table_limit 行）。"""
+    keys = [k for k, _ in ETF_METRIC_DEFINITIONS]
+    headers_zh = ["日期"] + [label for _, label in ETF_METRIC_DEFINITIONS]
+    column_keys = ["date", *keys]
+    ordered = list(reversed(rows_by_date))
+    total_count = len(ordered)
+    lim = max(0, int(table_limit))
+    if lim > 0:
+        ordered = ordered[:lim]
+    table_rows: list[list[str]] = []
+    for d, vals in ordered:
+        table_rows.append(
+            [d.isoformat()]
+            + [format_metric_display(vals.get(k)) for k in keys]
+        )
     return {
-        "count": len(by_date),
+        "table_headers_zh": headers_zh,
+        "table_column_keys": column_keys,
+        "table_rows": table_rows,
+        "table_row_count": len(table_rows),
+        "table_total_count": total_count,
+    }
+
+
+def load_etf_volatility_bundle(
+    *,
+    metric_key: str,
+    recent_window: int = 0,
+    limit: int = 5000,
+    table_limit: int = DEFAULT_TABLE_DISPLAY_LIMIT,
+) -> dict[str, Any]:
+    """
+    一次读取 Mongo，返回侧栏最新值、图表序列、明细表（同一区间）。
+    """
+    key = (metric_key or "").strip()
+    if key not in ETF_METRIC_KEYS:
+        raise ValueError(f"未知指标: {metric_key!r}")
+
+    all_rows = _fetch_all_rows_by_date(limit=limit)
+    labels_all = [d.isoformat() for d, _ in all_rows]
+    latest_row = all_rows[-1][1] if all_rows else {}
+
+    window_rows = slice_series_by_recent_window(all_rows, recent_window)
+    metric_rows = [
+        (d, vals[key])
+        for d, vals in window_rows
+        if key in vals and vals[key] is not None
+    ]
+    series = _rows_to_series_payload(metric_rows, metric_key=key)
+    table = build_etf_table_payload(window_rows, table_limit=table_limit)
+
+    return {
+        "latest_date": labels_all[-1] if labels_all else "",
+        "latest_by_key": latest_row,
+        "date_min": labels_all[0] if labels_all else "",
+        "date_max": labels_all[-1] if labels_all else "",
+        "series": series,
+        **table,
+    }
+
+
+def load_etf_latest_snapshot(*, limit: int = 5000) -> dict[str, Any]:
+    """读取全量序列，供左侧九个指标展示各自最新值。"""
+    all_rows = _fetch_all_rows_by_date(limit=limit)
+    labels = [d.isoformat() for d, _ in all_rows]
+    latest_date = labels[-1] if labels else ""
+    latest_row = all_rows[-1][1] if all_rows else {}
+    return {
+        "count": len(all_rows),
         "date_min": labels[0] if labels else "",
         "date_max": latest_date,
         "latest_date": latest_date,

@@ -88,6 +88,27 @@
     .opt-chart-summary::-webkit-details-marker { display: none; }
     .opt-chart-content { padding: 0.7rem 0.8rem; }
     .chart-wrap { max-width: 100%; height: 400px; }
+    .opt-table-wrap {
+        overflow-x: auto;
+        max-height: 62vh;
+        margin-top: 0.75rem;
+    }
+    .opt-table-wrap table { font-size: 0.8rem; white-space: nowrap; margin-bottom: 0; }
+    .opt-table-wrap th {
+        position: sticky;
+        top: 0;
+        background: #e7f1ff;
+        z-index: 1;
+    }
+    .opt-table-wrap th.tnum,
+    .opt-table-wrap td.tnum { text-align: right; font-variant-numeric: tabular-nums; }
+    .opt-table-panel {
+        border: 1px solid #dee2e6;
+        border-radius: 0.5rem;
+        background: #fff;
+        padding: 0.7rem 0.8rem;
+        margin-top: 1rem;
+    }
 </style>
 {% endblock %}
 {% block content %}
@@ -105,6 +126,7 @@
 </div>
 
 <form method="get" action="" id="optMetricsForm" class="mb-3">
+    <input type="hidden" name="table_limit" value="{{ table_limit|default:100 }}">
     <div class="row g-3 opt-layout-row">
         <div class="col-12 col-lg-3">
             <div class="panel-card cmp-left-panel opt-sidebar-panel">
@@ -159,10 +181,49 @@
                         <div class="chart-wrap border rounded p-2 bg-white">
                             <canvas id="optionVolChart"></canvas>
                         </div>
-                        <p class="text-muted small mt-2 mb-0">数据源：MongoDB option.volatility</p>
                     </div>
                 </details>
             </div>
+        </div>
+    </div>
+
+    <div class="opt-table-panel">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+            <div class="fw-semibold">数据明细</div>
+            <div class="small text-muted" id="optTableCountHint">
+                展示 <strong id="optTableRowCount">{{ table_row_count }}</strong> 行
+                {% if table_total_count > table_row_count %}
+                （当前区间共 {{ table_total_count }} 行，默认仅展示最近 {{ table_limit }} 条，最新在上）
+                {% else %}
+                （当前区间，最新在上）
+                {% endif %}
+            </div>
+        </div>
+        <div id="optTableContent">
+            {% if table_rows %}
+            <div class="opt-table-wrap border rounded shadow-sm">
+                <table class="table table-sm table-bordered table-hover mb-0">
+                    <thead>
+                        <tr>
+                            {% for h in table_headers_zh %}
+                            <th class="{% if forloop.first %}text-start{% else %}tnum{% endif %}">{{ h }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in table_rows %}
+                        <tr>
+                            {% for cell in row %}
+                            <td class="{% if forloop.first %}text-start{% else %}tnum{% endif %}">{{ cell }}</td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-warning mb-0">当前区间暂无数据。</div>
+            {% endif %}
         </div>
     </div>
 </form>
@@ -182,6 +243,9 @@
     var dataEl = document.getElementById("option-vol-data");
     var chartIns = null;
     var requestInFlight = false;
+    var tableContentEl = document.getElementById("optTableContent");
+    var tableRowCountEl = document.getElementById("optTableRowCount");
+    var tableCountHintEl = document.getElementById("optTableCountHint");
 
     function esc(s) {
         return String(s == null ? "" : s)
@@ -246,6 +310,53 @@
         syncSidebarHeight();
     }
 
+    function renderTable(headers, rows, colKeys, tableTotalCount, tableLimit) {
+        if (!tableContentEl) return;
+        if (!rows || !rows.length) {
+            tableContentEl.innerHTML = '<div class="alert alert-warning mb-0">当前区间暂无数据。</div>';
+            if (tableRowCountEl) tableRowCountEl.textContent = "0";
+            syncSidebarHeight();
+            return;
+        }
+        var leftFirst = { date: 1 };
+        var thead = "<tr>" + (headers || []).map(function (h, i) {
+            var en = (colKeys && colKeys[i]) ? colKeys[i] : "";
+            var cls = leftFirst[en] || (i === 0 ? "text-start" : "tnum");
+            if (i === 0) cls = "text-start";
+            else cls = "tnum";
+            return '<th class="' + cls + '">' + esc(h) + "</th>";
+        }).join("") + "</tr>";
+        var tbody = rows.map(function (r) {
+            return "<tr>" + (r || []).map(function (c, i) {
+                var cls = i === 0 ? "text-start" : "tnum";
+                return '<td class="' + cls + '">' + esc(c) + "</td>";
+            }).join("") + "</tr>";
+        }).join("");
+        tableContentEl.innerHTML = [
+            '<div class="opt-table-wrap border rounded shadow-sm">',
+            '<table class="table table-sm table-bordered table-hover mb-0">',
+            "<thead>", thead, "</thead>",
+            "<tbody>", tbody, "</tbody>",
+            "</table></div>"
+        ].join("");
+        if (tableRowCountEl) tableRowCountEl.textContent = String(rows.length);
+        if (tableCountHintEl) {
+            var shown = rows.length;
+            var total = typeof tableTotalCount === "number" ? tableTotalCount : shown;
+            var lim = typeof tableLimit === "number" ? tableLimit : 100;
+            if (total > shown && lim > 0) {
+                tableCountHintEl.innerHTML =
+                    "展示 <strong id=\"optTableRowCount\">" + esc(String(shown)) + "</strong> 行" +
+                    "（当前区间共 " + esc(String(total)) + " 行，默认仅展示最近 " + esc(String(lim)) + " 条，最新在上）";
+            } else {
+                tableCountHintEl.innerHTML =
+                    "展示 <strong id=\"optTableRowCount\">" + esc(String(shown)) + "</strong> 行（当前区间，最新在上）";
+            }
+            tableRowCountEl = document.getElementById("optTableRowCount");
+        }
+        syncSidebarHeight();
+    }
+
     function renderMetricList(indicators, selectedKey) {
         if (!metricListEl || !indicators || !indicators.length) return;
         var html = indicators.map(function (ind, idx) {
@@ -297,6 +408,13 @@
                 if (pointCountEl) pointCountEl.textContent = String(data.point_count || 0);
                 renderChart(data.chart_data || {});
                 renderMetricList(data.indicators || [], data.selected_metric);
+                renderTable(
+                    data.table_headers_zh || [],
+                    data.table_rows || [],
+                    data.table_column_keys || [],
+                    data.table_total_count,
+                    data.table_limit
+                );
             })
             .catch(function (err) {
                 if (errorWrap) {
