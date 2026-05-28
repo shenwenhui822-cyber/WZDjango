@@ -46,6 +46,18 @@ _BENCH_COMPARE_FLAT_PRODUCTS: tuple[str, ...] = (
     "产品-量化选股",
 )
 
+_BENCH_COMPARE_DEFAULT_PRODUCT = _BENCH_COMPARE_FLAT_PRODUCTS[0]
+
+
+def _default_bench_compare_product(products: list[str]) -> str:
+    """alpha 产品表现页未选产品时的默认项。"""
+    if not products:
+        return ""
+    if _BENCH_COMPARE_DEFAULT_PRODUCT in products:
+        return _BENCH_COMPARE_DEFAULT_PRODUCT
+    return products[0]
+
+
 _BENCH_COMPARE_GROUP_PREFIXES: list[str] = [
     "中证1000指增",
     "中证500指增",
@@ -636,7 +648,7 @@ def nav_bench_compare(request):
     products = distinct_product_names()
     selected = (request.GET.get("product_name") or "").strip()
     if not selected and products:
-        selected = products[0]
+        selected = _default_bench_compare_product(products)
     _recent_window, recent_raw = _parse_compare_recent_window(request)
     use_custom_query = mode == "custom"
 
