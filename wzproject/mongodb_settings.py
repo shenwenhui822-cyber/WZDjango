@@ -107,7 +107,7 @@ NAV_BENCH_CACHE_MAX_TRADING_DAY_LAG = int(
 )
 # alpha产品表现页定时 AJAX 刷新间隔（秒）；0 表示关闭
 NAV_BENCH_COMPARE_AUTO_REFRESH_SEC = int(
-    os.getenv("NAV_BENCH_COMPARE_AUTO_REFRESH_SEC", "600")
+    os.getenv("NAV_BENCH_COMPARE_AUTO_REFRESH_SEC", "3000")
 )
 # 泽鑫多维等五列净值表：与博士一号相同库 fund_nav_real，独立四个集合（与 WZ_BSYH_* 并列）
 MONGODB_ZXDW_NAV_COLLECTIONS = (
