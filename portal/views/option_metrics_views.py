@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from django.contrib.auth.decorators import login_required
+from portal.auth_access import PERM_VIEW_OPTION_METRICS, portal_page_required
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
@@ -116,7 +116,7 @@ def _build_page_context(
     }
 
 
-@login_required(login_url="/")
+@portal_page_required(PERM_VIEW_OPTION_METRICS)
 def option_metrics(request):
     default_metric = ETF_METRIC_DEFINITIONS[0][0]
     selected_metric = (request.GET.get("metric") or default_metric).strip()

@@ -1,6 +1,7 @@
 """
 Django settings for WZDjango (Alpha data portal).
 """
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv

@@ -163,7 +163,7 @@
 <header class="site-header">
     <nav class="site-nav-bar" aria-label="主导航">
         <div class="site-brand-wrap">
-            <a class="site-logo-block" href="{% if user.is_authenticated %}{% url 'portal:nav_bench_compare' %}{% else %}{% url 'portal:index' %}{% endif %}">
+            <a class="site-logo-block" href="{% if user.is_authenticated %}{% url 'portal:home' %}{% else %}{% url 'portal:index' %}{% endif %}">
                 <img src="{% static 'img/wuzhilogo.png' %}" alt="吾执" class="site-logo-img">
             </a>
             <span class="site-platform-title">吾执产品平台</span>
@@ -171,11 +171,19 @@
         {% if user.is_authenticated %}
         {# 前端暂不展示：净值曲线(nav_curve)、Alpha 产品日报(alpha_daily)，路由仍可用直接访问 #}
         <ul class="site-nav-menu">
+            {% if perms.portal.view_fund_nav or user.is_superuser %}
             <li><a href="{% url 'portal:raw_nav' %}" class="{% if request.resolver_match.url_name == 'raw_nav' %}active{% endif %}">基金净值</a></li>
+            {% endif %}
+            {% if perms.portal.view_nav_bench_compare or user.is_superuser %}
             <li><a href="{% url 'portal:nav_bench_compare' %}" class="{% if request.resolver_match.url_name == 'nav_bench_compare' %}active{% endif %}">alpha产品表现</a></li>
+            {% endif %}
+            {% if perms.portal.view_alpha_t0 or user.is_superuser %}
             <li><a href="{% url 'portal:alpha_t0' %}" class="{% if request.resolver_match.url_name == 'alpha_t0' %}active{% endif %}">T0表现</a></li>
+            {% endif %}
             {# 前端暂不展示：对冲中性产品(market_neutral_product)，路由见 portal/routes/web.py #}
+            {% if perms.portal.view_option_metrics or user.is_superuser %}
             <li><a href="{% url 'portal:option_metrics' %}" class="{% if request.resolver_match.url_name == 'option_metrics' %}active{% endif %}">股指期货</a></li>
+            {% endif %}
         </ul>
         <div class="site-nav-user">
             <span class="user-greet" title="{{ user.username }}">你好，{{ user.username }}</span>

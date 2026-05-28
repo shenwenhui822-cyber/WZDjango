@@ -6,7 +6,7 @@ from urllib.parse import urlencode
 
 from django.conf import settings as dj_settings
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
+from portal.auth_access import PERM_VIEW_ALPHA_T0, portal_page_required
 from django.http import HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
@@ -59,7 +59,7 @@ def _redirect_t0_preserving_filters(
     return HttpResponseRedirect(url)
 
 
-@login_required(login_url="/")
+@portal_page_required(PERM_VIEW_ALPHA_T0)
 def t0_performance(request):
     weekly_product_sel = (
         request.GET.get("weekly_product")

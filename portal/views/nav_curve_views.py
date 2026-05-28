@@ -11,6 +11,11 @@ from django.http import JsonResponse
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 
+from portal.auth_access import (
+    PERM_VIEW_NAV_BENCH_COMPARE,
+    fund_nav_page_required,
+    portal_page_required,
+)
 from portal.data.alpha_daily_schema import ALPHA_DAILY_COLUMNS, is_alpha_daily_product_name_excluded
 from portal.data.fund_nav_real_config import (
     FUND_NAV_PORTAL_COLUMNS,
@@ -489,7 +494,7 @@ def nav_curve(request):
     return render(request, "portal/nav_curve.html", context)
 
 
-@login_required(login_url="/")
+@fund_nav_page_required
 def raw_nav(request):
     """基金净值页：展示 fund_nav_real 下博士一号与泽鑫多维净值表数据。"""
     try:
@@ -623,7 +628,7 @@ def raw_nav(request):
     return render(request, "portal/raw_nav.html", context)
 
 
-@login_required(login_url="/")
+@portal_page_required(PERM_VIEW_NAV_BENCH_COMPARE)
 def nav_bench_compare(request):
     """产品净值 vs 指数基准对比页（计算结果自动落库到 basic_rq.calc_*）。"""
     mode = (request.GET.get("mode") or "").strip().lower()
