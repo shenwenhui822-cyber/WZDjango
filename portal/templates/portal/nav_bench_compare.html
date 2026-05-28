@@ -62,6 +62,12 @@
         border-left: 2px solid #e6edf5;
         margin-left: 0.75rem;
     }
+    .cmp-product-flat {
+        padding: 0.55rem 0.75rem;
+        margin: 0.35rem 0.5rem;
+        border: 1px solid #e9ecef;
+        border-radius: 0.5rem;
+    }
     .cmp-product-item {
         display: flex;
         align-items: center;
@@ -115,6 +121,12 @@
                 <div class="panel-bd p-0">
                     <div class="product-list">
                         {% for group in product_groups %}
+                        {% if group.flat %}
+                        <label class="cmp-product-item cmp-product-flat {% if group.name == selected_product %}is-active{% endif %}" for="cmp_flat_{{ forloop.counter }}">
+                            <input class="form-check-input cmp-product-radio" type="radio" name="product_name" value="{{ group.name }}" id="cmp_flat_{{ forloop.counter }}" {% if group.name == selected_product %}checked{% endif %}>
+                            <span class="cmp-product-text">{{ group.name }}</span>
+                        </label>
+                        {% else %}
                         <details class="cmp-group" {% if group.open %}open{% endif %}>
                             <summary class="cmp-group-summary">
                                 <span class="cmp-group-title">
@@ -134,6 +146,7 @@
                                 {% endfor %}
                             </div>
                         </details>
+                        {% endif %}
                         {% empty %}
                         <div class="small text-muted p-3">（无产品）</div>
                         {% endfor %}
@@ -165,7 +178,7 @@
                     <div class="small text-muted mb-2">
                         行数：<strong id="cmpRowCount">{{ row_count }}</strong>；
                         {% if auto_refresh_sec %}<span id="cmpAutoRefreshHint">每 {{ auto_refresh_sec }} 秒自动刷新</span>；{% endif %}
-                        <span id="cmpDataSourceHint">{% if from_cache %}图表数据：已落库缓存（有新净值日将自动重算）{% else %}图表数据：本次已重算并落库{% endif %}</span>
+                        <!-- <span id="cmpDataSourceHint">{% if from_cache %}图表数据：已落库缓存（有新净值日将自动重算）{% else %}图表数据：本次已重算并落库{% endif %}</span> -->
                     </div>
                     <!-- <div class="small text-muted mb-2">
                         基准口径：使用 `rq_bench.pct_chg` 日收益累乘归一化（起点=1）；日历对齐：以产品交易日为主轴，若当日基准缺失则沿用前一日。

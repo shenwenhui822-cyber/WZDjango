@@ -40,6 +40,12 @@ def _zxdw_nav_product_keys() -> frozenset[str]:
     return frozenset(getattr(settings, "MONGODB_ZXDW_NAV_COLLECTIONS", ()))
 
 
+# 左侧产品列表一级直出（不折叠、无二级子列表）
+_BENCH_COMPARE_FLAT_PRODUCTS: tuple[str, ...] = (
+    "产品-1000指增",
+    "产品-量化选股",
+)
+
 _BENCH_COMPARE_GROUP_PREFIXES: list[str] = [
     "中证1000指增",
     "中证500指增",
@@ -55,11 +61,27 @@ _BENCH_COMPARE_GROUP_PREFIXES: list[str] = [
 def _group_compare_products(products: list[str], selected: str) -> list[dict]:
     grouped: list[dict] = []
     assigned: set[str] = set()
+    product_set = set(products)
+    for name in _BENCH_COMPARE_FLAT_PRODUCTS:
+        if name not in product_set:
+            continue
+        assigned.add(name)
+        grouped.append(
+            {
+                "flat": True,
+                "name": name,
+                "products": [name],
+                "open": selected == name,
+            }
+        )
     for prefix in _BENCH_COMPARE_GROUP_PREFIXES:
-        children = [p for p in products if p.startswith(prefix)]
+        children = [p for p in products if p.startswith(prefix) and p not in assigned]
+        if not children:
+            continue
         assigned.update(children)
         grouped.append(
             {
+                "flat": False,
                 "name": prefix,
                 "products": children,
                 "open": bool(selected and any(p == selected for p in children)),

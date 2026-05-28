@@ -77,6 +77,23 @@ FIELD_PARSERS: dict[str, Callable[..., object]] = {
 
 ALPHA_DAILY_SCHEMA = "alpha_daily"
 
+# 导入 alpha_sim_nav 时：Excel 产品名 -> 入库 product_name（精确匹配）
+ALPHA_DAILY_PRODUCT_NAME_IMPORT_RENAMES: dict[str, str] = {
+    "1000指增": "产品-1000指增",
+    "量化选股": "产品-量化选股",
+}
+
+
+def normalize_alpha_daily_product_name_for_import(product_name: object) -> str | None:
+    """导入落库前规范化产品名称（如为指定简称加「产品-」前缀）。"""
+    if product_name is None:
+        return None
+    s = str(product_name).strip()
+    if not s:
+        return None
+    return ALPHA_DAILY_PRODUCT_NAME_IMPORT_RENAMES.get(s, s)
+
+
 # 导入可入库、但列表/API/净值曲线不展示的产品名称前缀（可配置多个）
 ALPHA_DAILY_EXCLUDED_PRODUCT_NAME_PREFIX = ["吾执", "双创选股多策略一号","多元量选一号-东吴","尊选多策略一号","江海远山-","稳健量选一号", "量化精选一号-","量化精选二号-光大","量化选股多策略","银河DMA"]
 
@@ -168,5 +185,8 @@ def sheet_df_to_alpha_daily_records(
                 item[en_key] = None
             else:
                 item[en_key] = parser(row[en_key])
+        item["product_name"] = normalize_alpha_daily_product_name_for_import(
+            item.get("product_name")
+        )
         records.append(item)
     return records

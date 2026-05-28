@@ -3,7 +3,6 @@
 
 用法：
   python manage.py import_alphadata_xlsx
-  python manage.py import_alphadata_xlsx --clear   # 导入前清空集合
 """
 from __future__ import annotations
 
@@ -12,19 +11,11 @@ from pathlib import Path
 from django.conf import settings
 from django.core.management.base import BaseCommand
 
-from portal.db.mongo import get_app_collection
 from portal.services.import_service import import_excel_fileobj
 
 
 class Command(BaseCommand):
     help = "导入 Alphadata 下全部 xlsx 到 MongoDB（alpha_product.alpha_sim_nav）"
-
-    def add_arguments(self, parser):
-        parser.add_argument(
-            "--clear",
-            action="store_true",
-            help="导入前删除 alpha_sim_nav 集合中的全部文档",
-        )
 
     def handle(self, *args, **options):
         data_dir: Path = settings.ALPHADATA_DIR
@@ -40,11 +31,6 @@ class Command(BaseCommand):
                 )
             )
             return
-
-        coll = get_app_collection()
-        if options["clear"]:
-            coll.delete_many({})
-            self.stdout.write(self.style.WARNING("已清空目标集合"))
 
         total_docs = 0
         for path in xlsx_files:

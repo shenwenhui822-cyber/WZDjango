@@ -21,6 +21,8 @@ from portal.services.trade_calendar_service import (
 
 # 产品前缀 -> 基准 code（按业务映射）
 _BENCH_RULES: list[tuple[str, str]] = [
+    ("产品-1000指增", "000852.SH"),
+    ("产品-量化选股", "000852.SH"),
     ("中证1000指增", "000852.SH"),
     ("中证500指增", "000905.SH"),
     ("双创选股", "931643"),
