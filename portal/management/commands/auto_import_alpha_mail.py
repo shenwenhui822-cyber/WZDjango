@@ -1,18 +1,19 @@
 """
 交易日自动拉取 alpha 日报邮件（主题 alpha产品日报表YYYYMMDD）中的 xlsx 并导入 MongoDB。
 
-设计为每日 21:00 由系统计划任务执行（仅运行日为交易日时拉取并导入；非交易日不执行、不发结果邮件）：
+设计为每个交易日 11:00 由系统计划任务执行（仅运行日为交易日时拉取并导入；非交易日不执行、不发结果邮件）：
     python manage.py auto_import_alpha_mail
 
-邮件：按主题精确匹配，多封同主题时取 Date 最新一封；仅处理 .xlsx 附件。
+默认主题日期为运行日之前最近一个交易日；邮件内仅处理以下两种 xlsx 附件：
+  - Alpha产品表现汇总_{YYYYMMDD}.xlsx（原表，按既有规则规范化产品名）
+  - 新Alpha产品表现汇总_{YYYYMMDD}.xlsx（新表，所有产品名加「产品-」前缀）
+
 邮箱：见 portal.config.mail_imap（.env / 环境变量）。
 """
 from __future__ import annotations
 
 import email
 import imaplib
-import os
-import re
 from pathlib import Path
 
 from django.conf import settings
@@ -20,6 +21,13 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from portal.config.mail_imap import resolve_imap_credentials
+from portal.data.alpha_daily_schema import (
+    alpha_daily_mail_attachment_pattern_legacy,
+    alpha_daily_mail_attachment_pattern_new,
+    classify_alpha_daily_mail_attachment,
+    normalize_alpha_daily_product_name_for_import,
+    normalize_alpha_daily_product_name_for_new_summary_import,
+)
 from portal.db.mongo import get_trade_date_collection
 from portal.services.imap_common import (
     decode_mime_header,
@@ -37,12 +45,13 @@ from portal.services.mail_import_common import (
     send_alpha_notify_result_email,
     validate_mail_job_query_span,
 )
+from portal.services.trade_calendar_service import prev_trading_day_iso_before
 
 
 class Command(BaseCommand):
     help = (
         "仅运行日为交易日时执行：抓取 alpha 日报邮件 xlsx 并导入 MongoDB；"
-        "非交易日不执行且不发送结果邮件（建议每日 21:00 计划任务）"
+        "默认主题日期为上一交易日；非交易日不执行且不发送结果邮件（建议每个交易日 11:00 计划任务）"
     )
 
     def add_arguments(self, parser):
@@ -54,7 +63,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--subject-date",
             default="",
-            help="邮件主题日期 YYYYMMDD，默认取当前本地日期（Asia/Shanghai）。",
+            help="邮件主题日期 YYYYMMDD，默认取运行日之前最近一个交易日。",
         )
 
     def handle(self, *args, **options):
@@ -77,16 +86,25 @@ class Command(BaseCommand):
             self.stdout.write(f"服务地址: {base_url}")
 
         local_date = timezone.localdate()
+        run_iso = local_date.isoformat()
         subject_date = (options["subject_date"] or "").strip()
         if not subject_date:
-            subject_date = local_date.strftime("%Y%m%d")
+            prev_iso = prev_trading_day_iso_before(run_iso) or ""
+            if not prev_iso:
+                report["status"] = "FAILED"
+                report["message"] = (
+                    "无法在 trade_calendar 中解析「运行日之前最近一个交易日」。"
+                )
+                self.stderr.write(self.style.ERROR(report["message"]))
+                raise CommandError(report["message"])
+            subject_date = prev_iso.replace("-", "")
         report["subject_date"] = subject_date
 
         try:
             query_iso = iso_date_from_yyyymmdd(subject_date)
             span_err = validate_mail_job_query_span(
                 query_iso=query_iso,
-                run_iso=local_date.isoformat(),
+                run_iso=run_iso,
                 force=bool(options["force"]),
             )
             if span_err:
@@ -142,17 +160,33 @@ class Command(BaseCommand):
 
                 imported_stats: list[dict] = []
                 for fp in files:
+                    kind = classify_alpha_daily_mail_attachment(fp.name, subject_date)
+                    if kind == "new":
+                        name_normalizer = (
+                            normalize_alpha_daily_product_name_for_new_summary_import
+                        )
+                        import_mode = "new_summary"
+                    else:
+                        name_normalizer = normalize_alpha_daily_product_name_for_import
+                        import_mode = "legacy"
                     with fp.open("rb") as f:
-                        stat = import_excel_fileobj(f, fp.name)
+                        stat = import_excel_fileobj(
+                            f,
+                            fp.name,
+                            alpha_daily_product_name_normalizer=name_normalizer,
+                        )
                     imported_stats.append(
                         {
                             "file": fp.name,
+                            "import_mode": import_mode,
                             "inserted": stat.get("inserted"),
+                            "updated": stat.get("updated"),
                             "sheets": stat.get("sheets"),
                         }
                     )
                     self.stdout.write(
-                        f"导入成功: {fp.name} -> inserted={stat.get('inserted')}"
+                        f"导入成功({import_mode}): {fp.name} -> "
+                        f"inserted={stat.get('inserted')}, updated={stat.get('updated')}"
                     )
                 report["imported"] = imported_stats
                 report["status"] = "SUCCESS"
@@ -186,11 +220,9 @@ class Command(BaseCommand):
             return []
         msg = email.message_from_bytes(msg_data[0][1])
         save_dir.mkdir(parents=True, exist_ok=True)
-        saved: list[Path] = []
-        expected_pattern = re.compile(
-            rf"^Alpha产品表现汇总_{re.escape(subject_date)}\.xlsx$",
-            re.IGNORECASE,
-        )
+        saved_by_kind: dict[str, Path] = {}
+        legacy_pattern = alpha_daily_mail_attachment_pattern_legacy(subject_date)
+        new_pattern = alpha_daily_mail_attachment_pattern_new(subject_date)
         for part in msg.walk():
             disp = str(part.get("Content-Disposition", ""))
             if "attachment" not in disp.lower():
@@ -201,26 +233,20 @@ class Command(BaseCommand):
             )
             if not filename.lower().endswith(".xlsx"):
                 continue
-            if not expected_pattern.match(filename):
+            if not (legacy_pattern.match(filename) or new_pattern.match(filename)):
                 self.stdout.write(f"跳过非目标附件: {filename}")
+                continue
+            kind = classify_alpha_daily_mail_attachment(filename, subject_date)
+            if not kind:
                 continue
             payload = part.get_payload(decode=True)
             if payload is None:
                 continue
             output = save_dir / filename
-            if output.exists():
-                stem, ext = output.stem, output.suffix
-                i = 1
-                while True:
-                    candidate = save_dir / f"{stem}_{i}{ext}"
-                    if not candidate.exists():
-                        output = candidate
-                        break
-                    i += 1
             output.write_bytes(payload)
-            saved.append(output)
-            self.stdout.write(f"已保存附件: {output}")
-        return saved
+            saved_by_kind[kind] = output
+            self.stdout.write(f"已保存附件({kind}): {output}")
+        return list(saved_by_kind.values())
 
     def _send_result_email(
         self,
@@ -238,7 +264,8 @@ class Command(BaseCommand):
         for row in imported:
             if isinstance(row, dict):
                 imported_lines.append(
-                    f"- {row.get('file')}: inserted={row.get('inserted')}"
+                    f"- {row.get('file')} ({row.get('import_mode')}): "
+                    f"inserted={row.get('inserted')}, updated={row.get('updated')}"
                 )
         title = "Alpha 日报自动导入执行结果"
         data_ok = status == "SUCCESS"

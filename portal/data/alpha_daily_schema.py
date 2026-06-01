@@ -83,15 +83,62 @@ ALPHA_DAILY_PRODUCT_NAME_IMPORT_RENAMES: dict[str, str] = {
     "量化选股": "产品-量化选股",
 }
 
+# alpha 日报邮件附件（subject_date = YYYYMMDD）
+ALPHA_DAILY_MAIL_ATTACHMENT_LEGACY = "Alpha产品表现汇总_{date}.xlsx"
+ALPHA_DAILY_MAIL_ATTACHMENT_NEW = "新Alpha产品表现汇总_{date}.xlsx"
+
+
+def alpha_daily_mail_attachment_pattern_legacy(subject_date: str) -> re.Pattern[str]:
+    return re.compile(
+        rf"^Alpha产品表现汇总_{re.escape(subject_date)}(?:_\d+)?\.xlsx$",
+        re.IGNORECASE,
+    )
+
+
+def alpha_daily_mail_attachment_pattern_new(subject_date: str) -> re.Pattern[str]:
+    return re.compile(
+        rf"^新Alpha产品表现汇总_{re.escape(subject_date)}(?:_\d+)?\.xlsx$",
+        re.IGNORECASE,
+    )
+
+
+def classify_alpha_daily_mail_attachment(
+    filename: str, subject_date: str
+) -> str | None:
+    """返回 ``legacy`` / ``new``；非目标附件返回 None。"""
+    if alpha_daily_mail_attachment_pattern_legacy(subject_date).match(filename):
+        return "legacy"
+    if alpha_daily_mail_attachment_pattern_new(subject_date).match(filename):
+        return "new"
+    return None
+
+
+def is_alpha_daily_new_mail_attachment(filename: str, subject_date: str) -> bool:
+    return classify_alpha_daily_mail_attachment(filename, subject_date) == "new"
+
 
 def normalize_alpha_daily_product_name_for_import(product_name: object) -> str | None:
-    """导入落库前规范化产品名称（如为指定简称加「产品-」前缀）。"""
+    """Alpha产品表现汇总：仅对指定简称加「产品-」前缀。"""
     if product_name is None:
         return None
     s = str(product_name).strip()
     if not s:
         return None
     return ALPHA_DAILY_PRODUCT_NAME_IMPORT_RENAMES.get(s, s)
+
+
+def normalize_alpha_daily_product_name_for_new_summary_import(
+    product_name: object,
+) -> str | None:
+    """新Alpha产品表现汇总：所有产品名加「产品-」前缀。"""
+    if product_name is None:
+        return None
+    s = str(product_name).strip()
+    if not s:
+        return None
+    if not s.startswith("产品-"):
+        s = f"产品-{s}"
+    return s
 
 
 # 导入可入库、但列表/API/净值曲线不展示的产品名称前缀（可配置多个）
@@ -161,7 +208,11 @@ def is_alpha_daily_sheet(df: pd.DataFrame) -> bool:
 
 
 def sheet_df_to_alpha_daily_records(
-    df: pd.DataFrame, source_file: str, sheet_name: str
+    df: pd.DataFrame,
+    source_file: str,
+    sheet_name: str,
+    *,
+    product_name_normalizer: Callable[[object], str | None] | None = None,
 ) -> list[dict]:
     df = df.copy()
     df.columns = [str(c) for c in df.columns]
@@ -172,6 +223,9 @@ def sheet_df_to_alpha_daily_records(
             rename_map[c] = CANONICAL_HEADER_TO_EN[nk]
     df = df.rename(columns=rename_map)
 
+    name_normalizer = (
+        product_name_normalizer or normalize_alpha_daily_product_name_for_import
+    )
     records: list[dict] = []
     for idx, row in df.iterrows():
         item: dict = {
@@ -185,8 +239,6 @@ def sheet_df_to_alpha_daily_records(
                 item[en_key] = None
             else:
                 item[en_key] = parser(row[en_key])
-        item["product_name"] = normalize_alpha_daily_product_name_for_import(
-            item.get("product_name")
-        )
+        item["product_name"] = name_normalizer(item.get("product_name"))
         records.append(item)
     return records

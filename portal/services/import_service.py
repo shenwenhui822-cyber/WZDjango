@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 
@@ -35,17 +35,15 @@ def _alpha_daily_pair(rec: dict[str, Any]) -> tuple[str, str] | None:
     return (rd, name)
 
 
-def _check_alpha_daily_duplicates(
-    coll: Any, batch: list[dict[str, Any]], sheet_name: str
+def _check_alpha_daily_batch_unique(
+    batch: list[dict[str, Any]], sheet_name: str
 ) -> None:
-    pairs: list[tuple[str, str]] = []
+    """同一工作表内 (report_date, product_name) 不可重复。"""
+    seen: set[tuple[str, str]] = set()
     for rec in batch:
         p = _alpha_daily_pair(rec)
-        if p:
-            pairs.append(p)
-
-    seen: set[tuple[str, str]] = set()
-    for p in pairs:
+        if not p:
+            continue
         if p in seen:
             raise ValueError(
                 f"导入失败：工作表「{sheet_name}」内存在重复的报表日期与产品名称："
@@ -53,25 +51,26 @@ def _check_alpha_daily_duplicates(
             )
         seen.add(p)
 
-    if not seen:
-        return
 
-    pnames = list({p[1] for p in seen})
-    existing: set[tuple[str, str]] = set()
-    for doc in coll.find(
-        {"_schema": ALPHA_DAILY_SCHEMA, "product_name": {"$in": pnames}},
-        {"report_date": 1, "product_name": 1, "_id": 0},
-    ):
-        ep = _alpha_daily_pair(doc)
-        if ep:
-            existing.add(ep)
-
-    conflict = seen & existing
-    if conflict:
-        rd, name = sorted(conflict)[0]
-        raise ValueError(
-            f"导入失败：报表日期 {rd} 与产品名称「{name}」已在库中存在，不可重复导入。"
-        )
+def _upsert_alpha_daily_batch(coll: Any, batch: list[dict[str, Any]]) -> tuple[int, int]:
+    inserted = 0
+    updated = 0
+    for rec in batch:
+        p = _alpha_daily_pair(rec)
+        if not p:
+            continue
+        rd, pn = p
+        flt = {
+            "_schema": ALPHA_DAILY_SCHEMA,
+            "report_date": rd,
+            "product_name": pn,
+        }
+        result = coll.replace_one(flt, rec, upsert=True)
+        if result.upserted_id is not None:
+            inserted += 1
+        else:
+            updated += 1
+    return inserted, updated
 
 
 def _report_date_from_xlsx_filename(filename: str) -> str | None:
@@ -115,20 +114,35 @@ def _sheet_to_records_legacy(
 
 
 def _sheet_to_records_auto(
-    df: pd.DataFrame, source_file: str, sheet_name: str
+    df: pd.DataFrame,
+    source_file: str,
+    sheet_name: str,
+    *,
+    alpha_daily_product_name_normalizer: Callable[[object], str | None] | None = None,
 ) -> tuple[list[dict[str, Any]], str]:
     if is_alpha_daily_sheet(df):
-        batch = sheet_df_to_alpha_daily_records(df, source_file, sheet_name)
+        batch = sheet_df_to_alpha_daily_records(
+            df,
+            source_file,
+            sheet_name,
+            product_name_normalizer=alpha_daily_product_name_normalizer,
+        )
         _inject_report_date_alpha_daily(batch, source_file)
         return batch, "alpha_daily"
     return _sheet_to_records_legacy(df, source_file, sheet_name), "raw"
 
 
-def import_excel_fileobj(fileobj: Any, source_filename: str) -> dict[str, Any]:
+def import_excel_fileobj(
+    fileobj: Any,
+    source_filename: str,
+    *,
+    alpha_daily_product_name_normalizer: Callable[[object], str | None] | None = None,
+) -> dict[str, Any]:
     xl = pd.ExcelFile(fileobj, engine="openpyxl")
     coll = get_app_collection()
 
-    total_docs = 0
+    total_inserted = 0
+    total_updated = 0
     sheet_stats: list[dict[str, Any]] = []
     for sheet_name in xl.sheet_names:
         df = xl.parse(sheet_name)
@@ -137,18 +151,39 @@ def import_excel_fileobj(fileobj: Any, source_filename: str) -> dict[str, Any]:
                 {"sheet": sheet_name, "inserted": 0, "schema": "empty", "skipped": True}
             )
             continue
-        batch, schema_tag = _sheet_to_records_auto(df, source_filename, sheet_name)
+        batch, schema_tag = _sheet_to_records_auto(
+            df,
+            source_filename,
+            sheet_name,
+            alpha_daily_product_name_normalizer=alpha_daily_product_name_normalizer,
+        )
         if not batch:
             sheet_stats.append(
                 {"sheet": sheet_name, "inserted": 0, "schema": schema_tag, "skipped": True}
             )
             continue
         if schema_tag == "alpha_daily":
-            _check_alpha_daily_duplicates(coll, batch, sheet_name)
-        coll.insert_many(batch, ordered=False)
-        n = len(batch)
-        total_docs += n
-        sheet_stats.append({"sheet": sheet_name, "inserted": n, "schema": schema_tag})
+            _check_alpha_daily_batch_unique(batch, sheet_name)
+            inserted, updated = _upsert_alpha_daily_batch(coll, batch)
+        else:
+            coll.insert_many(batch, ordered=False)
+            inserted, updated = len(batch), 0
+        total_inserted += inserted
+        total_updated += updated
+        sheet_stats.append(
+            {
+                "sheet": sheet_name,
+                "inserted": inserted,
+                "updated": updated,
+                "schema": schema_tag,
+            }
+        )
 
-    return {"file": source_filename, "inserted": total_docs, "sheets": sheet_stats}
+    return {
+        "file": source_filename,
+        "inserted": total_inserted,
+        "updated": total_updated,
+        "upserted": total_inserted + total_updated,
+        "sheets": sheet_stats,
+    }
 

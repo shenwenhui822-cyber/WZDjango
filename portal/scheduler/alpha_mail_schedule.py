@@ -37,7 +37,7 @@ DEFAULT_MAIL_SCHEDULER_SCHEDULES: list[tuple[str, str, dict[str, Any]]] = [
     ("19:00", "auto_import_htqh_settle_mail", {"scheduler_job_key": "htqh_settle"}),
     ("19:40", "auto_import_dwyh_nav_mail", {"scheduler_job_key": "dwyh_nav"}),
     ("20:00", "auto_import_qichat_t0_mail", {"scheduler_job_key": "qichat_t0_weekly"}),
-    ("21:00", "auto_import_alpha_mail", {"scheduler_job_key": "alpha_mail"}),
+    ("11:00", "auto_import_alpha_mail", {"scheduler_job_key": "alpha_mail"}),
 ]
 
 
