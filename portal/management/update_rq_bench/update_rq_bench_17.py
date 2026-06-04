@@ -23,6 +23,7 @@ from __future__ import annotations
 import os
 import sys
 from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 import numpy as np
@@ -88,6 +89,40 @@ BENCH_CODE_TO_RQ: list[tuple[str, str]] = [
 
 # 使用代用米筐合约的行情、但 code 仍为左侧业务码的集合
 _SUBSTITUTE_BENCH_CODES = {"881001.WI"}
+
+# 落库数值精度：价格/量额 2 位，涨跌幅 4 位（四舍五入）
+BENCH_PRICE_VOL_COLS: tuple[str, ...] = (
+    "open",
+    "high",
+    "low",
+    "close",
+    "pre_close",
+    "volume",
+    "amt",
+)
+PCT_CHG_COL = "pct_chg"
+
+
+def _round_half_up(value: Any, places: int) -> float | None:
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    quant = Decimal("1").scaleb(-places)
+    return float(Decimal(str(value)).quantize(quant, rounding=ROUND_HALF_UP))
+
+
+def format_bench_row(row: dict[str, Any]) -> dict[str, Any]:
+    out = dict(row)
+    for col in BENCH_PRICE_VOL_COLS:
+        if col in out:
+            out[col] = _round_half_up(out[col], 2)
+    if PCT_CHG_COL in out:
+        out[PCT_CHG_COL] = _round_half_up(out[PCT_CHG_COL], 4)
+    return out
 
 # 中金所股指期货：各品种当日可交易合约（通常 4 个），由米筐按到期剔除/挂牌
 _CFFEX_STOCK_INDEX_UNDERLYINGS: tuple[str, ...] = ("IF", "IH", "IC", "IM")
@@ -157,13 +192,13 @@ def _bench_row(bench_code: str, rq_id: str, day: str) -> dict[str, Any]:
         close = float(row["close"])
         rq_index_code = str(rq_id).split(".")[0] if rq_id else ""
         rq_bench_substitute = bench_code in _SUBSTITUTE_BENCH_CODES
-        return {
+        raw = {
             "date": day,
             "code": bench_code,
             "code_rq": rq_id,
             "rq_index_code": rq_index_code,
             "rq_bench_substitute": rq_bench_substitute,
-            "pct_chg": format(pct, ".14f") if pct is not None else None,
+            "pct_chg": pct,
             "volume": vol / 1_000_000,
             "amt": amt,
             "pre_close": pre_close,
@@ -172,6 +207,7 @@ def _bench_row(bench_code: str, rq_id: str, day: str) -> dict[str, Any]:
             "high": float(row["high"]) if "high" in row.index else None,
             "low": float(row["low"]) if "low" in row.index else None,
         }
+        return format_bench_row(raw)
     except Exception as e:
         print(f"[WARN] 基准 {bench_code} / {rq_id} 失败: {e}")
         return {}
