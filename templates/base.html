@@ -182,7 +182,7 @@
             {% endif %}
             {# 前端暂不展示：对冲中性产品(market_neutral_product)，路由见 portal/routes/web.py #}
             {% if perms.portal.view_option_metrics or user.is_superuser %}
-            <li><a href="{% url 'portal:option_metrics' %}" class="{% if request.resolver_match.url_name == 'option_metrics' %}active{% endif %}">股指期货</a></li>
+            <li><a href="{% url 'portal:option_metrics' %}" class="{% if request.resolver_match.url_name == 'option_metrics' %}active{% endif %}">波动率指标</a></li>
             {% endif %}
         </ul>
         <div class="site-nav-user">

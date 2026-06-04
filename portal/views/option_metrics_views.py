@@ -171,8 +171,8 @@ def option_metrics(request):
         request,
         "portal/option_metrics.html",
         {
-            "page_title": "股指期货",
-            "breadcrumb_label": "股指期货",
+            "page_title": "波动率指标",
+            "breadcrumb_label": "波动率指标",
             "generated_at": timezone.localtime().strftime("%Y-%m-%d %H:%M:%S"),
             **ctx,
         },
