@@ -14,12 +14,12 @@ from typing import Any
 DEFAULT_MAIL_SCHEDULER_SCHEDULES: list[tuple[str, str, dict[str, Any]]] = [
     ("08:40", "auto_import_lhjx_position_mail", {"scheduler_job_key": "lhjx_position"}),
     ("09:00", "auto_import_htzq_ht1_capital_mail", {"scheduler_job_key": "htzq_ht1_capital"}),
-    ("09:20", "auto_import_alpha_target_position_mail", {"scheduler_job_key": "alpha_target_position"}),
     ("09:30", "update_rq_bench", {"scheduler_job_key": "rq_bench"}),
     ("09:31", "auto_import_fund_nav_mail", {"scheduler_job_key": "fund_nav_boshiyihao"}),
     ("09:33", "auto_import_ghzq_settle_mail", {"scheduler_job_key": "ghzq_settle"}),
     ("11:10", "auto_import_ysh_nav_mail", {"scheduler_job_key": "ysh_nav"}),
     ("11:30", "auto_import_llh_nav_mail", {"scheduler_job_key": "llh_nav"}),
+    ("11:25", "auto_import_alpha_target_position_mail", {"scheduler_job_key": "alpha_target_position"}),
     ("11:35", "auto_import_dyyh_nav_mail", {"scheduler_job_key": "dyyh_nav"}),
     ("11:40", "auto_import_jlh_nav_mail", {"scheduler_job_key": "jlh_nav"}),
     ("11:50", "auto_import_ctayh_nav_mail", {"scheduler_job_key": "ctayh_nav"}),

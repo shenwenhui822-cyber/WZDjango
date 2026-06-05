@@ -1,14 +1,14 @@
 """
-交易日 09:20 拉取 wangkan（ALPHA_MAIL_*）邮箱中主题
-「股票持仓数据{YYYYMMDD}」的邮件，下载附件 alpha_{YYYYMMDD}.zip，
-解压 CSV（ticker、lots）写入 position_alpha_target.<表名>（表名 = csv 文件名去后缀）。
+交易日 11:30 从 FTP /new_holding 拉取各子目录当日 YYYYMMDD.csv，
+写入 position_alpha_target.<目录名>（字段 date、ticker、lots、updated_at）。
 
-持仓日 position_date 默认取运行日本地日期（与主题末尾 YYYYMMDD 一致）。
-IMAP：`.env` 中 ALPHA_MAIL_USER / ALPHA_MAIL_PASS、ALPHA_IMAP_SERVER、ALPHA_IMAP_PORT。
+FTP 默认：192.168.110.199/new_holding（wuzhi199 / wuzhi2026），
+可用环境变量 ALPHA_TARGET_FTP_* 覆盖。
 
-业务约定：仅运行日为交易日时执行；非交易日不执行、不通知。成功/失败发 ALPHA_NOTIFY_* 结果邮件。
+持仓日 position_date 默认取运行日本地日期。
+业务约定：仅运行日为交易日时执行；非交易日不执行、不通知。
 
-调度：alpha_mail_scheduler 默认 09:20（环境变量 ALPHA_TARGET_POSITION_MAIL_SCHEDULER_ENABLED）。
+调度：alpha_mail_scheduler 默认 11:30（ALPHA_TARGET_POSITION_MAIL_SCHEDULER_ENABLED）。
 
 用法：
   python manage.py auto_import_alpha_target_position_mail
@@ -17,32 +17,15 @@ IMAP：`.env` 中 ALPHA_MAIL_USER / ALPHA_MAIL_PASS、ALPHA_IMAP_SERVER、ALPHA_
 """
 from __future__ import annotations
 
-import imaplib
-from datetime import datetime
-from pathlib import Path
-
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from portal.config.mail_imap import resolve_imap_credentials
-from portal.db.mongo import get_alpha_target_position_collection
-from portal.services.alpha_target_position_mail_service import (
-    build_alpha_target_position_subject,
-    collection_name_from_csv,
-    list_csv_in_extract_dir,
-    parse_alpha_target_csv,
-    pick_alpha_target_zip,
-)
-from portal.services.imap_common import find_latest_mail_id_by_exact_subject
+from portal.services.alpha_target_position_ftp_service import import_alpha_target_from_ftp
 from portal.services.mail_import_common import (
     emit_mail_job_result_line,
-    extract_zip_archive,
     format_mail_job_notify_body,
-    imap_logout_safe,
-    imap_open_inbox,
     mail_job_notify_base,
-    save_zip_attachments_from_rfc822,
     send_alpha_notify_result_email,
     validate_mail_job_query_span,
 )
@@ -51,8 +34,8 @@ from portal.services.trade_calendar_service import is_trade_date_iso
 
 class Command(BaseCommand):
     help = (
-        "仅运行日为交易日时执行：抓取「股票持仓数据」邮件 zip 附件，"
-        "解析 CSV 写入 position_alpha_target；position_date 默认为运行日。"
+        "仅运行日为交易日时执行：从 FTP /new_holding 拉取当日 CSV，"
+        "写入 position_alpha_target；position_date 默认为运行日。"
     )
 
     def add_arguments(self, parser):
@@ -76,10 +59,10 @@ class Command(BaseCommand):
     ) -> None:
         status = str(report.get("status") or "UNKNOWN")
         mail_subject = (
-            f"[{status}] Alpha 目标持仓邮件导入 "
+            f"[{status}] Alpha 目标持仓 FTP 导入 "
             f"{timezone.localdate().strftime('%Y-%m-%d')}"
         )
-        title = "Alpha 目标持仓（position_alpha_target）自动导入结果"
+        title = "Alpha 目标持仓（position_alpha_target）FTP 导入结果"
         imported = report.get("imported") or []
         detail_lines = []
         for row in imported:
@@ -87,6 +70,7 @@ class Command(BaseCommand):
                 detail_lines.append(
                     f"- {row.get('table')}: {row.get('rows')} 条 <- {row.get('file')}"
                 )
+        missing = report.get("folders_missing") or []
         data_ok = status == "SUCCESS"
         body = format_mail_job_notify_body(
             title=title,
@@ -96,10 +80,12 @@ class Command(BaseCommand):
             base_url=base_url,
             field_rows=[
                 ("持仓日(position_date)", report.get("position_date")),
-                ("邮件主题", report.get("target_subject")),
-                ("zip 附件", report.get("source_zip")),
-                ("CSV 文件数", report.get("csv_count")),
+                ("FTP 主机", report.get("ftp_host")),
+                ("FTP 目录", report.get("remote_dir")),
+                ("目标 CSV", report.get("csv_name")),
+                ("目录总数", report.get("folders_found")),
                 ("写入总条数", report.get("rows_written")),
+                ("缺失 CSV 的目录", ", ".join(missing) if missing else "无"),
                 ("结果说明", report.get("message")),
                 ("异常信息", report.get("error")),
             ],
@@ -119,10 +105,9 @@ class Command(BaseCommand):
             {
                 "position_date": report.get("position_date") or "",
                 "nav_date": report.get("position_date") or "",
-                "target_subject": report.get("target_subject") or "",
-                "source_zip": report.get("source_zip") or "",
+                "remote_dir": report.get("remote_dir") or "",
                 "rows_written": report.get("rows_written", 0),
-                "csv_count": report.get("csv_count", 0),
+                "folders_found": report.get("folders_found", 0),
                 "message": report.get("message") or "",
                 "error": report.get("error") or "",
             }
@@ -143,9 +128,11 @@ class Command(BaseCommand):
             "run_date": timezone.localdate().isoformat(),
             "position_date": "",
             "notify": True,
-            "target_subject": "",
-            "source_zip": "",
-            "csv_count": 0,
+            "ftp_host": getattr(settings, "ALPHA_TARGET_FTP_HOST", ""),
+            "remote_dir": getattr(settings, "ALPHA_TARGET_FTP_REMOTE_DIR", ""),
+            "csv_name": "",
+            "folders_found": 0,
+            "folders_missing": [],
             "rows_written": 0,
             "imported": [],
             "message": "",
@@ -170,18 +157,15 @@ class Command(BaseCommand):
                 return
 
             pos_raw = (options["position_date"] or "").strip()
-            if pos_raw:
-                pos_iso = pos_raw[:10]
-            else:
-                pos_iso = run_iso
-
+            pos_iso = pos_raw[:10] if pos_raw else run_iso
             report["position_date"] = pos_iso
             ymd8 = pos_iso.replace("-", "")
-            target_subject = build_alpha_target_position_subject(ymd8)
-            report["target_subject"] = target_subject
+            report["csv_name"] = f"{ymd8}.csv"
 
             self.stdout.write(f"持仓日期(position_date): {pos_iso}")
-            self.stdout.write(f"目标主题: {target_subject}")
+            self.stdout.write(
+                f"FTP: {report['ftp_host']}{report['remote_dir']}/{report['csv_name']}"
+            )
 
             span_err = validate_mail_job_query_span(
                 query_iso=pos_iso,
@@ -203,120 +187,38 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.WARNING(report["message"]))
                 return
 
-            email_user, email_pass, imap_server, imap_port = resolve_imap_credentials()
-            self.stdout.write(f"IMAP: {email_user} @ {imap_server}:{imap_port}")
+            ftp_result = import_alpha_target_from_ftp(date_iso=pos_iso)
+            report["status"] = ftp_result.status
+            report["remote_dir"] = ftp_result.remote_dir
+            report["csv_name"] = ftp_result.csv_name
+            report["folders_found"] = ftp_result.folders_found
+            report["folders_missing"] = ftp_result.folders_missing
+            report["rows_written"] = ftp_result.rows_written
+            report["imported"] = ftp_result.folders_imported
+            report["message"] = ftp_result.message
+            report["error"] = ftp_result.error
 
-            save_root = Path(settings.ALPHADATA_DIR) / "alpha_target_position_mail" / ymd8
-            mailbox: imaplib.IMAP4_SSL | None = None
-            try:
-                mailbox = imap_open_inbox(
-                    email_user, email_pass, imap_server, imap_port
-                )
-                mail_id = find_latest_mail_id_by_exact_subject(
-                    mailbox, target_subject
-                )
-                if not mail_id:
-                    report["status"] = "FAILED"
-                    report["message"] = "未找到匹配主题的邮件。"
-                    self.stderr.write(self.style.ERROR(report["message"]))
-                    return
-
-                st2, msg_data = mailbox.fetch(mail_id, "(RFC822)")
-                if st2 != "OK" or not msg_data or not msg_data[0]:
-                    report["status"] = "FAILED"
-                    report["message"] = "无法读取邮件正文。"
-                    self.stderr.write(self.style.ERROR(report["message"]))
-                    return
-
-                raw = msg_data[0][1]
-                if not isinstance(raw, (bytes, bytearray)):
-                    report["status"] = "FAILED"
-                    report["message"] = "邮件内容格式异常。"
-                    self.stderr.write(self.style.ERROR(report["message"]))
-                    return
-
-                zips = save_zip_attachments_from_rfc822(raw, save_root)
-                if not zips:
-                    report["status"] = "FAILED"
-                    report["message"] = "邮件中无 .zip 附件。"
-                    self.stderr.write(self.style.ERROR(report["message"]))
-                    return
-
-                zip_path = pick_alpha_target_zip(zips, ymd8)
-                if not zip_path:
-                    report["status"] = "FAILED"
-                    report["message"] = "未选择到 zip 附件。"
-                    self.stderr.write(self.style.ERROR(report["message"]))
-                    return
-
-                report["source_zip"] = zip_path.name
-                extract_dir = save_root / "_zip_extract" / zip_path.stem
-                extract_zip_archive(zip_path, extract_dir)
-                csv_files = list_csv_in_extract_dir(extract_dir)
-                if not csv_files:
-                    report["status"] = "FAILED"
-                    report["message"] = f"zip 内未找到有效 CSV（解压目录: {extract_dir}）。"
-                    self.stderr.write(self.style.ERROR(report["message"]))
-                    return
-
-                report["csv_count"] = len(csv_files)
-                now = timezone.now()
-                if isinstance(now, datetime) and timezone.is_naive(now):
-                    now = timezone.make_aware(now, timezone.get_current_timezone())
-
-                imported_stats: list[dict] = []
-                total_rows = 0
-                for fp in csv_files:
-                    table = collection_name_from_csv(fp)
-                    if not table:
-                        self.stdout.write(self.style.WARNING(f"跳过非法表名: {fp.name}"))
-                        continue
-                    docs = parse_alpha_target_csv(fp, date_iso=pos_iso)
-                    for d in docs:
-                        d["source_file"] = fp.name
-                        d["source_subject"] = target_subject
-                        d["updated_at"] = now
-
-                    coll = get_alpha_target_position_collection(table)
-                    coll.delete_many({"date": pos_iso})
-                    n = 0
-                    if docs:
-                        coll.insert_many(docs)
-                        n = len(docs)
-                        try:
-                            coll.create_index(
-                                [("date", 1), ("ticker", 1)],
-                                unique=True,
-                                name=f"uniq_{table}_date_ticker",
-                            )
-                        except Exception:
-                            pass
-                    total_rows += n
-                    imported_stats.append(
-                        {"table": table, "file": fp.name, "rows": n}
+            for row in ftp_result.folders_imported:
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f"position_alpha_target.{row['table']}: "
+                        f"{row['rows']} 条（date={pos_iso}）<- {row['file']}"
                     )
-                    self.stdout.write(
-                        self.style.SUCCESS(
-                            f"position_alpha_target.{table}: {n} 条（date={pos_iso}）<- {fp.name}"
-                        )
-                    )
-
-                if not imported_stats:
-                    report["status"] = "FAILED"
-                    report["message"] = "未写入任何表（CSV 表名均无效或为空）。"
-                    self.stderr.write(self.style.ERROR(report["message"]))
-                    return
-
-                report["imported"] = imported_stats
-                report["rows_written"] = total_rows
-                report["status"] = "SUCCESS"
-                report["message"] = (
-                    f"已写入 position_alpha_target 共 {len(imported_stats)} 张表、"
-                    f"{total_rows} 条（date={pos_iso}）<- {zip_path.name}"
                 )
-                self.stdout.write(self.style.SUCCESS(report["message"]))
-            finally:
-                imap_logout_safe(mailbox)
+            for table in ftp_result.folders_missing:
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"跳过 {table}：无 {ftp_result.csv_name}"
+                    )
+                )
+
+            if ftp_result.status == "SUCCESS":
+                self.stdout.write(self.style.SUCCESS(ftp_result.message))
+            elif ftp_result.error:
+                self.stderr.write(self.style.ERROR(ftp_result.message))
+                raise RuntimeError(ftp_result.error)
+            else:
+                self.stderr.write(self.style.ERROR(ftp_result.message))
 
         except Exception as exc:
             report["status"] = "FAILED"
