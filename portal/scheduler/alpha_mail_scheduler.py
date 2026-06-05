@@ -261,6 +261,22 @@ def _infer_scheduled_job_outcome(
     for marker in _SCHED_FAILURE_MARKERS:
         if marker in comb:
             return "failure", _first_line_containing(comb, marker) or marker
+    if command_name == "sync_position_close_record" and re.search(
+        r"未写入任何账户快照", comb
+    ):
+        return (
+            "failure",
+            _first_line_containing(comb, "未写入")
+            or "sync_position_close_record：当日未写入任何快照。",
+        )
+    if command_name == "sync_position_close_record" and re.search(
+        r"部分集合同步失败", comb
+    ):
+        return (
+            "failure",
+            _first_line_containing(comb, "失败")
+            or "sync_position_close_record：部分集合同步失败。",
+        )
     if command_name == "sync_t0_performance" and re.search(
         r"完成：\s*处理\s*0\s*个文件", comb
     ):

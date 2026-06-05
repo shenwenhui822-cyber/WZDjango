@@ -16,5 +16,6 @@ class PortalAccess(models.Model):
             ("view_fund_nav", "可查看基金净值页"),
             ("view_nav_bench_compare", "可查看alpha产品表现页"),
             ("view_alpha_t0", "可查看T0表现页"),
-            ("view_option_metrics", "可查看股指期货页"),
+            ("view_option_metrics", "可查看波动率指标页"),
+            ("view_account_brief", "可查看账户简报页"),
         ]

@@ -1,0 +1,338 @@
+{% extends "base.html" %}
+{% block title %}{{ page_title }} - 吾执产品平台{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
+<style>
+    .panel-card { border: 1px solid #dee2e6; border-radius: 0.75rem; background: #fff; }
+    .panel-card .panel-hd {
+        padding: 0.65rem 0.85rem;
+        border-bottom: 1px solid #eef0f2;
+        font-weight: 700;
+        font-size: 0.95rem;
+    }
+    .panel-card .panel-bd { padding: 0.75rem 0.85rem; }
+    .cmp-left-panel {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        min-height: 0;
+    }
+    .cmp-left-panel .panel-bd {
+        flex: 1 1 auto;
+        min-height: 0;
+        padding: 0;
+        overflow: hidden;
+    }
+    @media (min-width: 992px) {
+        .brief-layout-row { align-items: flex-start; }
+        .brief-sidebar-panel {
+            height: var(--brief-main-h, auto);
+            min-height: 0;
+        }
+    }
+    #briefContent {
+        min-height: 18rem;
+    }
+    .product-list {
+        height: 100%;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding: 0.5rem;
+    }
+    .brief-tier1-row {
+        border: 1px solid #e9ecef;
+        border-radius: 0.5rem;
+        background: #fff;
+        overflow: hidden;
+    }
+    .brief-tier1-row + .brief-tier1-row { margin-top: 0.45rem; }
+    .brief-tier1-summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding: 0.6rem 0.75rem;
+        font-weight: 600;
+        cursor: pointer;
+        margin: 0;
+        transition: background-color 0.2s ease, color 0.2s ease;
+    }
+    .brief-tier1-radio {
+        position: absolute;
+        opacity: 0;
+        width: 0;
+        height: 0;
+        pointer-events: none;
+    }
+    .brief-tier1-text {
+        flex: 1;
+        min-width: 0;
+        line-height: 1.25;
+        font-size: 0.95rem;
+    }
+    .brief-tier1-row:hover .brief-tier1-summary,
+    .brief-tier1-row.active .brief-tier1-summary {
+        background-color: #eaf4ff;
+        color: #4f8cff;
+    }
+    .brief-tier1-row.active .brief-tier1-text .text-danger { color: #c92a2a !important; }
+    .brief-field-table th {
+        background: #f8f9fa;
+        font-weight: 600;
+        white-space: nowrap;
+        width: 42%;
+    }
+    .brief-field-table td.tnum {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+    }
+    .brief-field-table thead th { background: #e7f1ff; }
+    #brief_snapshot_date_display { min-width: 10rem; max-width: 14rem; background-color: #fff; }
+</style>
+{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'portal:home' %}">首页</a></li>
+        <li class="breadcrumb-item active" aria-current="page">{{ breadcrumb_label|default:page_title }}</li>
+    </ol>
+</nav>
+
+<div id="briefErrorWrap"></div>
+
+<form method="get" action="" id="briefForm" class="mb-3">
+    <input type="hidden" name="account" id="briefAccountInput" value="{{ selected_strategy_tag|default:'' }}">
+    <input type="hidden" name="snapshot_date" id="briefSnapshotDateInput" value="{{ snapshot_date|default:'' }}">
+    <div class="row g-3 brief-layout-row">
+        <div class="col-12 col-lg-3">
+            <div class="panel-card cmp-left-panel brief-sidebar-panel">
+                <div class="panel-hd">产品名称</div>
+                <div class="panel-bd p-0">
+                    <div class="product-list" id="briefProductList">
+                        {% for item in brief_sidebar_items %}
+                        <div class="brief-tier1-row brief-product-item {% if selected_strategy_tag == item.strategy_tag %}active{% endif %}">
+                            <label class="brief-tier1-summary" for="brief_pk_{{ forloop.counter }}">
+                                <input class="brief-tier1-radio" type="radio" name="account_radio" value="{{ item.strategy_tag }}"
+                                       id="brief_pk_{{ forloop.counter }}"
+                                       data-tag="{{ item.strategy_tag }}"
+                                       {% if selected_strategy_tag == item.strategy_tag %}checked{% endif %}>
+                                <span class="brief-tier1-text">
+                                    {{ item.product }} - <span class="{% if not item.has_data %}text-danger{% endif %}">{{ item.broker }}</span>
+                                </span>
+                            </label>
+                        </div>
+                        {% empty %}
+                        <div class="text-muted small p-3">暂无账户配置</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-9">
+            <div class="panel-card" id="briefMainPanel">
+                <div class="panel-hd d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <span>账户简报</span>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <label class="small text-muted mb-0" for="brief_snapshot_date_display">交易日</label>
+                        <input type="text" class="form-control form-control-sm" id="brief_snapshot_date_display"
+                               placeholder="选择交易日" readonly value="{{ snapshot_date|default:'' }}">
+                        <span class="small text-muted" id="briefTitleMeta">
+                            {{ selected_product|default:"" }}
+                            {% if selected_broker %} · {{ selected_broker }}{% endif %}
+                        </span>
+                    </div>
+                </div>
+                <div class="panel-bd">
+                    <div id="briefContent">
+                        {% if brief_has_data %}
+                        <table class="table table-sm table-bordered brief-field-table mb-0">
+                            <thead>
+                                <tr>
+                                    <th>项目</th>
+                                    <th class="tnum">数值</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in brief_rows %}
+                                <tr>
+                                    <td>{{ row.label }}</td>
+                                    <td class="{% if row.field != 'account_id' and row.field != 'account_type' %}tnum{% endif %}">{{ row.value }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        {% else %}
+                        <div class="alert alert-warning mb-0">该交易日暂无收盘快照，请确认 position_close_record 已写入（交易日 15:35 同步任务）。</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+{% endblock %}
+{% block extra_js %}
+<script id="brief-trade-dates" type="application/json">{{ trade_dates_json|safe }}</script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/zh.js"></script>
+<script>
+(function () {
+    var form = document.getElementById("briefForm");
+    var errorWrap = document.getElementById("briefErrorWrap");
+    var accountInput = document.getElementById("briefAccountInput");
+    var snapshotInput = document.getElementById("briefSnapshotDateInput");
+    var snapshotDisplay = document.getElementById("brief_snapshot_date_display");
+    var productList = document.getElementById("briefProductList");
+    var briefContent = document.getElementById("briefContent");
+    var briefTitleMeta = document.getElementById("briefTitleMeta");
+    var briefMainPanel = document.getElementById("briefMainPanel");
+    var tradeDatesEl = document.getElementById("brief-trade-dates");
+    var tradeDates = [];
+    try { tradeDates = JSON.parse(tradeDatesEl ? tradeDatesEl.textContent : "[]") || []; } catch (_e) {}
+
+    function esc(s) {
+        return String(s == null ? "" : s)
+            .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    if (typeof flatpickr !== "undefined" && flatpickr.l10ns && flatpickr.l10ns.zh) {
+        flatpickr.localize(flatpickr.l10ns.zh);
+    }
+    if (snapshotDisplay && snapshotInput) {
+        var initial = (snapshotInput.value || "").trim();
+        flatpickr(snapshotDisplay, {
+            mode: "single",
+            dateFormat: "Y-m-d",
+            allowInput: false,
+            enable: tradeDates,
+            maxDate: "today",
+            defaultDate: initial || undefined,
+            onChange: function (selectedDates, dateStr) {
+                snapshotInput.value = dateStr || "";
+                submitAjax();
+            }
+        });
+    }
+
+    function renderSidebar(items, selectedTag) {
+        if (!productList) return;
+        if (!items || !items.length) {
+            productList.innerHTML = '<div class="text-muted small p-3">暂无账户配置</div>';
+            return;
+        }
+        productList.innerHTML = items.map(function (item, idx) {
+            var active = item.strategy_tag === selectedTag ? " active" : "";
+            var checked = item.strategy_tag === selectedTag ? " checked" : "";
+            var brokerCls = item.has_data ? "" : " text-danger";
+            return [
+                '<div class="brief-tier1-row brief-product-item' + active + '">',
+                '<label class="brief-tier1-summary" for="brief_pk_dyn_' + idx + '">',
+                '<input class="brief-tier1-radio" type="radio" name="account_radio" value="' + esc(item.strategy_tag) + '"',
+                ' id="brief_pk_dyn_' + idx + '" data-tag="' + esc(item.strategy_tag) + '"' + checked + '>',
+                '<span class="brief-tier1-text">' + esc(item.product) + ' - <span class="' + brokerCls.trim() + '">' + esc(item.broker) + "</span></span>",
+                "</label></div>"
+            ].join("");
+        }).join("");
+        bindProductRadios();
+    }
+
+    function syncBriefSidebarHeight() {
+        var layoutRow = document.querySelector(".brief-layout-row");
+        if (!layoutRow || !briefMainPanel) return;
+        if (window.innerWidth < 992) {
+            layoutRow.style.removeProperty("--brief-main-h");
+            return;
+        }
+        var h = Math.ceil(briefMainPanel.getBoundingClientRect().height);
+        if (h > 0) layoutRow.style.setProperty("--brief-main-h", h + "px");
+    }
+
+    function renderBrief(data) {
+        if (snapshotInput) snapshotInput.value = data.snapshot_date || "";
+        if (snapshotDisplay && snapshotDisplay._flatpickr && data.snapshot_date) {
+            snapshotDisplay._flatpickr.setDate(data.snapshot_date, false);
+        } else if (snapshotDisplay) {
+            snapshotDisplay.value = data.snapshot_date || "";
+        }
+        if (briefTitleMeta) {
+            var parts = [data.selected_product || "", data.selected_broker || ""];
+            briefTitleMeta.textContent = parts.filter(Boolean).join(" · ");
+        }
+        if (!briefContent) return;
+        if (!data.brief_has_data) {
+            briefContent.innerHTML = '<div class="alert alert-warning mb-0">该交易日暂无收盘快照，请确认 position_close_record 已写入（交易日 15:35 同步任务）。</div>';
+            syncBriefSidebarHeight();
+            return;
+        }
+        var rows = data.brief_rows || [];
+        var tbody = rows.map(function (r) {
+            var cls = (r.field === "account_id" || r.field === "account_type") ? "" : " tnum";
+            return "<tr><td>" + esc(r.label) + '</td><td class="' + cls.trim() + '">' + esc(r.value) + "</td></tr>";
+        }).join("");
+        briefContent.innerHTML = [
+            '<table class="table table-sm table-bordered brief-field-table mb-0">',
+            "<thead><tr><th>项目</th><th class=\"tnum\">数值</th></tr></thead>",
+            "<tbody>", tbody, "</tbody></table>"
+        ].join("");
+        syncBriefSidebarHeight();
+    }
+
+    function submitAjax() {
+        if (!form) return;
+        var params = new URLSearchParams(new FormData(form));
+        fetch(window.location.pathname + "?" + params.toString(), {
+            method: "GET",
+            headers: { "X-Requested-With": "XMLHttpRequest" },
+            credentials: "same-origin"
+        })
+            .then(function (res) {
+                if (!res.ok) throw new Error("请求失败，状态码：" + res.status);
+                return res.json();
+            })
+            .then(function (data) {
+                if (errorWrap) errorWrap.innerHTML = "";
+                if (accountInput) accountInput.value = data.selected_strategy_tag || "";
+                renderSidebar(data.brief_sidebar_items || [], data.selected_strategy_tag);
+                renderBrief(data);
+            })
+            .catch(function (err) {
+                if (errorWrap) {
+                    errorWrap.innerHTML = '<div class="alert alert-danger">' + esc(err.message) + "</div>";
+                }
+            });
+    }
+
+    function bindProductRadios() {
+        document.querySelectorAll(".brief-tier1-radio").forEach(function (radio) {
+            radio.addEventListener("change", function () {
+                if (!accountInput) return;
+                accountInput.value = radio.getAttribute("data-tag") || radio.value || "";
+                document.querySelectorAll(".brief-product-item").forEach(function (item) {
+                    var r = item.querySelector(".brief-tier1-radio");
+                    item.classList.toggle("active", !!(r && r.checked));
+                });
+                submitAjax();
+            });
+        });
+    }
+
+    bindProductRadios();
+
+    if (typeof ResizeObserver !== "undefined" && briefMainPanel) {
+        new ResizeObserver(syncBriefSidebarHeight).observe(briefMainPanel);
+    }
+    window.addEventListener("resize", syncBriefSidebarHeight);
+    syncBriefSidebarHeight();
+
+    if (form) {
+        form.addEventListener("submit", function (e) {
+            e.preventDefault();
+            submitAjax();
+        });
+    }
+
+})();
+</script>
+{% endblock %}

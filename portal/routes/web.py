@@ -2,6 +2,7 @@ from django.urls import path
 
 from portal.t0_performance import views as t0_views
 from portal.views import (
+    account_brief_views,
     alpha_daily_views,
     auth_views,
     mail_logs_views,
@@ -31,6 +32,11 @@ web_urlpatterns = [
         "products/option-metrics/",
         option_metrics_views.option_metrics,
         name="option_metrics",
+    ),
+    path(
+        "products/account-brief/",
+        account_brief_views.account_brief,
+        name="account_brief",
     ),
     path("nav/raw/", nav_curve_views.raw_nav, name="raw_nav"),
     path("logs/rerun/", mail_logs_views.mail_log_rerun, name="mail_log_rerun"),

@@ -153,3 +153,8 @@ MONGODB_OPTION_DB = os.getenv("MONGODB_OPTION_DB", "option")
 MONGODB_OPTION_VOLATILITY_COLLECTION = os.getenv(
     "MONGODB_OPTION_VOLATILITY_COLLECTION", "volatility"
 )
+# QMT 账户持仓轮询：tradelog.<strategy_tag>；收盘快照：position_close_record.<strategy_tag>
+MONGODB_TRADELOG_DB = os.getenv("MONGODB_TRADELOG_DB", "tradelog")
+MONGODB_POSITION_CLOSE_RECORD_DB = os.getenv(
+    "MONGODB_POSITION_CLOSE_RECORD_DB", "position_close_record"
+)

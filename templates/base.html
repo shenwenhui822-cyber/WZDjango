@@ -184,6 +184,9 @@
             {% if perms.portal.view_option_metrics or user.is_superuser %}
             <li><a href="{% url 'portal:option_metrics' %}" class="{% if request.resolver_match.url_name == 'option_metrics' %}active{% endif %}">波动率指标</a></li>
             {% endif %}
+            {% if perms.portal.view_account_brief or user.is_superuser %}
+            <li><a href="{% url 'portal:account_brief' %}" class="{% if request.resolver_match.url_name == 'account_brief' %}active{% endif %}">账户简报</a></li>
+            {% endif %}
         </ul>
         <div class="site-nav-user">
             <span class="user-greet" title="{{ user.username }}">你好，{{ user.username }}</span>

@@ -9,6 +9,7 @@ from typing import Any
 from django.conf import settings
 
 _ALPHA_TARGET_TABLE_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]{0,63}$")
+_TRADELOG_TABLE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,127}$")
 from pymongo import MongoClient
 from pymongo.collection import Collection
 
@@ -153,6 +154,54 @@ def get_alpha_target_position_collection(table_name: str) -> Collection:
         settings, "MONGODB_ALPHA_TARGET_POSITION_DB", "position_alpha_target"
     )
     return client[db_name][name]
+
+
+def get_tradelog_db():
+    """QMT tradelog 库（集合名 = strategy_tag，如 ZSZQ_911600210）。"""
+    client = get_mongo_client()
+    db_name = getattr(settings, "MONGODB_TRADELOG_DB", "tradelog")
+    return client[db_name]
+
+
+def list_tradelog_collection_names() -> list[str]:
+    db = get_tradelog_db()
+    return sorted(
+        n for n in db.list_collection_names() if not n.startswith("system.")
+    )
+
+
+def get_tradelog_collection(strategy_tag: str) -> Collection:
+    name = (strategy_tag or "").strip()
+    if not _TRADELOG_TABLE_RE.fullmatch(name):
+        raise ValueError(
+            f"非法 tradelog 集合名: {strategy_tag!r}（须为字母开头、仅含字母数字下划线）"
+        )
+    return get_tradelog_db()[name]
+
+
+def get_position_close_record_db():
+    """收盘账户快照库（集合名与 tradelog 一致）。"""
+    client = get_mongo_client()
+    db_name = getattr(
+        settings, "MONGODB_POSITION_CLOSE_RECORD_DB", "position_close_record"
+    )
+    return client[db_name]
+
+
+def list_position_close_record_collection_names() -> list[str]:
+    db = get_position_close_record_db()
+    return sorted(
+        n for n in db.list_collection_names() if not n.startswith("system.")
+    )
+
+
+def get_position_close_record_collection(strategy_tag: str) -> Collection:
+    name = (strategy_tag or "").strip()
+    if not _TRADELOG_TABLE_RE.fullmatch(name):
+        raise ValueError(
+            f"非法 position_close_record 集合名: {strategy_tag!r}"
+        )
+    return get_position_close_record_db()[name]
 
 
 def get_option_volatility_collection() -> Collection:

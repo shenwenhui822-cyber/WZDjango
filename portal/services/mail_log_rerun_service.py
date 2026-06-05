@@ -36,6 +36,7 @@ _COMMANDS_WITHOUT_FORCE_FLAG: frozenset[str] = frozenset(
         "auto_import_ghzq_settle_mail",
         "auto_import_qichat_t0_mail",
         "sync_t0_performance",
+        "sync_position_close_record",
     }
 )
 
@@ -81,14 +82,14 @@ def _date_kwargs_for_command(command_name: str, ymd8: str | None) -> dict[str, A
         return {"subject_date": ymd8}
     if command_name.endswith("_nav_mail"):
         return {"nav_date": iso}
-    if command_name == "sync_t0_performance":
-        return {}
+    if command_name in ("sync_t0_performance", "sync_position_close_record"):
+        return {"trade_date": iso} if command_name == "sync_position_close_record" else {}
     return {}
 
 
 def _requires_target_date(command_name: str) -> bool:
-    if command_name == "sync_t0_performance":
-        return False
+    if command_name in ("sync_t0_performance", "sync_position_close_record"):
+        return command_name == "sync_position_close_record"
     return bool(_date_kwargs_for_command(command_name, "20000101"))
 
 
