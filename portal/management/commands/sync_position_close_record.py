@@ -1,5 +1,5 @@
 """
-交易日 15:45 从 tradelog 各集合取当日 15:45 后最后一次落库，写入 position_close_record（同名集合）。
+每交易日 15:45 触发：从 tradelog 各集合取当日 15:28 后最后一次落库，写入 position_close_record（同名集合，snapshot_date 不重复）。
 
 用法：
   python manage.py sync_position_close_record
@@ -25,8 +25,8 @@ from portal.services.trade_calendar_service import is_trade_date_iso
 
 class Command(BaseCommand):
     help = (
-        "仅运行日为交易日时执行：从 tradelog 同步各账户当日 15:45 后最后一次落库至 "
-        "position_close_record（集合名相同，范围见 ACCOUNT_BRIEF_DISPLAY_ORDER）。"
+        "仅运行日为交易日时执行（定时 15:45）：从 tradelog 同步各账户当日 15:28 后最后一次落库至 "
+        "position_close_record（集合名相同，按 snapshot_date upsert 不重复，范围见 ACCOUNT_BRIEF_DISPLAY_ORDER）。"
     )
 
     def add_arguments(self, parser):
@@ -88,6 +88,7 @@ class Command(BaseCommand):
         )
         snap.update(
             {
+                "target_subject": title,
                 "trade_date": trade_date,
                 "synced": synced,
                 "missing": missing,
@@ -138,7 +139,7 @@ class Command(BaseCommand):
         tradelog_db = getattr(settings, "MONGODB_TRADELOG_DB", "tradelog")
         self.stdout.write(
             f"MongoDB: {mongo_host} / 库 {tradelog_db} "
-            f"（取各集合 {trade_date} 15:45 后最后一次落库）"
+            f"（取各集合 {trade_date} 15:28 后最后一次落库，按 snapshot_date upsert）"
         )
 
         try:
@@ -164,22 +165,43 @@ class Command(BaseCommand):
             ]
             report["detail_text"] = "\n".join(lines)
 
-            if result["errors"] > 0:
+            total = result["total_collections"]
+            synced = result["synced"]
+            missing = result["missing"]
+            errors = result["errors"]
+            if errors > 0:
                 report["status"] = "FAILURE"
-                report["message"] = f"部分集合同步失败（{result['errors']} 个）。"
-            elif result["synced"] == 0:
+                report["message"] = (
+                    f"未全部账户同步成功：写入 {synced}/{total} 个集合，"
+                    f"无数据 {missing} 个，失败 {errors} 个。"
+                )
+            elif synced == 0:
                 report["status"] = "FAILURE"
                 report["message"] = f"{trade_date} 未写入任何账户快照。"
+            elif missing > 0 or synced < total:
+                report["status"] = "FAILURE"
+                report["message"] = (
+                    f"未全部账户同步成功：写入 {synced}/{total} 个集合，"
+                    f"无数据 {missing} 个，失败 {errors} 个。"
+                )
             else:
                 report["status"] = "SUCCESS"
-                report["message"] = (
-                    f"完成：写入 {result['synced']} 个集合，"
-                    f"无数据 {result['missing']} 个，失败 {result['errors']} 个。"
-                )
+                report["message"] = f"完成：全部 {total} 个集合已写入。"
 
-            self.stdout.write(self.style.SUCCESS(report["message"]))
+            if report["status"] == "SUCCESS":
+                self.stdout.write(self.style.SUCCESS(report["message"]))
+            else:
+                self.stdout.write(self.style.WARNING(report["message"]))
+            status_by_tag = {
+                str(d.get("strategy_tag") or ""): d.get("status")
+                for d in result.get("details") or []
+            }
             for line in lines:
-                self.stdout.write(line)
+                tag = line.split(":", 1)[0]
+                if status_by_tag.get(tag) in ("missing", "error"):
+                    self.stdout.write(self.style.WARNING(line))
+                else:
+                    self.stdout.write(line)
         except Exception as exc:
             report["status"] = "FAILURE"
             report["error"] = str(exc)

@@ -163,7 +163,7 @@
                             </tbody>
                         </table>
                         {% else %}
-                        <div class="alert alert-warning mb-0">该交易日暂无收盘快照，请确认 position_close_record 已写入（交易日 15:35 同步任务）。</div>
+                        <div class="alert alert-warning mb-0">该交易日暂无收盘快照.</div>
                         {% endif %}
                     </div>
                 </div>
@@ -262,7 +262,7 @@
         }
         if (!briefContent) return;
         if (!data.brief_has_data) {
-            briefContent.innerHTML = '<div class="alert alert-warning mb-0">该交易日暂无收盘快照，请确认 position_close_record 已写入（交易日 15:35 同步任务）。</div>';
+            briefContent.innerHTML = '<div class="alert alert-warning mb-0">该交易日暂无收盘快照.</div>';
             syncBriefSidebarHeight();
             return;
         }

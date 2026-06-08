@@ -118,6 +118,10 @@ def _extract_mail_log_target_fields(stdout_text: str) -> tuple[str | None, str |
         if m_rep and _valid_calendar_ymd(m_rep.group(1)):
             target_date = m_rep.group(1)
     if target_date is None:
+        m_sync_day = re.search(r"同步业务日[:：]\s*(\d{4}-\d{2}-\d{2})", text)
+        if m_sync_day:
+            target_date = _normalize_target_date_ymd(m_sync_day.group(1))
+    if target_date is None:
         for pat in (
             r"持仓日期\(position_date\)[:：]\s*(\d{4}-\d{2}-\d{2})",
             r"目标净值日\(nav_date\)[:：]\s*(\d{4}-\d{2}-\d{2})",
@@ -157,7 +161,7 @@ def _merge_mail_log_target_fields_from_notify_snapshot(
         return target_subject, target_date
 
     if not target_subject:
-        for key in ("target_subject", "matched_subject"):
+        for key in ("target_subject", "matched_subject", "notify_title"):
             raw = notify_snapshot.get(key)
             if raw is not None and str(raw).strip():
                 target_subject = str(raw).strip()
@@ -166,6 +170,7 @@ def _merge_mail_log_target_fields_from_notify_snapshot(
     if not target_date:
         for key in (
             "target_date",
+            "trade_date",
             "nav_date",
             "report_date",
             "ymd",
@@ -262,20 +267,13 @@ def _infer_scheduled_job_outcome(
         if marker in comb:
             return "failure", _first_line_containing(comb, marker) or marker
     if command_name == "sync_position_close_record" and re.search(
-        r"未写入任何账户快照", comb
+        r"未全部账户同步成功|未写入任何账户快照", comb
     ):
         return (
             "failure",
-            _first_line_containing(comb, "未写入")
-            or "sync_position_close_record：当日未写入任何快照。",
-        )
-    if command_name == "sync_position_close_record" and re.search(
-        r"部分集合同步失败", comb
-    ):
-        return (
-            "failure",
-            _first_line_containing(comb, "失败")
-            or "sync_position_close_record：部分集合同步失败。",
+            _first_line_containing(comb, "未全部")
+            or _first_line_containing(comb, "未写入")
+            or "sync_position_close_record：未全部账户同步成功。",
         )
     if command_name == "sync_t0_performance" and re.search(
         r"完成：\s*处理\s*0\s*个文件", comb
