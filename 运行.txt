@@ -136,7 +136,7 @@
     环境变量（可选覆盖）：ALPHA_TARGET_FTP_HOST / ALPHA_TARGET_FTP_PORT / ALPHA_TARGET_FTP_USER /
       ALPHA_TARGET_FTP_PASSWORD / ALPHA_TARGET_FTP_REMOTE_DIR
     python manage.py auto_import_alpha_target_position_mail
-    python manage.py auto_import_alpha_target_position_mail --position-date 2026-06-05
+    python manage.py auto_import_alpha_target_position_mail --position-date 2026-05-27
     python manage.py auto_import_alpha_target_position_mail --force
     关闭定时：环境变量 ALPHA_TARGET_POSITION_MAIL_SCHEDULER_ENABLED=0
 

@@ -66,6 +66,7 @@ def _date_kwargs_for_command(command_name: str, ymd8: str | None) -> dict[str, A
         "auto_import_lhjx_position_mail",
         "auto_import_wzsl_position_mail",
         "auto_import_alpha_target_position_mail",
+        "auto_import_alpha_source_position_mail",
     ):
         return {"position_date": iso}
     if command_name == "update_rq_bench":

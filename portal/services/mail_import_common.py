@@ -255,27 +255,47 @@ def extract_zip_archive(zip_path: Path, dest_dir: Path) -> None:
 
 def _extract_zip_preserving_cn_filenames(zip_path: Path, dest_dir: Path) -> None:
     """
-    解压 zip。中文 Windows 工具生成的压缩包常见「文件名 GBK、ZIP 内按 cp437 存」，
-    不按 GBK 还原会得到乱码路径，后续找不到真正的 xlsx。
-    Python 3.11+ 使用 ZipFile(metadata_encoding='gbk')；更早版本对 ZipInfo 做 cp437→gbk。
+    解压 zip。常见编码：
+    - Mac/新版工具：UTF-8（metadata_encoding='utf-8'）
+    - 中文 Windows：GBK（metadata_encoding='gbk' 或 cp437→gbk）
     """
     dest_dir.mkdir(parents=True, exist_ok=True)
-    try:
-        zf = zipfile.ZipFile(zip_path, "r", metadata_encoding="gbk")
-    except TypeError:
-        zf = zipfile.ZipFile(zip_path, "r")
-        for info in list(zf.infolist()):
-            name = info.filename
-            if name.endswith("/"):
-                continue
-            try:
-                fixed = name.encode("cp437").decode("gbk")
-            except (UnicodeDecodeError, UnicodeEncodeError):
-                continue
-            if fixed != name:
-                info.filename = fixed
-    with zf:
-        zf.extractall(dest_dir)
+    last_err: Exception | None = None
+    for meta_enc in ("utf-8", "gbk", None):
+        try:
+            if meta_enc is not None:
+                try:
+                    zf = zipfile.ZipFile(zip_path, "r", metadata_encoding=meta_enc)
+                except TypeError:
+                    continue
+            else:
+                zf = zipfile.ZipFile(zip_path, "r")
+                for info in list(zf.infolist()):
+                    name = info.filename
+                    if name.endswith("/"):
+                        continue
+                    fixed = name
+                    for enc in ("utf-8", "gbk"):
+                        try:
+                            candidate = name.encode("cp437").decode(enc)
+                        except (UnicodeDecodeError, UnicodeEncodeError):
+                            continue
+                        if candidate != name:
+                            fixed = candidate
+                            break
+                    if fixed != name:
+                        info.filename = fixed
+            with zf:
+                zf.extractall(dest_dir)
+            return
+        except UnicodeDecodeError as exc:
+            last_err = exc
+            continue
+        except zipfile.BadZipFile:
+            raise
+    if last_err is not None:
+        raise last_err
+    raise zipfile.BadZipFile(f"无法解压: {zip_path}")
 
 
 def save_excel_zip_attachments_from_rfc822(msg_bytes: bytes, save_dir: Path) -> list[Path]:

@@ -156,6 +156,20 @@ def get_alpha_target_position_collection(table_name: str) -> Collection:
     return client[db_name][name]
 
 
+def get_alpha_source_position_collection(table_name: str) -> Collection:
+    """Alpha 源持仓：库 MONGODB_ALPHA_SOURCE_POSITION_DB，集合名 = 产品表编码（如 FY1000ZZ）。"""
+    name = (table_name or "").strip()
+    if not _ALPHA_TARGET_TABLE_RE.fullmatch(name):
+        raise ValueError(
+            f"非法 Alpha 源持仓集合名: {table_name!r}（须为字母开头、仅含字母数字下划线）"
+        )
+    client = get_mongo_client()
+    db_name = getattr(
+        settings, "MONGODB_ALPHA_SOURCE_POSITION_DB", "position_alpha_source"
+    )
+    return client[db_name][name]
+
+
 def get_tradelog_db():
     """QMT tradelog 库（集合名 = strategy_tag，如 ZSZQ_911600210）。"""
     client = get_mongo_client()

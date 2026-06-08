@@ -29,6 +29,10 @@ MONGODB_WZSL_POSITION_COLLECTION = os.getenv(
 MONGODB_ALPHA_TARGET_POSITION_DB = os.getenv(
     "MONGODB_ALPHA_TARGET_POSITION_DB", "position_alpha_target"
 )
+# 吾执 Alpha 源持仓邮件 zip 内 CSV → position_alpha_source.<表名>（auto_import_alpha_source_position_mail）
+MONGODB_ALPHA_SOURCE_POSITION_DB = os.getenv(
+    "MONGODB_ALPHA_SOURCE_POSITION_DB", "position_alpha_source"
+)
 # FTP：192.168.110.199/new_holding（建议密码用 .env 覆盖）
 ALPHA_TARGET_FTP_HOST = os.getenv("ALPHA_TARGET_FTP_HOST", "192.168.110.199")
 ALPHA_TARGET_FTP_PORT = int(os.getenv("ALPHA_TARGET_FTP_PORT", "21"))
