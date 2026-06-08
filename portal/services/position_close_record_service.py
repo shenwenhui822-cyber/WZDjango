@@ -18,6 +18,7 @@ from portal.services.trade_calendar_service import (
 from portal.data.tradelog_account_config import (
     ACCOUNT_BRIEF_DISPLAY_ORDER,
     account_meta_for_strategy_tag,
+    fund_account_from_strategy_tag,
 )
 from portal.db.mongo import (
     get_position_close_record_collection,
@@ -27,7 +28,7 @@ from portal.db.mongo import (
 
 _STRATEGY_TAG_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,127}$")
 # 收盘快照：取当日该时刻（含）之后最后一次 tradelog 落库
-_TRADELOG_CLOSE_SNAPSHOT_AFTER = dt_time(15, 28)
+_TRADELOG_CLOSE_SNAPSHOT_AFTER = dt_time(15, 45)
 
 
 def configured_strategy_tags() -> list[str]:
@@ -36,7 +37,7 @@ def configured_strategy_tags() -> list[str]:
 
 
 def _tradelog_t_iso_range_for_close_snapshot(trade_date: str) -> tuple[str, str]:
-    """返回 t_iso 半开区间 [day 15:28:00, next_day 00:00:00)。"""
+    """返回 t_iso 半开区间 [day 15:45:00, next_day 00:00:00)。"""
     from datetime import date, timedelta
 
     day = (trade_date or "").strip()[:10]
@@ -46,7 +47,7 @@ def _tradelog_t_iso_range_for_close_snapshot(trade_date: str) -> tuple[str, str]
 
 
 def _tradelog_t_unix_range_for_close_snapshot(trade_date: str) -> tuple[float, float]:
-    """与 t_iso 区间等价：本地时区 trade_date 15:28（含）至次日 0 点（不含）。"""
+    """与 t_iso 区间等价：本地时区 trade_date 15:45（含）至次日 0 点（不含）。"""
     from datetime import date, datetime, timedelta
 
     day = (trade_date or "").strip()[:10]
@@ -110,7 +111,7 @@ def _strip_mongo_id(doc: dict[str, Any]) -> dict[str, Any]:
 
 def fetch_latest_tradelog_doc(strategy_tag: str, trade_date: str) -> dict[str, Any] | None:
     """
-    取 tradelog 指定集合在 trade_date 当天 15:28（含）之后 t_unix 最新一条。
+    取 tradelog 指定集合在 trade_date 当天 15:45（含）之后 t_unix 最新一条。
     """
     tag = _validate_strategy_tag(strategy_tag)
     day = (trade_date or "").strip()[:10]
@@ -124,7 +125,7 @@ def sync_position_close_for_date(
     strategy_tags: list[str] | None = None,
 ) -> dict[str, Any]:
     """
-    将 tradelog 各表当日 15:28 后最后一次落库写入 position_close_record（同名集合）。
+    将 tradelog 各表当日 15:45 后最后一次落库写入 position_close_record（同名集合）。
     默认仅同步 ACCOUNT_BRIEF_DISPLAY_ORDER 中配置的账户。
     按 snapshot_date upsert，同日重复执行覆盖。
     """
@@ -149,7 +150,7 @@ def sync_position_close_for_date(
             if not src:
                 miss_count += 1
                 samples = _latest_tradelog_t_iso_samples(tag)
-                hint = f"{day} 15:28 后无 tradelog 记录"
+                hint = f"{day} 15:45 后无 tradelog 记录"
                 if samples:
                     hint += f"（库内最新 t_iso: {', '.join(samples)}）"
                 else:
@@ -258,14 +259,14 @@ _ACCOUNT_BRIEF_FIELD_SPEC: list[tuple[str, str]] = [
 ]
 
 
-_ACCOUNT_BRIEF_CUTOFF = dt_time(15, 40)
+_ACCOUNT_BRIEF_CUTOFF = dt_time(15, 45)
 
 
 def default_account_brief_snapshot_date(*, now=None) -> str:
     """
     默认展示日：
-    - 交易日 15:40 前 → 上一交易日
-    - 交易日 15:40 后 → 当日
+    - 交易日 15:45 前 → 上一交易日
+    - 交易日 15:45 后 → 当日
     - 非交易日 → 最近一个交易日（严格早于今日的交易日）
     """
     local_now = now or timezone.localtime()
@@ -296,7 +297,11 @@ def trade_dates_for_calendar_json() -> str:
     return json.dumps(sorted(trading_date_iso_set()), ensure_ascii=False)
 
 
-def build_account_brief_rows(doc: dict[str, Any] | None) -> list[dict[str, str]]:
+def build_account_brief_rows(
+    doc: dict[str, Any] | None,
+    *,
+    strategy_tag: str = "",
+) -> list[dict[str, str]]:
     """按固定顺序输出：项目、数值（field 仅保留供模板判断对齐）。"""
     accounts = (doc or {}).get("accounts") or []
     acct = accounts[0] if accounts else {}
@@ -308,7 +313,8 @@ def build_account_brief_rows(doc: dict[str, Any] | None) -> list[dict[str, str]]
         if not doc:
             return "—"
         if field == "account_id":
-            return str(acct.get("account_id") or doc.get("account_id") or "—")
+            acct_id = fund_account_from_strategy_tag(strategy_tag)
+            return acct_id or "—"
         if field == "account_type":
             return str(acct_type)
         if field == "total_asset":
@@ -384,7 +390,7 @@ def build_account_brief_page_context(
         "snapshot_date": effective_date,
         "snapshot_date_user_picked": user_picked_date,
         "trade_dates_json": trade_dates_for_calendar_json(),
-        "brief_rows": build_account_brief_rows(doc),
+        "brief_rows": build_account_brief_rows(doc, strategy_tag=sel),
         "brief_has_data": bool(doc),
         "brief_t_iso": str(doc.get("t_iso") or "") if doc else "",
     }

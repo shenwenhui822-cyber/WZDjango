@@ -1,5 +1,5 @@
 """
-交易日 15:35 从 tradelog 各集合取当日 15:28 后最后一次落库，写入 position_close_record（同名集合）。
+交易日 15:45 从 tradelog 各集合取当日 15:45 后最后一次落库，写入 position_close_record（同名集合）。
 
 用法：
   python manage.py sync_position_close_record
@@ -25,7 +25,7 @@ from portal.services.trade_calendar_service import is_trade_date_iso
 
 class Command(BaseCommand):
     help = (
-        "仅运行日为交易日时执行：从 tradelog 同步各账户当日 15:28 后最后一次落库至 "
+        "仅运行日为交易日时执行：从 tradelog 同步各账户当日 15:45 后最后一次落库至 "
         "position_close_record（集合名相同，范围见 ACCOUNT_BRIEF_DISPLAY_ORDER）。"
     )
 
@@ -138,7 +138,7 @@ class Command(BaseCommand):
         tradelog_db = getattr(settings, "MONGODB_TRADELOG_DB", "tradelog")
         self.stdout.write(
             f"MongoDB: {mongo_host} / 库 {tradelog_db} "
-            f"（取各集合 {trade_date} 15:28 后最后一次落库）"
+            f"（取各集合 {trade_date} 15:45 后最后一次落库）"
         )
 
         try:
