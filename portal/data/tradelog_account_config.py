@@ -19,7 +19,8 @@ ACCOUNT_BRIEF_DISPLAY_ORDER: list[AccountBriefEntry] = [
     {"strategy_tag": "FZZQ_2353038471", "product": "量化精选一号", "broker": "方正证券"},
     {"strategy_tag": "HXZQ_738000000167", "product": "量化精选一号", "broker": "华西证券"},
     {"strategy_tag": "DFZQ_600510888007", "product": "量化精选二号", "broker": "东方证券"},
-    {"strategy_tag": "DWZQ_JQ_012000076288", "product": "多元量选", "broker": "东吴证券"},
+    {"strategy_tag": "DWZQ_JQ_012000076288", "product": "多元量选", "broker": "东吴证券-沪市"},
+    {"strategy_tag": "DWZQ_NF_012000076288", "product": "多元量选", "broker": "东吴证券-深市"},
     {"strategy_tag": "GTZQ_909800008438", "product": "多元量选", "broker": "国投证券"},
     {"strategy_tag": "SWZQ_1673088777", "product": "吾执二二号", "broker": "申万证券"},
     {"strategy_tag": "ZSZQ_1702057978", "product": "吾执二二号", "broker": "浙商证券"},
@@ -39,8 +40,8 @@ TRADELOG_ACCOUNT_META: dict[str, dict[str, str]] = {
     "FZZQ_2353038471": {"product": "量化精选一号", "broker": "方正证券"},
     "HXZQ_738000000167": {"product": "量化精选一号", "broker": "华西证券"},
     "DFZQ_600510888007": {"product": "量化精选二号", "broker": "东方证券"},
-    "DWZQ_JQ_012000076288": {"product": "多元量选", "broker": "东吴证券"},
-    "DWZQ_NF_012000076288": {"product": "多元量选", "broker": "东吴证券"},
+    "DWZQ_JQ_012000076288": {"product": "多元量选", "broker": "东吴证券-沪市"},
+    "DWZQ_NF_012000076288": {"product": "多元量选", "broker": "东吴证券-深市"},
     "GTZQ_909800008438": {"product": "多元量选", "broker": "国投证券"},
     "SWZQ_1673088777": {"product": "吾执二二号", "broker": "申万证券"},
     "ZSZQ_1702057978": {"product": "吾执二二号", "broker": "浙商证券"},
@@ -54,6 +55,8 @@ TRADELOG_ACCOUNT_META: dict[str, dict[str, str]] = {
 
 # 表名 → 资金账号（默认取最后一段；下列为业务指定）
 _FUND_ACCOUNT_OVERRIDES: dict[str, str] = {
+    "DWZQ_JQ_012000076288": "12000076288",
+    "DWZQ_NF_012000076288": "12000076288",
     "DWZQ_JQ_015000094443": "15000094443",
     "DWZQ_NF_015000094443": "15000094443",
 }
