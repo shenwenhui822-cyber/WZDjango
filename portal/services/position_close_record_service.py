@@ -28,7 +28,7 @@ from portal.db.mongo import (
 
 _STRATEGY_TAG_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,127}$")
 # 收盘快照数据窗口：取当日该时刻（含）之后最后一次 tradelog 落库（定时任务 15:45 触发）
-_TRADELOG_CLOSE_SNAPSHOT_AFTER = dt_time(15, 28)
+_TRADELOG_CLOSE_SNAPSHOT_AFTER = dt_time(15, 29)
 
 
 def configured_strategy_tags() -> list[str]:
@@ -37,7 +37,7 @@ def configured_strategy_tags() -> list[str]:
 
 
 def _tradelog_t_iso_range_for_close_snapshot(trade_date: str) -> tuple[str, str]:
-    """返回 t_iso 半开区间 [day 15:28:00, next_day 00:00:00)。"""
+    """返回 t_iso 半开区间 [day 15:29:00, next_day 00:00:00)。"""
     from datetime import date, timedelta
 
     day = (trade_date or "").strip()[:10]
@@ -47,7 +47,7 @@ def _tradelog_t_iso_range_for_close_snapshot(trade_date: str) -> tuple[str, str]
 
 
 def _tradelog_t_unix_range_for_close_snapshot(trade_date: str) -> tuple[float, float]:
-    """与 t_iso 区间等价：本地时区 trade_date 15:28（含）至次日 0 点（不含）。"""
+    """与 t_iso 区间等价：本地时区 trade_date 15:29（含）至次日 0 点（不含）。"""
     from datetime import date, datetime, timedelta
 
     day = (trade_date or "").strip()[:10]
@@ -111,7 +111,7 @@ def _strip_mongo_id(doc: dict[str, Any]) -> dict[str, Any]:
 
 def fetch_latest_tradelog_doc(strategy_tag: str, trade_date: str) -> dict[str, Any] | None:
     """
-    取 tradelog 指定集合在 trade_date 当天 15:28（含）之后 t_unix 最新一条。
+    取 tradelog 指定集合在 trade_date 当天 15:29（含）之后 t_unix 最新一条。
     """
     tag = _validate_strategy_tag(strategy_tag)
     day = (trade_date or "").strip()[:10]
@@ -125,7 +125,7 @@ def sync_position_close_for_date(
     strategy_tags: list[str] | None = None,
 ) -> dict[str, Any]:
     """
-    将 tradelog 各表当日 15:28 后最后一次落库写入 position_close_record（同名集合）。
+    将 tradelog 各表当日 15:29 后最后一次落库写入 position_close_record（同名集合）。
     默认仅同步 ACCOUNT_BRIEF_DISPLAY_ORDER 中配置的账户。
     按 snapshot_date upsert，同一集合同一业务日仅保留一条记录（重复执行覆盖）。
     """
@@ -150,7 +150,7 @@ def sync_position_close_for_date(
             if not src:
                 miss_count += 1
                 samples = _latest_tradelog_t_iso_samples(tag)
-                hint = f"{day} 15:28 后无 tradelog 记录"
+                hint = f"{day} 15:29 后无 tradelog 记录"
                 if samples:
                     hint += f"（库内最新 t_iso: {', '.join(samples)}）"
                 else:

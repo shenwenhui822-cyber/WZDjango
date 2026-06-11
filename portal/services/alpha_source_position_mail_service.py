@@ -114,6 +114,12 @@ def parse_alpha_source_csv_bytes(
     source_label: str = "",
 ) -> list[dict]:
     """解析 CSV：market、ticker、algo_weight、t0_qty、date。"""
+    # market:交易市场
+    # ticker:证券代码
+    # algo_weight:算法数量/权重
+    # t0_qty:T0数量
+    # date:持仓日
+
     label = source_label or "csv"
     last_err: Exception | None = None
     df = None
