@@ -1,4 +1,4 @@
-"""吾执零一号 STZ049：管理人「等22个产品净值表发送YYYYMMDD」主题 + 集合计划每日净值表。"""
+"""吾执零一号 STZ049：管理人「等6个产品净值表发送YYYYMMDD」主题 + 集合计划每日净值表。"""
 from __future__ import annotations
 
 from django.conf import settings
@@ -8,7 +8,7 @@ from portal.data.fund_nav_real_config import FUND_NAV_PRODUCTS, FundNavProduct
 # 主题末尾 8 位为净值批次日 YYYYMMDD（与 nav_date 一致）。内层引号为中文弯引号，须与邮箱主题完全一致。
 _WZ_LYH_NAV_MAIL_SUBJECT_PREFIX = (
     "【净值表】上海吾执投资管理有限公司管理人旗下"
-    "\u201c吾执安澜6号私募证券投资基金-STZ056\u201d等22个产品净值表发送"
+    "\u201c吾执安澜6号私募证券投资基金-STZ056\u201d等6个产品净值表发送"
 )
 
 
@@ -40,7 +40,7 @@ def get_wz_lyh_fund_product() -> FundNavProduct:
 
 
 def get_wz_lyh_nav_mail_bundle_funds() -> tuple[FundNavProduct, FundNavProduct]:
-    """同一封「等22个产品净值表」邮件：零一号 STZ049 + 量化精选一号 SASQ16。"""
+    """同一封「等6个产品净值表」邮件：零一号 STZ049 + 量化精选一号 SASQ16。"""
     from portal.services.lhjxyh_fund_nav_mail_service import get_lhjxyh_fund_product
 
     return (get_wz_lyh_fund_product(), get_lhjxyh_fund_product())

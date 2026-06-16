@@ -1,4 +1,4 @@
-"""吾执量化精选一号 SASQ16：与零一号共用管理人「等22个产品净值表发送YYYYMMDD」邮件。"""
+"""吾执量化精选一号 SASQ16：与零一号共用管理人「等6个产品净值表发送YYYYMMDD」邮件。"""
 from __future__ import annotations
 
 from django.conf import settings

@@ -243,7 +243,7 @@
       · STZ049 + 名称「吾执零一号私募证券投资基金」→ fund_nav_real.WZ_LYH_MASTER（settings.NAV_REAL_WZ_LYH_MASTER）
       · SASQ16 + 名称「吾执量化精选一号私募证券投资基金」→ fund_nav_real.WZ_LHJXYH_MASTER（settings.NAV_REAL_WZ_LHJXYH_MASTER）
     主题格式（须与邮箱完全一致，末尾 8 位为净值日 YYYYMMDD）：
-      【净值表】上海吾执投资管理有限公司管理人旗下「吾执安澜6号私募证券投资基金-STZ056」等22个产品净值表发送20260511
+      【净值表】上海吾执投资管理有限公司管理人旗下「吾执安澜6号私募证券投资基金-STZ056」等6个产品净值表发送20260511
       （内层为中文弯引号 \u201c \u201d，与 portal.services.wz_lyh_fund_nav_mail_service 中常量一致）
     附件图一：集合计划每日净值表（.xls/.xlsx）；表头含日期、产品代码、产品名称、总资产净值、单位净值、累计单位净值等；
       多产品同表：按上列两对产品名称+代码各取一行。

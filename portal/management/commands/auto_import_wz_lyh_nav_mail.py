@@ -1,6 +1,6 @@
 """
 交易日 17:10 拉取 wangkan（ALPHA_MAIL_*）邮箱中主题
-「【净值表】上海吾执投资管理有限公司…等22个产品净值表发送{YYYYMMDD}」
+「【净值表】上海吾执投资管理有限公司…等6个产品净值表发送{YYYYMMDD}」
 （YYYYMMDD 为 nav_date）的邮件，从附件「集合计划每日净值表」等 xls/xlsx 解析并落库：
   · 吾执零一号 STZ049 → fund_nav_real.WZ_LYH_MASTER
   · 吾执量化精选一号 SASQ16 → fund_nav_real.WZ_LHJXYH_MASTER
@@ -70,7 +70,7 @@ def _score_wz_lyh_nav_attachment(path: Path) -> int:
 
 class Command(BaseCommand):
     help = (
-        "仅运行日为交易日时执行：抓取管理人「等22个产品净值表发送YYYYMMDD」邮件附件，"
+        "仅运行日为交易日时执行：抓取管理人「等6个产品净值表发送YYYYMMDD」邮件附件，"
         "解析零一号 STZ049 与量化精选一号 SASQ16 两行并分别写入 "
         "WZ_LYH_MASTER、WZ_LHJXYH_MASTER；nav_date 默认为运行日之前最近一交易日；"
         "IMAP 按 nav_date 当日 INTERNALDATE 筛信；两产品均落库后即停止遍历邮件。"
