@@ -254,7 +254,7 @@ _ACCOUNT_BRIEF_FIELD_SPEC: list[tuple[str, str]] = [
     ("持仓浮动盈亏", "position_profit"),
     ("持仓只数", "position_summary.count"),
     ("持仓总盈亏", "position_summary.total_profit"),
-    ("平均持仓涨跌幅", "position_summary.avg_change_pct"),
+    ("当日平均持仓涨跌幅", "position_summary.avg_change_pct"),
     ("上涨 / 下跌 / 平盘", "up_count / down_count / flat_count"),
 ]
 
