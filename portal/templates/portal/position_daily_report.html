@@ -51,6 +51,15 @@
         }
         .pd-meta-row { font-size: 0.8125rem; }
         .pd-meta-row .tag { font-size: 0.75rem; }
+        .pd-section-note {
+            line-height: 1.55;
+            margin-bottom: 1rem;
+            padding: 0.65rem 0.85rem;
+            background: #f8f9fa;
+            border-radius: 0.5rem;
+            border-left: 3px solid #dee2e6;
+        }
+        .pd-date-stale { color: #c92a2a !important; font-weight: 600; }
         .pd-top-right-panel .stat-card {
             padding: 0.65rem 0.85rem;
         }
@@ -358,6 +367,12 @@
         <div class="card">
             <div class="card-header">三、估值暴露（Wind ASHAREEODDERIVATIVEINDICATOR）</div>
             <div class="card-body">
+                <p class="pd-section-note text-muted small mb-3">
+                    按持仓<strong>市值权重</strong>汇总 Wind 日度估值指标，反映组合当前估值水平与市值风格。
+                    <strong>加权 PE(TTM)/PB</strong> 为滚动市盈率、市净率；
+                    <strong>加权市值分位</strong>表示持仓在全 A 市值分布中的加权位置（&gt;70% 偏大盘，&lt;30% 偏小盘）。
+                    估值为静态截面，需结合行业与盈利预期综合判断；快照日无数据时回退至最近可用交易日。
+                </p>
                 <div class="row g-3">
                     <div class="col-6 col-md-3">
                         <div class="stat-card">
@@ -394,6 +409,13 @@
         <div class="card">
             <div class="card-header">四、盈利预期（Wind ASHARECONSENSUSROLLINGDATA · FY1）</div>
             <div class="card-body">
+                <p class="pd-section-note text-muted small mb-3">
+                    采用 Wind 一致预期滚动数据 <strong>FY1</strong>（未来 12 个月），按持仓<strong>市值权重</strong>汇总分析师一致预期。
+                    <strong>加权预期 PE / 预期净利润</strong>反映市场定价；
+                    <strong>预期净利润变化</strong>为相对上一预测日的上调或下调幅度；
+                    <strong>覆盖度</strong>为有一致预期数据的持仓市值权重占比（&gt;80% 代表性强，&lt;50% 参考价值下降）。
+                    <strong>EST_DT</strong> 为 Wind 预测日，若早于快照日表示数据未更新至最新。
+                </p>
                 <div class="row g-3">
                     <div class="col-6 col-md-3">
                         <div class="stat-card">
@@ -420,7 +442,15 @@
                         </div>
                     </div>
                 </div>
-                <p class="text-muted small mt-3 mb-0">EST_DT：{{ ctx.quality.wind_consensus_est_dt|default:"—" }}</p>
+                <p class="text-muted small mt-3 mb-0">
+                    EST_DT：
+                    <span class="{% if ctx.quality.wind_consensus_est_dt|wind_date_before:trade_date %}pd-date-stale{% endif %}">
+                        {{ ctx.quality.wind_consensus_est_dt|wind_dt_fmt|default:"—" }}
+                    </span>
+                    {% if ctx.quality.wind_consensus_est_dt|wind_date_before:trade_date %}
+                    <span class="pd-date-stale small">（数据落后于快照日 {{ trade_date }}）</span>
+                    {% endif %}
+                </p>
             </div>
         </div>
     </div>
@@ -585,7 +615,14 @@
                     <li>未映射中信二级：{{ ctx.quality.citics_unmapped|default:"0" }} 只（{{ ctx.quality.citics_unmapped_mv_pct|pct|default:"0%" }}）</li>
                     <li>申万行业涨跌前收日期：{{ ctx.quality.prev_trade_date|default:"—" }}</li>
                     <li>Wind 估值日期：{{ ctx.quality.wind_deriv_date|default:"—" }}</li>
-                    <li>Wind 一致预期 EST_DT：{{ ctx.quality.wind_consensus_est_dt|default:"—" }}</li>
+                    <li>Wind 一致预期 EST_DT：
+                        <span class="{% if ctx.quality.wind_consensus_est_dt|wind_date_before:trade_date %}pd-date-stale{% endif %}">
+                            {{ ctx.quality.wind_consensus_est_dt|wind_dt_fmt|default:"—" }}
+                        </span>
+                        {% if ctx.quality.wind_consensus_est_dt|wind_date_before:trade_date %}
+                        <span class="pd-date-stale">（落后）</span>
+                        {% endif %}
+                    </li>
                     <li>Wind 中信指数 TRADE_DT：{{ ctx.quality.wind_citics_trade_dt|default:"—" }}</li>
                     <li>Wind 宽基指数 TRADE_DT：{{ ctx.quality.wind_index_trade_dt|default:"—" }}</li>
                 </ul>
