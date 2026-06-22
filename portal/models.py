@@ -18,4 +18,5 @@ class PortalAccess(models.Model):
             ("view_alpha_t0", "可查看T0表现页"),
             ("view_option_metrics", "可查看波动率指标页"),
             ("view_account_brief", "可查看账户简报页"),
+            ("view_position_daily", "可查看日度持仓分析页"),
         ]

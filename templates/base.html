@@ -178,14 +178,17 @@
             <li><a href="{% url 'portal:nav_bench_compare' %}" class="{% if request.resolver_match.url_name == 'nav_bench_compare' %}active{% endif %}">alpha产品表现</a></li>
             {% endif %}
             {% if perms.portal.view_alpha_t0 or user.is_superuser %}
-            <li><a href="{% url 'portal:alpha_t0' %}" class="{% if request.resolver_match.url_name == 'alpha_t0' %}active{% endif %}">T0表现</a></li>
+            {# 前端暂不展示：T0表现(alpha_t0)，路由仍可用直接访问 #}
             {% endif %}
             {# 前端暂不展示：对冲中性产品(market_neutral_product)，路由见 portal/routes/web.py #}
             {% if perms.portal.view_option_metrics or user.is_superuser %}
-            <li><a href="{% url 'portal:option_metrics' %}" class="{% if request.resolver_match.url_name == 'option_metrics' %}active{% endif %}">波动率指标</a></li>
+            {# 前端暂不展示：波动率指标(option_metrics)，路由仍可用直接访问 #}
             {% endif %}
             {% if perms.portal.view_account_brief or user.is_superuser %}
             <li><a href="{% url 'portal:account_brief' %}" class="{% if request.resolver_match.url_name == 'account_brief' %}active{% endif %}">账户简报</a></li>
+            {% endif %}
+            {% if perms.portal.view_position_daily or user.is_superuser %}
+            <li><a href="{% url 'portal:position_daily' %}" class="{% if request.resolver_match.url_name == 'position_daily' or request.resolver_match.url_name == 'position_daily_report_latest' or request.resolver_match.url_name == 'position_daily_report_date' %}active{% endif %}">日度持仓分析</a></li>
             {% endif %}
         </ul>
         <div class="site-nav-user">

@@ -16,6 +16,7 @@ PERM_VIEW_NAV_BENCH_COMPARE = "portal.view_nav_bench_compare"
 PERM_VIEW_ALPHA_T0 = "portal.view_alpha_t0"
 PERM_VIEW_OPTION_METRICS = "portal.view_option_metrics"
 PERM_VIEW_ACCOUNT_BRIEF = "portal.view_account_brief"
+PERM_VIEW_POSITION_DAILY = "portal.view_position_daily"
 
 # 登录后落地页顺序；next= 路径前缀校验
 PORTAL_PAGE_ACCESS: tuple[tuple[str, str, str], ...] = (
@@ -24,6 +25,7 @@ PORTAL_PAGE_ACCESS: tuple[tuple[str, str, str], ...] = (
     (PERM_VIEW_ALPHA_T0, "portal:alpha_t0", "/alpha/t0/"),
     (PERM_VIEW_OPTION_METRICS, "portal:option_metrics", "/products/option-metrics/"),
     (PERM_VIEW_ACCOUNT_BRIEF, "portal:account_brief", "/products/account-brief/"),
+    (PERM_VIEW_POSITION_DAILY, "portal:position_daily", "/products/daily-report/"),
 )
 
 
@@ -53,6 +55,10 @@ def user_can_view_option_metrics(user: AbstractBaseUser | AnonymousUser) -> bool
 
 def user_can_view_account_brief(user: AbstractBaseUser | AnonymousUser) -> bool:
     return user_has_portal_perm(user, PERM_VIEW_ACCOUNT_BRIEF)
+
+
+def user_can_view_position_daily(user: AbstractBaseUser | AnonymousUser) -> bool:
+    return user_has_portal_perm(user, PERM_VIEW_POSITION_DAILY)
 
 
 def login_landing_url_name(user: AbstractBaseUser | AnonymousUser) -> str:

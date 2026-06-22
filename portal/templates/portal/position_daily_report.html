@@ -1,0 +1,724 @@
+{% extends "base.html" %}
+{% load position_daily_tags static %}
+{% block title %}日度持仓分析{% if trade_date %} — {{ trade_date }}{% endif %} - 吾执产品平台{% endblock %}
+{% block extra_css %}
+<script src="{% static 'plotly/plotly.min.js' %}"></script>
+<style>
+
+        
+        
+        .card { border: none; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.06); margin-bottom: 1.5rem; }
+        .card-header { background: #fff; border-bottom: 1px solid #e9ecef; font-weight: 600; border-radius: 12px 12px 0 0 !important; }
+        .stat-card { background: #fff; border-radius: 12px; padding: 1rem 1.25rem; height: 100%; box-shadow: 0 1px 8px rgba(0,0,0,.05); }
+        .stat-label { color: #6c757d; font-size: 0.85rem; margin-bottom: 0.25rem; }
+        .stat-value { font-size: 1.35rem; font-weight: 600; color: #1d3557; }
+        .stat-value.positive { color: #c92a2a; }
+        .stat-value.negative { color: #2b8a3e; }
+        .text-cn-up { color: #c92a2a !important; }
+        .text-cn-down { color: #2b8a3e !important; }
+        .panel-card { border: 1px solid #dee2e6; border-radius: 0.75rem; background: #fff; }
+        .panel-card .panel-hd {
+            padding: 0.65rem 0.85rem;
+            border-bottom: 1px solid #eef0f2;
+            font-weight: 700;
+            font-size: 0.95rem;
+        }
+        .panel-card .panel-bd { padding: 0.75rem 0.85rem; }
+        .pd-top-row { align-items: flex-start; }
+        .pd-top-left-panel {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            min-height: 0;
+        }
+        .pd-top-left-panel .panel-bd {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: hidden;
+            padding: 0;
+        }
+        .pd-top-right-panel .panel-hd .pd-date-form {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        .pd-top-right-panel .panel-hd .pd-date-form .form-select,
+        .pd-top-right-panel .panel-hd .pd-date-form .form-control {
+            width: auto;
+            min-width: 8.5rem;
+            max-width: 10rem;
+        }
+        .pd-meta-row { font-size: 0.8125rem; }
+        .pd-meta-row .tag { font-size: 0.75rem; }
+        .pd-top-right-panel .stat-card {
+            padding: 0.65rem 0.85rem;
+        }
+        .pd-top-right-panel .stat-value { font-size: 1.15rem; }
+        .product-list {
+            height: 100%;
+            min-height: 0;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 0.35rem;
+        }
+        @media (max-width: 991.98px) {
+            .pd-top-left-panel { height: auto !important; max-height: 14rem; }
+        }
+        .brief-tier1-row + .brief-tier1-row { margin-top: 0.3rem; }
+        .brief-tier1-link {
+            padding: 0.42rem 0.55rem;
+        }
+        .brief-tier1-text { font-size: 0.875rem; }
+        .brief-tier1-row {
+            border: 1px solid #e9ecef;
+            border-radius: 0.5rem;
+            background: #fff;
+            overflow: hidden;
+        }
+        .brief-tier1-link {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+            font-weight: 600;
+            text-decoration: none;
+            color: inherit;
+            transition: background-color 0.2s ease, color 0.2s ease;
+        }
+        .brief-tier1-text {
+            flex: 1;
+            min-width: 0;
+            line-height: 1.2;
+        }
+        .brief-tier1-row:hover .brief-tier1-link,
+        .brief-tier1-row.active .brief-tier1-link {
+            background-color: #eaf4ff;
+            color: #4f8cff;
+        }
+        .brief-tier1-row.active .brief-tier1-text .text-cn-missing { color: #c92a2a !important; }
+        .nav-pills .nav-link { color: #495057; border-radius: 999px; padding: 0.35rem 0.9rem; margin: 0.15rem; font-size: 0.875rem; }
+        .nav-pills .nav-link.active { background: #3d5a80; }
+        .chart-box { background: #fff; border-radius: 8px; padding: 0.5rem; min-height: 200px; }
+        th { white-space: nowrap; font-size: 0.9rem; }
+        td { font-size: 0.9rem; }
+        .section-anchor { scroll-margin-top: 80px; }
+        .tag { display: inline-block; padding: 0.2rem 0.55rem; border-radius: 999px; font-size: 0.75rem; background: #e9ecef; color: #495057; }
+        #page-loading {
+            position: fixed; inset: 0; z-index: 9999; background: rgba(255,255,255,.92);
+            display: flex; align-items: center; justify-content: center; flex-direction: column;
+        }
+        #page-loading.hidden { display: none; }
+        .debug-log { font-family: Consolas, monospace; font-size: 12px; white-space: pre-wrap; background: #1e1e1e; color: #d4d4d4; padding: 1rem; border-radius: 8px; max-height: 240px; overflow: auto; }
+        .industry-table-wrap {
+            max-height: 520px;
+            overflow: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+        }
+        .sortable-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: #f8f9fa;
+            vertical-align: middle;
+        }
+        #industry-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: #f8f9fa;
+            vertical-align: middle;
+        }
+        .th-sort-wrap {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            white-space: nowrap;
+        }
+        .sort-btn {
+            padding: 0.1rem 0.35rem;
+            font-size: 0.75rem;
+            line-height: 1.2;
+            border-radius: 4px;
+            min-width: 1.6rem;
+        }
+        .sort-btn.active {
+            background: #3d5a80;
+            border-color: #3d5a80;
+            color: #fff;
+        }
+        .pd-report-toolbar .form-select,
+        .pd-report-toolbar .form-control { max-width: 12rem; }
+        .section-anchor { scroll-margin-top: 5rem; }
+</style>
+{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'portal:home' %}">首页</a></li>
+        <li class="breadcrumb-item active" aria-current="page">{{ breadcrumb_label|default:page_title }}</li>
+    </ol>
+</nav>
+<div class="pd-report-wrap">
+<div id="page-loading">
+    <div class="spinner-border text-primary mb-3" role="status"></div>
+    <div class="text-muted">正在加载报告数据，请稍候…</div>
+    <div class="small text-muted mt-2">首次加载需连接 MongoDB + 渲染图表，约 5–15 秒</div>
+</div>
+
+    <div class="row g-3 pd-top-row mb-3">
+        <div class="col-12 col-lg-3">
+            <div class="panel-card pd-top-left-panel" id="pdTopLeftPanel">
+                <div class="panel-hd">产品名称</div>
+                <div class="panel-bd">
+                    <div class="product-list">
+                        {% for item in brief_sidebar_items %}
+                        <div class="brief-tier1-row {% if selected_strategy_tag == item.strategy_tag %}active{% endif %}">
+                            <a class="brief-tier1-link" href="{% url 'portal:position_daily' %}?account={{ item.strategy_tag|urlencode }}{% if trade_date %}&amp;date={{ trade_date|urlencode }}{% endif %}">
+                                <span class="brief-tier1-text">
+                                    {{ item.product }} - <span class="{% if not item.has_data %}text-cn-missing{% endif %}">{{ item.broker }}</span>
+                                </span>
+                            </a>
+                        </div>
+                        {% empty %}
+                        <div class="text-muted small p-3">暂无账户配置</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-9">
+            <div id="sec-overview" class="panel-card pd-top-right-panel section-anchor">
+                <div class="panel-hd d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <span>一、账户概览</span>
+                    <form class="pd-date-form mb-0" method="get" action="{% url 'portal:position_daily' %}">
+                        <input type="hidden" name="account" value="{{ selected_strategy_tag|default:'' }}">
+                        <select id="date-select" class="form-select form-select-sm">
+                            {% for d in available_dates %}
+                            <option value="{{ d }}" {% if d == trade_date %}selected{% endif %}>{{ d }}</option>
+                            {% empty %}
+                            <option value="">无快照</option>
+                            {% endfor %}
+                        </select>
+                        <input type="date" id="date-input" name="date" value="{{ trade_date }}" class="form-control form-control-sm">
+                        <button type="submit" class="btn btn-primary btn-sm px-3">查询</button>
+                    </form>
+                </div>
+                <div class="panel-bd">
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-3 pd-meta-row">
+                        <span class="tag">策略 {{ selected_product }} - {{ selected_broker }}</span>
+                        {% if trade_date %}<span class="tag">快照 {{ trade_date }}</span>{% endif %}
+                        {% if not error %}
+                        <span class="tag">生成 {{ ctx.generated_at }}</span>
+                        {% if from_cache %}<span class="tag bg-success-subtle text-success">缓存</span>{% else %}<span class="tag bg-warning-subtle text-warning">新算</span>{% endif %}
+                        <a class="btn btn-sm btn-outline-secondary ms-lg-auto" href="?account={{ selected_strategy_tag|urlencode }}&amp;date={{ trade_date|urlencode }}&amp;refresh=1">强制重新计算</a>
+                        {% endif %}
+                    </div>
+                    {% if error %}
+                    <div class="alert alert-danger mb-0 shadow-sm">{{ error }}</div>
+                    {% else %}
+                    <div class="row g-2">
+                        <div class="col-6 col-md-4 col-xl-2">
+                            <div class="stat-card">
+                                <div class="stat-label">持仓只数</div>
+                                <div class="stat-value">{{ ctx.summary.count }}</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-4 col-xl-2">
+                            <div class="stat-card">
+                                <div class="stat-label">股票市值</div>
+                                <div class="stat-value">{{ ctx.summary.total_market_value|floatformat:0 }}</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-4 col-xl-2">
+                            <div class="stat-card">
+                                <div class="stat-label">等权平均涨跌</div>
+                                <div class="stat-value {% if ctx.summary.avg_change_pct >= 0 %}positive{% else %}negative{% endif %}">
+                                    {{ ctx.summary.avg_change_pct|floatformat:2 }}%
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-4 col-xl-3">
+                            <div class="stat-card">
+                                <div class="stat-label">上涨 / 下跌 / 平盘</div>
+                                <div class="stat-value" style="font-size:1.1rem">
+                                    <span class="positive">{{ ctx.summary.up_count }}</span> /
+                                    <span class="negative">{{ ctx.summary.down_count }}</span> /
+                                    {{ ctx.summary.flat_count }}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-4 col-xl-3">
+                            <div class="stat-card">
+                                <div class="stat-label">浮动盈亏</div>
+                                <div class="stat-value {% if ctx.summary.total_profit >= 0 %}positive{% else %}negative{% endif %}">
+                                    {{ ctx.summary.total_profit|floatformat:2 }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if error %}
+    {% else %}
+
+    <ul class="nav nav-pills mb-4 flex-wrap">
+        <li class="nav-item"><a class="nav-link active" href="#sec-overview">概览</a></li>
+        <li class="nav-item"><a class="nav-link" href="#sec-industry">申万二级</a></li>
+        <li class="nav-item"><a class="nav-link" href="#sec-valuation">估值</a></li>
+        <li class="nav-item"><a class="nav-link" href="#sec-consensus">盈利预期</a></li>
+        <li class="nav-item"><a class="nav-link" href="#sec-citics">中信行业</a></li>
+        <li class="nav-item"><a class="nav-link" href="#sec-theme">主题</a></li>
+        <li class="nav-item"><a class="nav-link" href="#sec-style">宽基风格</a></li>
+        <li class="nav-item"><a class="nav-link" href="#sec-stock">单票贡献</a></li>
+        <li class="nav-item"><a class="nav-link" href="#sec-quality">数据质量</a></li>
+    </ul>
+
+    <!-- 二、申万二级 -->
+    <div id="sec-industry" class="section-anchor">
+        <div class="card">
+            <div class="card-header">二、申万二级行业（rq_daily_indusSWL2_price）</div>
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <h6 class="text-secondary mb-0">2.1 全部行业{% if ctx.industry_count %}（共 {{ ctx.industry_count }} 个）{% endif %}</h6>
+                    <span class="text-muted small">点击列标题右侧按钮排序 · 默认按权重降序</span>
+                </div>
+                <div class="industry-table-wrap mb-4">
+                    {% if ctx.industry_all %}
+                    <table id="industry-table" class="table table-sm table-hover align-middle mb-0 sortable-table" data-default-sort="weight">
+                        <thead class="table-light">
+                        <tr>
+                            {% for key, label in ctx.industry_columns %}
+                            <th>
+                                <div class="th-sort-wrap">
+                                    <span>{{ label }}</span>
+                                    <button type="button" class="btn btn-outline-secondary sort-btn" data-key="{{ key }}" title="按{{ label }}排序">↕</button>
+                                </div>
+                            </th>
+                            {% endfor %}
+                        </tr>
+                        </thead>
+                        <tbody id="industry-tbody">
+                        {% for row in ctx.industry_all %}
+                        <tr>
+                            {% for key, label in ctx.industry_columns %}
+                            <td data-sort-key="{{ key }}" data-sort-val="{{ row.sort|get_item:key }}">{{ row.display|get_item:key }}</td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}<p class="text-muted p-3 mb-0">无数据</p>{% endif %}
+                </div>
+
+                <div class="row g-4 mb-4">
+                    <div class="col-lg-6">
+                        <div class="chart-box">{% if ctx.chart_industry_weight %}{{ ctx.chart_industry_weight|safe }}{% endif %}</div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="chart-box">{% if ctx.chart_industry_excess %}{{ ctx.chart_industry_excess|safe }}{% endif %}</div>
+                    </div>
+                </div>
+
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <h6 class="text-cn-up mb-3">2.2 表现最好 Top 5</h6>
+                        <div class="list-group list-group-flush shadow-sm rounded">
+                            {% for row in ctx.top_good %}
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <span class="fw-medium">{{ row.indus_name }}</span>
+                                <span class="text-cn-up small">超额 {{ row.excess_pct }} · 权重 {{ row.weight }}</span>
+                            </div>
+                            {% empty %}<div class="list-group-item text-muted">无</div>{% endfor %}
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-cn-down mb-3">2.3 表现最差 Top 5</h6>
+                        <div class="list-group list-group-flush shadow-sm rounded">
+                            {% for row in ctx.top_bad %}
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <span class="fw-medium">{{ row.indus_name }}</span>
+                                <span class="text-cn-down small">超额 {{ row.excess_pct }} · 权重 {{ row.weight }}</span>
+                            </div>
+                            {% empty %}<div class="list-group-item text-muted">无</div>{% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 三、Wind 估值 -->
+    <div id="sec-valuation" class="section-anchor">
+        <div class="card">
+            <div class="card-header">三、估值暴露（Wind ASHAREEODDERIVATIVEINDICATOR）</div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-6 col-md-3">
+                        <div class="stat-card">
+                            <div class="stat-label">加权 PE(TTM)</div>
+                            <div class="stat-value">{{ ctx.valuation.w_pe_ttm|floatformat:2|default:"—" }}</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="stat-card">
+                            <div class="stat-label">加权 PB</div>
+                            <div class="stat-value">{{ ctx.valuation.w_pb|floatformat:2|default:"—" }}</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="stat-card">
+                            <div class="stat-label">加权市值（亿）</div>
+                            <div class="stat-value">{{ ctx.valuation.w_mv_yi|floatformat:2|default:"—" }}</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="stat-card">
+                            <div class="stat-label">加权市值分位</div>
+                            <div class="stat-value">{{ ctx.valuation.w_mv_pct|floatformat:1|default:"—" }}{% if ctx.valuation.w_mv_pct %}%{% endif %}</div>
+                        </div>
+                    </div>
+                </div>
+                <p class="text-muted small mt-3 mb-0">数据日期：{{ ctx.quality.wind_deriv_date|default:"—" }} · 覆盖 {{ ctx.quality.deriv_matched|default:"0" }} 只</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 四、Wind 盈利预期 -->
+    <div id="sec-consensus" class="section-anchor">
+        <div class="card">
+            <div class="card-header">四、盈利预期（Wind ASHARECONSENSUSROLLINGDATA · FY1）</div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-6 col-md-3">
+                        <div class="stat-card">
+                            <div class="stat-label">加权预期 PE</div>
+                            <div class="stat-value">{{ ctx.consensus.w_est_pe|floatformat:2|default:"—" }}</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="stat-card">
+                            <div class="stat-label">加权预期净利润（亿）</div>
+                            <div class="stat-value">{{ ctx.consensus.w_net_profit_yi|floatformat:2|default:"—" }}</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="stat-card">
+                            <div class="stat-label">预期净利润变化</div>
+                            <div class="stat-value">{{ ctx.consensus.w_np_chg_pct|floatformat:2|default:"—" }}{% if ctx.consensus.w_np_chg_pct %}%{% endif %}</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="stat-card">
+                            <div class="stat-label">覆盖度（市值权重）</div>
+                            <div class="stat-value">{{ ctx.consensus.coverage_pct|pct|default:"—" }}</div>
+                        </div>
+                    </div>
+                </div>
+                <p class="text-muted small mt-3 mb-0">EST_DT：{{ ctx.quality.wind_consensus_est_dt|default:"—" }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 六、中信行业 -->
+    <div id="sec-citics" class="section-anchor">
+        <div class="card">
+            <div class="card-header">五、中信二级行业（Wind · 与申万并列）</div>
+            <div class="card-body">
+                <div class="industry-table-wrap mb-4">
+                    {% if ctx.citics_all %}
+                    <table class="table table-sm table-hover align-middle mb-0 sortable-table" data-default-sort="weight">
+                        <thead class="table-light"><tr>
+                            {% for key, label in ctx.citics_columns %}
+                            <th><div class="th-sort-wrap"><span>{{ label }}</span><button type="button" class="btn btn-outline-secondary sort-btn" data-key="{{ key }}">↕</button></div></th>
+                            {% endfor %}
+                        </tr></thead>
+                        <tbody>
+                        {% for row in ctx.citics_all %}
+                        <tr>{% for key, label in ctx.citics_columns %}
+                            <td data-sort-key="{{ key }}" data-sort-val="{{ row.sort|get_item:key }}">{{ row.display|get_item:key }}</td>
+                        {% endfor %}</tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}<p class="text-muted p-3 mb-0">无数据</p>{% endif %}
+                </div>
+                <div class="row g-4 mb-4">
+                    <div class="col-lg-6"><div class="chart-box">{{ ctx.chart_citics_weight|safe }}</div></div>
+                    <div class="col-lg-6"><div class="chart-box">{{ ctx.chart_citics_excess|safe }}</div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 七、主题 -->
+    <div id="sec-theme" class="section-anchor">
+        <div class="card">
+            <div class="card-header">六、主题/概念暴露（Wind ASHAREWTHEMEINDUSTRIESCLASS）</div>
+            <div class="card-body">
+                <p class="text-muted small">单票可属多主题，权重为暴露加总，合计可大于 100%。{% if ctx.quality.theme_top1 %} 最大主题：{{ ctx.quality.theme_top1 }}（{{ ctx.quality.theme_top1_weight|pct }}）{% endif %}</p>
+                <div class="industry-table-wrap mb-4">
+                    {% if ctx.theme_all %}
+                    <table class="table table-sm table-hover align-middle mb-0 sortable-table" data-default-sort="weight">
+                        <thead class="table-light"><tr>
+                            {% for key, label in ctx.theme_columns %}
+                            <th><div class="th-sort-wrap"><span>{{ label }}</span><button type="button" class="btn btn-outline-secondary sort-btn" data-key="{{ key }}">↕</button></div></th>
+                            {% endfor %}
+                        </tr></thead>
+                        <tbody>
+                        {% for row in ctx.theme_all %}
+                        <tr>{% for key, label in ctx.theme_columns %}
+                            <td data-sort-key="{{ key }}" data-sort-val="{{ row.sort|get_item:key }}">{{ row.display|get_item:key }}</td>
+                        {% endfor %}</tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}<p class="text-muted p-3 mb-0">无数据</p>{% endif %}
+                </div>
+                <div class="chart-box">{{ ctx.chart_theme_weight|safe }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 八、宽基风格 -->
+    <div id="sec-style" class="section-anchor">
+        <div class="card">
+            <div class="card-header">七、宽基风格（rq_base_index + Wind AINDEXEODPRICES）</div>
+            <div class="card-body">
+                <h6 class="text-secondary">8.1 指数成分板块</h6>
+                <div class="industry-table-wrap mb-4">
+                    {% if ctx.style_buckets %}
+                    <table class="table table-sm table-hover align-middle mb-0 sortable-table" data-default-sort="weight">
+                        <thead class="table-light"><tr>
+                            {% for key, label in ctx.style_columns %}
+                            <th><div class="th-sort-wrap"><span>{{ label }}</span><button type="button" class="btn btn-outline-secondary sort-btn" data-key="{{ key }}">↕</button></div></th>
+                            {% endfor %}
+                        </tr></thead>
+                        <tbody>
+                        {% for row in ctx.style_buckets %}
+                        <tr>{% for key, label in ctx.style_columns %}
+                            <td data-sort-key="{{ key }}" data-sort-val="{{ row.sort|get_item:key }}">{{ row.display|get_item:key }}</td>
+                        {% endfor %}</tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}<p class="text-muted p-3 mb-0">无数据</p>{% endif %}
+                </div>
+                <div class="chart-box mb-4">{{ ctx.chart_style_weight|safe }}</div>
+                <h6 class="text-secondary">8.2 市值风格（大盘/中盘/小盘）</h6>
+                <div class="industry-table-wrap">
+                    {% if ctx.mv_style %}
+                    <table class="table table-sm table-hover align-middle mb-0 sortable-table" data-default-sort="weight">
+                        <thead class="table-light"><tr>
+                            {% for key, label in ctx.mv_style_columns %}
+                            <th><div class="th-sort-wrap"><span>{{ label }}</span><button type="button" class="btn btn-outline-secondary sort-btn" data-key="{{ key }}">↕</button></div></th>
+                            {% endfor %}
+                        </tr></thead>
+                        <tbody>
+                        {% for row in ctx.mv_style %}
+                        <tr>{% for key, label in ctx.mv_style_columns %}
+                            <td data-sort-key="{{ key }}" data-sort-val="{{ row.sort|get_item:key }}">{{ row.display|get_item:key }}</td>
+                        {% endfor %}</tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}<p class="text-muted p-3 mb-0">无数据</p>{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 九、单票贡献 -->
+    <div id="sec-stock" class="section-anchor">
+        <div class="card">
+            <div class="card-header">八、单票贡献 Top 15</div>
+            <div class="card-body">
+                <p class="text-muted small">当日贡献 = 市值 × 涨跌幅；累计盈亏来自持仓快照 profit 字段。</p>
+                <div class="row g-4">
+                    <div class="col-lg-6">
+                        <h6 class="text-cn-up">贡献最大</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover">
+                                <thead class="table-light"><tr>
+                                    {% for key, label in ctx.stock_contrib_columns %}<th>{{ label }}</th>{% endfor %}
+                                </tr></thead>
+                                <tbody>
+                                {% for row in ctx.stock_top_gain %}
+                                <tr>{% for key, label in ctx.stock_contrib_columns %}<td>{{ row|get_item:key }}</td>{% endfor %}</tr>
+                                {% empty %}<tr><td colspan="7" class="text-muted">无</td></tr>{% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <h6 class="text-cn-down">拖累最大</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover">
+                                <thead class="table-light"><tr>
+                                    {% for key, label in ctx.stock_contrib_columns %}<th>{{ label }}</th>{% endfor %}
+                                </tr></thead>
+                                <tbody>
+                                {% for row in ctx.stock_top_loss %}
+                                <tr>{% for key, label in ctx.stock_contrib_columns %}<td>{{ row|get_item:key }}</td>{% endfor %}</tr>
+                                {% empty %}<tr><td colspan="7" class="text-muted">无</td></tr>{% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 九、数据质量 -->
+    <div id="sec-quality" class="section-anchor">
+        <div class="card">
+            <div class="card-header">九、数据质量</div>
+            <div class="card-body">
+                <ul class="mb-0">
+                    <li>未映射申万二级：{{ ctx.quality.indus_unmapped }} 只（市值占比 {{ ctx.quality.indus_unmapped_mv_pct|pct }}）</li>
+                    <li>未映射中信二级：{{ ctx.quality.citics_unmapped|default:"0" }} 只（{{ ctx.quality.citics_unmapped_mv_pct|pct|default:"0%" }}）</li>
+                    <li>申万行业涨跌前收日期：{{ ctx.quality.prev_trade_date|default:"—" }}</li>
+                    <li>Wind 估值日期：{{ ctx.quality.wind_deriv_date|default:"—" }}</li>
+                    <li>Wind 一致预期 EST_DT：{{ ctx.quality.wind_consensus_est_dt|default:"—" }}</li>
+                    <li>Wind 中信指数 TRADE_DT：{{ ctx.quality.wind_citics_trade_dt|default:"—" }}</li>
+                    <li>Wind 宽基指数 TRADE_DT：{{ ctx.quality.wind_index_trade_dt|default:"—" }}</li>
+                </ul>
+                {% if ctx.unmapped_industry %}
+                <h6 class="mt-4 mb-3">未映射股票 Top 20</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead class="table-light"><tr><th>代码</th><th>名称</th><th>市值</th><th>权重</th></tr></thead>
+                        <tbody>
+                        {% for row in ctx.unmapped_industry %}
+                        <tr><td>{{ row.code }}</td><td>{{ row.name }}</td><td>{{ row.market_value|floatformat:2 }}</td><td>{{ row.weight|pct }}</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if debug and ctx and ctx.debug_log %}
+    <div class="card mt-3 border-secondary">
+        <div class="card-header fw-bold text-secondary">调试日志（DEBUG）</div>
+        <div class="card-body">
+            <p class="small text-muted mb-2">服务端耗时 {{ ctx.elapsed_ms }}ms · 请求总耗时 {{ request_elapsed_ms }}ms</p>
+            <div class="debug-log">{% for line in ctx.debug_log %}{{ line }}
+{% endfor %}</div>
+            <p class="small text-muted mt-2 mb-0">完整日志文件：<code>logs/daily_report.log</code></p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+(function () {
+    var loading = document.getElementById('page-loading');
+    function hideLoading() {
+        if (loading) loading.classList.add('hidden');
+    }
+    window.addEventListener('load', hideLoading);
+    setTimeout(hideLoading, 25000);
+})();
+(function () {
+    var leftPanel = document.getElementById('pdTopLeftPanel');
+    var rightPanel = document.getElementById('sec-overview');
+    function syncTopHeight() {
+        if (!leftPanel || !rightPanel) return;
+        if (window.innerWidth < 992) {
+            leftPanel.style.height = '';
+            return;
+        }
+        leftPanel.style.height = rightPanel.offsetHeight + 'px';
+    }
+    window.addEventListener('load', syncTopHeight);
+    window.addEventListener('resize', syncTopHeight);
+    if (typeof ResizeObserver !== 'undefined' && rightPanel) {
+        new ResizeObserver(syncTopHeight).observe(rightPanel);
+    }
+})();
+document.querySelectorAll('.nav-pills .nav-link').forEach(function (link) {
+    link.addEventListener('click', function () {
+        document.querySelectorAll('.nav-pills .nav-link').forEach(function (l) { l.classList.remove('active'); });
+        this.classList.add('active');
+    });
+});
+var sel = document.getElementById('date-select');
+var inp = document.getElementById('date-input');
+if (sel && inp) {
+    sel.addEventListener('change', function () {
+        inp.value = this.value;
+        inp.form.submit();
+    });
+}
+(function () {
+    var STRING_KEYS = ['indus_code', 'indus_name', 'theme_code', 'theme_name', 'bucket', 'code', 'name', 'bench_code'];
+
+    function initSortableTable(table) {
+        var tbody = table.querySelector('tbody');
+        if (!tbody) return;
+        var defaultSort = table.getAttribute('data-default-sort') || 'weight';
+        var current = { key: defaultSort, dir: -1 };
+
+        function sortVal(tr, key) {
+            var cell = tr.querySelector('[data-sort-key="' + key + '"]');
+            if (!cell) return null;
+            var raw = cell.getAttribute('data-sort-val');
+            if (raw === '' || raw === null) return null;
+            if (STRING_KEYS.indexOf(key) >= 0) return raw;
+            if (key === 'stock_count') return parseInt(raw, 10);
+            var n = parseFloat(raw);
+            return isNaN(n) ? raw : n;
+        }
+
+        function compare(a, b, key, dir) {
+            var va = sortVal(a, key);
+            var vb = sortVal(b, key);
+            if (va === null && vb === null) return 0;
+            if (va === null) return 1;
+            if (vb === null) return -1;
+            if (typeof va === 'number' && typeof vb === 'number') return dir * (va - vb);
+            return dir * String(va).localeCompare(String(vb), 'zh-CN');
+        }
+
+        function applySort() {
+            var rows = Array.from(tbody.querySelectorAll('tr'));
+            rows.sort(function (a, b) { return compare(a, b, current.key, current.dir); });
+            rows.forEach(function (r) { tbody.appendChild(r); });
+            table.querySelectorAll('.sort-btn').forEach(function (btn) {
+                var key = btn.getAttribute('data-key');
+                var active = key === current.key;
+                btn.classList.toggle('active', active);
+                btn.textContent = active ? (current.dir > 0 ? '↑' : '↓') : '↕';
+            });
+        }
+
+        table.querySelectorAll('.sort-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var key = btn.getAttribute('data-key');
+                if (current.key === key) {
+                    current.dir = -current.dir;
+                } else {
+                    current.key = key;
+                    current.dir = STRING_KEYS.indexOf(key) >= 0 ? 1 : -1;
+                }
+                applySort();
+            });
+        });
+        applySort();
+    }
+
+    document.querySelectorAll('.sortable-table').forEach(initSortableTable);
+})();
+</script>
+{% endblock %}

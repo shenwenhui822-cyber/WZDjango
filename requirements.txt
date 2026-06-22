@@ -8,3 +8,5 @@ xlrd>=2.0.1
 python-dotenv>=1.0
 rqdatac==3.4.7.8
 numpy>=1.26.0,<2
+plotly>=5.0
+pymysql>=1.1

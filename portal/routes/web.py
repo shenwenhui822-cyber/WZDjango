@@ -8,6 +8,7 @@ from portal.views import (
     mail_logs_views,
     nav_curve_views,
     option_metrics_views,
+    position_daily_views,
 )
 
 web_urlpatterns = [
@@ -37,6 +38,22 @@ web_urlpatterns = [
         "products/account-brief/",
         account_brief_views.account_brief,
         name="account_brief",
+    ),
+    path(
+        "products/daily-report/",
+        position_daily_views.index_view,
+        name="position_daily",
+    ),
+    path(
+        "products/daily-report/report/latest/",
+        position_daily_views.report_view,
+        {"trade_date": "latest"},
+        name="position_daily_report_latest",
+    ),
+    path(
+        "products/daily-report/report/<str:trade_date>/",
+        position_daily_views.report_view,
+        name="position_daily_report_date",
     ),
     path("nav/raw/", nav_curve_views.raw_nav, name="raw_nav"),
     path("logs/rerun/", mail_logs_views.mail_log_rerun, name="mail_log_rerun"),

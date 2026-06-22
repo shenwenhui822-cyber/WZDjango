@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "corsheaders",
     "portal",
+    "position_daily",
 ]
 
 MIDDLEWARE = [
@@ -107,5 +108,39 @@ NAV_ANNUALIZATION_FACTOR = 252
 NAV_MIN_SAMPLE_DAYS = 60
 # 最大回撤是否在 0 时显示为空（True=显示为空；False=显示 0.00%）
 NAV_MDD_ZERO_AS_NA = False
+
+# position_daily 日度持仓分析日志
+POSITION_DAILY_LOG_DIR = BASE_DIR / "position_daily" / "logs"
+POSITION_DAILY_LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "{asctime} [{levelname}] {name} — {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "position_daily_console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+        "position_daily_file": {
+            "class": "logging.FileHandler",
+            "filename": POSITION_DAILY_LOG_DIR / "daily_report.log",
+            "encoding": "utf-8",
+            "formatter": "verbose",
+        },
+    },
+    "loggers": {
+        "position_daily": {
+            "handlers": ["position_daily_console", "position_daily_file"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+}
 
 
