@@ -141,6 +141,7 @@ class DailyReportContext:
     citics_columns: list[tuple[str, str]] = field(default_factory=list)
     citics_top_good: list[dict] = field(default_factory=list)
     citics_top_bad: list[dict] = field(default_factory=list)
+    unmapped_citics: list[dict] = field(default_factory=list)
     theme_all: list[dict] = field(default_factory=list)
     theme_count: int = 0
     theme_columns: list[tuple[str, str]] = field(default_factory=list)
@@ -247,8 +248,9 @@ def build_daily_report(trade_date: str, *, strategy_tag: str | None = None) -> D
 
         _log("中信行业...")
         citics_res = _run_wind("中信", analyze_citics_industry, pos_df, trade_date)
+        unmapped_citics = pd.DataFrame()
         if citics_res:
-            citics_df, _, citics_q = citics_res
+            citics_df, unmapped_citics, citics_q = citics_res
             ctx.quality.update(citics_q)
         else:
             citics_df = pd.DataFrame()
@@ -276,6 +278,8 @@ def build_daily_report(trade_date: str, *, strategy_tag: str | None = None) -> D
                 citics_df.nsmallest(5, "excess_pct")[good_cols],
                 pct_cols=INDUSTRY_PCT_COLS, weight_cols=INDUSTRY_WEIGHT_COLS,
             )
+        if not unmapped_citics.empty:
+            ctx.unmapped_citics = unmapped_citics.sort_values("market_value", ascending=False).head(20).to_dict("records")
 
         _log("主题/概念暴露...")
         theme_res = _run_wind("主题", analyze_theme, pos_df, trade_date)

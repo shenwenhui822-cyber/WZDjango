@@ -139,6 +139,13 @@
             background: #f8f9fa;
             vertical-align: middle;
         }
+        #citics-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: #f8f9fa;
+            vertical-align: middle;
+        }
         .th-sort-wrap {
             display: inline-flex;
             align-items: center;
@@ -455,33 +462,77 @@
         </div>
     </div>
 
-    <!-- 六、中信行业 -->
+    <!-- 五、中信行业 -->
     <div id="sec-citics" class="section-anchor">
         <div class="card">
             <div class="card-header">五、中信二级行业（Wind · 与申万并列）</div>
             <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <h6 class="text-secondary mb-0">5.1 全部行业{% if ctx.citics_count %}（共 {{ ctx.citics_count }} 个）{% endif %}</h6>
+                    <span class="text-muted small">点击列标题右侧按钮排序 · 默认按权重降序</span>
+                </div>
                 <div class="industry-table-wrap mb-4">
                     {% if ctx.citics_all %}
-                    <table class="table table-sm table-hover align-middle mb-0 sortable-table" data-default-sort="weight">
-                        <thead class="table-light"><tr>
+                    <table id="citics-table" class="table table-sm table-hover align-middle mb-0 sortable-table" data-default-sort="weight">
+                        <thead class="table-light">
+                        <tr>
                             {% for key, label in ctx.citics_columns %}
-                            <th><div class="th-sort-wrap"><span>{{ label }}</span><button type="button" class="btn btn-outline-secondary sort-btn" data-key="{{ key }}">↕</button></div></th>
+                            <th>
+                                <div class="th-sort-wrap">
+                                    <span>{{ label }}</span>
+                                    <button type="button" class="btn btn-outline-secondary sort-btn" data-key="{{ key }}" title="按{{ label }}排序">↕</button>
+                                </div>
+                            </th>
                             {% endfor %}
-                        </tr></thead>
-                        <tbody>
+                        </tr>
+                        </thead>
+                        <tbody id="citics-tbody">
                         {% for row in ctx.citics_all %}
-                        <tr>{% for key, label in ctx.citics_columns %}
+                        <tr>
+                            {% for key, label in ctx.citics_columns %}
                             <td data-sort-key="{{ key }}" data-sort-val="{{ row.sort|get_item:key }}">{{ row.display|get_item:key }}</td>
-                        {% endfor %}</tr>
+                            {% endfor %}
+                        </tr>
                         {% endfor %}
                         </tbody>
                     </table>
                     {% else %}<p class="text-muted p-3 mb-0">无数据</p>{% endif %}
                 </div>
+
                 <div class="row g-4 mb-4">
-                    <div class="col-lg-6"><div class="chart-box">{{ ctx.chart_citics_weight|safe }}</div></div>
-                    <div class="col-lg-6"><div class="chart-box">{{ ctx.chart_citics_excess|safe }}</div></div>
+                    <div class="col-lg-6">
+                        <div class="chart-box">{% if ctx.chart_citics_weight %}{{ ctx.chart_citics_weight|safe }}{% endif %}</div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="chart-box">{% if ctx.chart_citics_excess %}{{ ctx.chart_citics_excess|safe }}{% endif %}</div>
+                    </div>
                 </div>
+
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <h6 class="text-cn-up mb-3">5.2 表现最好 Top 5</h6>
+                        <div class="list-group list-group-flush shadow-sm rounded">
+                            {% for row in ctx.citics_top_good %}
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <span class="fw-medium">{{ row.indus_name }}</span>
+                                <span class="text-cn-up small">超额 {{ row.excess_pct }} · 权重 {{ row.weight }}</span>
+                            </div>
+                            {% empty %}<div class="list-group-item text-muted">无</div>{% endfor %}
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-cn-down mb-3">5.3 表现最差 Top 5</h6>
+                        <div class="list-group list-group-flush shadow-sm rounded">
+                            {% for row in ctx.citics_top_bad %}
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <span class="fw-medium">{{ row.indus_name }}</span>
+                                <span class="text-cn-down small">超额 {{ row.excess_pct }} · 权重 {{ row.weight }}</span>
+                            </div>
+                            {% empty %}<div class="list-group-item text-muted">无</div>{% endfor %}
+                        </div>
+                    </div>
+                </div>
+                <p class="text-muted small mt-3 mb-0">中信指数数据日期：{{ ctx.quality.wind_citics_trade_dt|wind_dt_fmt|default:"—" }}</p>
             </div>
         </div>
     </div>
@@ -627,12 +678,25 @@
                     <li>Wind 宽基指数 TRADE_DT：{{ ctx.quality.wind_index_trade_dt|default:"—" }}</li>
                 </ul>
                 {% if ctx.unmapped_industry %}
-                <h6 class="mt-4 mb-3">未映射股票 Top 20</h6>
+                <h6 class="mt-4 mb-3">未映射申万二级股票 Top 20</h6>
                 <div class="table-responsive">
                     <table class="table table-sm">
                         <thead class="table-light"><tr><th>代码</th><th>名称</th><th>市值</th><th>权重</th></tr></thead>
                         <tbody>
                         {% for row in ctx.unmapped_industry %}
+                        <tr><td>{{ row.code }}</td><td>{{ row.name }}</td><td>{{ row.market_value|floatformat:2 }}</td><td>{{ row.weight|pct }}</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endif %}
+                {% if ctx.unmapped_citics %}
+                <h6 class="mt-4 mb-3">未映射中信二级股票 Top 20</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead class="table-light"><tr><th>代码</th><th>名称</th><th>市值</th><th>权重</th></tr></thead>
+                        <tbody>
+                        {% for row in ctx.unmapped_citics %}
                         <tr><td>{{ row.code }}</td><td>{{ row.name }}</td><td>{{ row.market_value|floatformat:2 }}</td><td>{{ row.weight|pct }}</td></tr>
                         {% endfor %}
                         </tbody>

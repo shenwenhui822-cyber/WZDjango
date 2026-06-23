@@ -210,7 +210,7 @@ def build_wind_charts(citics_df, theme_df, style_df) -> dict[str, str]:
         style_chart = chart_generic_weight(s, "label", "宽基板块权重", top_n=8)
     return {
         "chart_citics_weight": chart_generic_weight(citics_df, "indus_name", "中信二级行业权重 Top 12"),
-        "chart_citics_excess": chart_generic_excess(citics_df, "indus_name", "中信行业超额 Top 12"),
+        "chart_citics_excess": chart_generic_excess(citics_df, "indus_name", "中信行业重仓相对超额 Top 12"),
         "chart_theme_weight": chart_generic_weight(theme_df, "theme_name", "主题暴露 Top 12"),
         "chart_style_weight": style_chart,
     }
