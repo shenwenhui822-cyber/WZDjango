@@ -21,6 +21,7 @@ from .wind_analysis import (
 
 logger = logging.getLogger("position_daily.report")
 
+PROFIT_COL_LABEL = "累计盈亏"
 INDUSTRY_PCT_COLS = ["w_chg_pct", "indus_pct_chg", "excess_pct"]
 INDUSTRY_WEIGHT_COLS = ["weight"]
 INDUSTRY_TABLE_COLS = [
@@ -112,7 +113,7 @@ def _build_sortable_table(
 def _build_industry_all(industry_df: pd.DataFrame) -> list[dict]:
     rows, _ = _build_sortable_table(
         industry_df,
-        [(k, l) for k, l in zip(INDUSTRY_TABLE_COLS, ["代码", "行业", "只数", "权重", "持仓涨跌", "行业涨跌", "超额", "盈亏"])],
+        [(k, l) for k, l in zip(INDUSTRY_TABLE_COLS, ["代码", "行业", "只数", "权重", "持仓涨跌", "行业涨跌", "超额", PROFIT_COL_LABEL])],
         pct_cols=INDUSTRY_PCT_COLS,
         weight_cols=INDUSTRY_WEIGHT_COLS,
     )
@@ -204,7 +205,7 @@ def build_daily_report(trade_date: str, *, strategy_tag: str | None = None) -> D
             ("w_chg_pct", "持仓涨跌"),
             ("indus_pct_chg", "行业涨跌"),
             ("excess_pct", "超额"),
-            ("profit", "盈亏"),
+            ("profit", PROFIT_COL_LABEL),
         ]
         ctx.industry_all = _build_industry_all(industry_df)
 
@@ -263,7 +264,7 @@ def build_daily_report(trade_date: str, *, strategy_tag: str | None = None) -> D
             ("w_chg_pct", "持仓涨跌"),
             ("indus_pct_chg", "行业涨跌"),
             ("excess_pct", "超额"),
-            ("profit", "盈亏"),
+            ("profit", PROFIT_COL_LABEL),
         ]
         ctx.citics_all, _ = _build_sortable_table(
             citics_df, ctx.citics_columns,
@@ -295,7 +296,7 @@ def build_daily_report(trade_date: str, *, strategy_tag: str | None = None) -> D
             ("stock_count", "只数"),
             ("weight", "权重"),
             ("w_chg_pct", "持仓涨跌"),
-            ("profit", "盈亏"),
+            ("profit", PROFIT_COL_LABEL),
         ]
         ctx.theme_all, _ = _build_sortable_table(
             theme_df, ctx.theme_columns,
@@ -317,7 +318,7 @@ def build_daily_report(trade_date: str, *, strategy_tag: str | None = None) -> D
             ("index_pct_chg", "指数涨跌"),
             ("excess_pct", "超额"),
             ("bench_code", "基准代码"),
-            ("profit", "盈亏"),
+            ("profit", PROFIT_COL_LABEL),
         ]
         ctx.style_buckets, _ = _build_sortable_table(
             style_df, ctx.style_columns,
@@ -329,7 +330,7 @@ def build_daily_report(trade_date: str, *, strategy_tag: str | None = None) -> D
             ("stock_count", "只数"),
             ("weight", "权重"),
             ("w_chg_pct", "持仓涨跌"),
-            ("profit", "盈亏"),
+            ("profit", PROFIT_COL_LABEL),
         ]
         ctx.mv_style, _ = _build_sortable_table(
             mv_df, ctx.mv_style_columns,
@@ -348,7 +349,7 @@ def build_daily_report(trade_date: str, *, strategy_tag: str | None = None) -> D
             ("change_pct", "涨跌"),
             ("daily_contrib", "当日贡献"),
             ("daily_contrib_pct", "贡献占比"),
-            ("profit", "累计盈亏"),
+            ("profit", PROFIT_COL_LABEL),
         ]
         ctx.stock_top_gain = _df_to_records(
             top_gain,
