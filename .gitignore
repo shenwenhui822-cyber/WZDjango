@@ -25,4 +25,4 @@ import_daily_nav_master.py
 /downloaded_attachments_sasq16/
 /cumulative_nav/
 /reports/
-
+*.pkl
