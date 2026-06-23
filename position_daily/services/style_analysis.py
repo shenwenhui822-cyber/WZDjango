@@ -8,6 +8,7 @@ import pandas as pd
 
 from .config import BENCH_WIND_MAP, BUCKET_ORDER, MV_LARGE_WAN, MV_MID_WAN
 from .mongo import rq_db
+from .stock_contribution import sum_daily_pnl
 from .wind_db import _fetch_df, query_in_batches, resolve_trade_dt
 
 logger = logging.getLogger("position_daily.style")
@@ -84,6 +85,7 @@ def analyze_style(pos_df: pd.DataFrame, trade_date: str) -> tuple[pd.DataFrame, 
                 "w_chg_pct": w_chg_pct,
                 "index_pct_chg": indus_pct,
                 "excess_pct": w_chg_pct - indus_pct if pd.notna(indus_pct) else None,
+                "daily_pnl": sum_daily_pnl(g),
                 "profit": g["profit"].sum(),
                 "bench_code": bench,
             }
@@ -116,6 +118,7 @@ def analyze_style(pos_df: pd.DataFrame, trade_date: str) -> tuple[pd.DataFrame, 
                         "stock_count": len(g),
                         "weight": bw,
                         "w_chg_pct": w_chg / bw if bw else 0.0,
+                        "daily_pnl": sum_daily_pnl(g),
                         "profit": g["profit"].sum(),
                     }
                 )

@@ -46,7 +46,7 @@ def _cache_valid(ctx: DailyReportContext) -> bool:
         and isinstance(ctx.industry_all, list)
         and hasattr(ctx, "valuation")
         and isinstance(ctx.valuation, dict)
-        and hasattr(ctx, "unmapped_citics")
+        and any(k == "daily_pnl" for k, _ in getattr(ctx, "industry_columns", []))
     )
 
 

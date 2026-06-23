@@ -7,6 +7,7 @@ import logging
 import numpy as np
 import pandas as pd
 
+from .stock_contribution import sum_daily_pnl
 from .wind_db import (
     BATCH_SIZE,
     _fetch_df,
@@ -245,6 +246,7 @@ def _build_industry_style_df(
                 "w_chg_pct": w_chg_pct,
                 "indus_pct_chg": indus_pct,
                 "excess_pct": w_chg_pct - indus_pct if pd.notna(indus_pct) else None,
+                "daily_pnl": sum_daily_pnl(g),
                 "profit": g["profit"].sum(),
             }
         )
@@ -345,6 +347,7 @@ def analyze_theme(pos_df: pd.DataFrame, trade_date: str) -> tuple[pd.DataFrame, 
                 "stock_count": g["code"].nunique(),
                 "weight": tw,
                 "w_chg_pct": w_chg / tw if tw else 0.0,
+                "daily_pnl": sum_daily_pnl(g),
                 "profit": g["profit"].sum(),
             }
         )

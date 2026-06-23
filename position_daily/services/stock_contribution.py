@@ -5,12 +5,21 @@ from __future__ import annotations
 import pandas as pd
 
 
+def calc_daily_pnl(df: pd.DataFrame) -> pd.Series:
+    """当日浮动盈亏（元）= 市值 × 涨跌幅 / 100。"""
+    return df["market_value"] * df["change_pct"] / 100
+
+
+def sum_daily_pnl(g: pd.DataFrame) -> float:
+    return float(calc_daily_pnl(g).sum())
+
+
 def analyze_stock_contribution(
     pos_df: pd.DataFrame, top_n: int = 15
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     df = pos_df.copy()
     total_mv = float(df["market_value"].sum()) or 1.0
-    df["daily_contrib"] = df["market_value"] * df["change_pct"] / 100
+    df["daily_contrib"] = calc_daily_pnl(df)
     df["daily_contrib_pct"] = df["daily_contrib"] / total_mv * 100
     df["contrib_to_return"] = df["weight"] * df["change_pct"]
 

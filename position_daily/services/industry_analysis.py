@@ -4,6 +4,7 @@ import logging
 import pandas as pd
 
 from .mongo import rq_db
+from .stock_contribution import sum_daily_pnl
 
 logger = logging.getLogger("position_daily.industry")
 
@@ -117,6 +118,7 @@ def analyze_industry(
                 "w_chg_pct": w_chg_pct,
                 "indus_pct_chg": indus_pct,
                 "excess_pct": w_chg_pct - indus_pct if pd.notna(indus_pct) else None,
+                "daily_pnl": sum_daily_pnl(g),
                 "profit": g["profit"].sum(),
             }
         )

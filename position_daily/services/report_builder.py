@@ -10,7 +10,7 @@ from .charts import build_industry_charts, build_wind_charts
 from .config import STRATEGY_TAG
 from .industry_analysis import analyze_industry
 from .position import load_position
-from .stock_contribution import analyze_stock_contribution
+from .stock_contribution import analyze_stock_contribution, calc_daily_pnl
 from .style_analysis import analyze_style
 from .wind_analysis import (
     analyze_citics_industry,
@@ -22,8 +22,10 @@ from .wind_analysis import (
 logger = logging.getLogger("position_daily.report")
 
 PROFIT_COL_LABEL = "累计盈亏"
+DAILY_PROFIT_COL_LABEL = "当日盈亏"
 INDUSTRY_PCT_COLS = ["w_chg_pct", "indus_pct_chg", "excess_pct"]
 INDUSTRY_WEIGHT_COLS = ["weight"]
+INDUSTRY_NUM_COLS = ["daily_pnl", "profit"]
 INDUSTRY_TABLE_COLS = [
     "indus_code",
     "indus_name",
@@ -32,6 +34,7 @@ INDUSTRY_TABLE_COLS = [
     "w_chg_pct",
     "indus_pct_chg",
     "excess_pct",
+    "daily_pnl",
     "profit",
 ]
 
@@ -69,6 +72,8 @@ def _df_to_records(df: pd.DataFrame, pct_cols=None, weight_cols=None) -> list[di
                 item[c] = f"{float(v):.2f}%"
             elif c in pct_cols:
                 item[c] = "—"
+            elif c in (INDUSTRY_NUM_COLS + STOCK_NUM_COLS) and pd.notna(v):
+                item[c] = round(float(v), 2)
             elif isinstance(v, float):
                 item[c] = round(v, 4) if abs(v) < 1000 else round(v, 2)
             else:
@@ -113,7 +118,10 @@ def _build_sortable_table(
 def _build_industry_all(industry_df: pd.DataFrame) -> list[dict]:
     rows, _ = _build_sortable_table(
         industry_df,
-        [(k, l) for k, l in zip(INDUSTRY_TABLE_COLS, ["代码", "行业", "只数", "权重", "持仓涨跌", "行业涨跌", "超额", PROFIT_COL_LABEL])],
+        [(k, l) for k, l in zip(
+            INDUSTRY_TABLE_COLS,
+            ["代码", "行业", "只数", "权重", "持仓涨跌", "行业涨跌", "超额", DAILY_PROFIT_COL_LABEL, PROFIT_COL_LABEL],
+        )],
         pct_cols=INDUSTRY_PCT_COLS,
         weight_cols=INDUSTRY_WEIGHT_COLS,
     )
@@ -196,6 +204,7 @@ def build_daily_report(trade_date: str, *, strategy_tag: str | None = None) -> D
         ctx.summary = summary
         ctx.meta = meta
         ctx.quality = dict(ind_quality)
+        ctx.quality["daily_pnl"] = float(calc_daily_pnl(pos_df).sum())
         ctx.industry_count = len(industry_df)
         ctx.industry_columns = [
             ("indus_code", "代码"),
@@ -205,6 +214,7 @@ def build_daily_report(trade_date: str, *, strategy_tag: str | None = None) -> D
             ("w_chg_pct", "持仓涨跌"),
             ("indus_pct_chg", "行业涨跌"),
             ("excess_pct", "超额"),
+            ("daily_pnl", DAILY_PROFIT_COL_LABEL),
             ("profit", PROFIT_COL_LABEL),
         ]
         ctx.industry_all = _build_industry_all(industry_df)
@@ -264,6 +274,7 @@ def build_daily_report(trade_date: str, *, strategy_tag: str | None = None) -> D
             ("w_chg_pct", "持仓涨跌"),
             ("indus_pct_chg", "行业涨跌"),
             ("excess_pct", "超额"),
+            ("daily_pnl", DAILY_PROFIT_COL_LABEL),
             ("profit", PROFIT_COL_LABEL),
         ]
         ctx.citics_all, _ = _build_sortable_table(
@@ -296,6 +307,7 @@ def build_daily_report(trade_date: str, *, strategy_tag: str | None = None) -> D
             ("stock_count", "只数"),
             ("weight", "权重"),
             ("w_chg_pct", "持仓涨跌"),
+            ("daily_pnl", DAILY_PROFIT_COL_LABEL),
             ("profit", PROFIT_COL_LABEL),
         ]
         ctx.theme_all, _ = _build_sortable_table(
@@ -318,6 +330,7 @@ def build_daily_report(trade_date: str, *, strategy_tag: str | None = None) -> D
             ("index_pct_chg", "指数涨跌"),
             ("excess_pct", "超额"),
             ("bench_code", "基准代码"),
+            ("daily_pnl", DAILY_PROFIT_COL_LABEL),
             ("profit", PROFIT_COL_LABEL),
         ]
         ctx.style_buckets, _ = _build_sortable_table(
@@ -330,6 +343,7 @@ def build_daily_report(trade_date: str, *, strategy_tag: str | None = None) -> D
             ("stock_count", "只数"),
             ("weight", "权重"),
             ("w_chg_pct", "持仓涨跌"),
+            ("daily_pnl", DAILY_PROFIT_COL_LABEL),
             ("profit", PROFIT_COL_LABEL),
         ]
         ctx.mv_style, _ = _build_sortable_table(
@@ -347,7 +361,7 @@ def build_daily_report(trade_date: str, *, strategy_tag: str | None = None) -> D
             ("name", "名称"),
             ("weight", "权重"),
             ("change_pct", "涨跌"),
-            ("daily_contrib", "当日贡献"),
+            ("daily_contrib", DAILY_PROFIT_COL_LABEL),
             ("daily_contrib_pct", "贡献占比"),
             ("profit", PROFIT_COL_LABEL),
         ]
