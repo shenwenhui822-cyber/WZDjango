@@ -64,6 +64,32 @@
             padding: 0.65rem 0.85rem;
         }
         .pd-top-right-panel .stat-value { font-size: 1.15rem; }
+        .pd-overview-stats > [class*="col-"] { display: flex; }
+        .pd-top-right-panel .pd-overview-stats .stat-card {
+            flex: 1 1 auto;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 0.75rem 0.5rem;
+            border: 1px solid #eef0f2;
+            min-height: 4.75rem;
+        }
+        .pd-top-right-panel .pd-overview-stats .stat-label {
+            font-size: 0.8rem;
+            margin-bottom: 0.35rem;
+            line-height: 1.25;
+        }
+        .pd-top-right-panel .pd-overview-stats .stat-value {
+            font-size: 1.1rem;
+            font-variant-numeric: tabular-nums;
+            line-height: 1.25;
+        }
+        .pd-top-right-panel .pd-overview-stats .stat-value.stat-value-sm {
+            font-size: 1rem;
+        }
         .product-list {
             height: 100%;
             min-height: 0;
@@ -234,20 +260,20 @@
                     {% if error %}
                     <div class="alert alert-danger mb-0 shadow-sm">{{ error }}</div>
                     {% else %}
-                    <div class="row g-2">
-                        <div class="col-6 col-md-4 col-xl-2">
+                    <div class="row g-2 pd-overview-stats">
+                        <div class="col-6 col-md-4">
                             <div class="stat-card">
                                 <div class="stat-label">持仓只数</div>
                                 <div class="stat-value">{{ ctx.summary.count }}</div>
                             </div>
                         </div>
-                        <div class="col-6 col-md-4 col-xl-2">
+                        <div class="col-6 col-md-4">
                             <div class="stat-card">
                                 <div class="stat-label">股票市值</div>
                                 <div class="stat-value">{{ ctx.summary.total_market_value|floatformat:0 }}</div>
                             </div>
                         </div>
-                        <div class="col-6 col-md-4 col-xl-2">
+                        <div class="col-6 col-md-4">
                             <div class="stat-card">
                                 <div class="stat-label">等权平均涨跌</div>
                                 <div class="stat-value {% if ctx.summary.avg_change_pct >= 0 %}positive{% else %}negative{% endif %}">
@@ -255,17 +281,17 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="col-6 col-md-4 col-xl-3">
+                        <div class="col-6 col-md-4">
                             <div class="stat-card">
                                 <div class="stat-label">上涨 / 下跌 / 平盘</div>
-                                <div class="stat-value" style="font-size:1.1rem">
+                                <div class="stat-value stat-value-sm">
                                     <span class="positive">{{ ctx.summary.up_count }}</span> /
                                     <span class="negative">{{ ctx.summary.down_count }}</span> /
                                     {{ ctx.summary.flat_count }}
                                 </div>
                             </div>
                         </div>
-                        <div class="col-6 col-md-4 col-xl-2">
+                        <div class="col-6 col-md-4">
                             <div class="stat-card">
                                 <div class="stat-label">当日浮动盈亏</div>
                                 <div class="stat-value {% if ctx.quality.daily_pnl >= 0 %}positive{% else %}negative{% endif %}">
@@ -273,7 +299,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="col-6 col-md-4 col-xl-2">
+                        <div class="col-6 col-md-4">
                             <div class="stat-card">
                                 <div class="stat-label">累计浮动盈亏</div>
                                 <div class="stat-value {% if ctx.summary.total_profit >= 0 %}positive{% else %}negative{% endif %}">
