@@ -12,6 +12,7 @@ from typing import Any
 # 邮件类任务在各自命令内校验「查询日～运行日」闭区间交易日个数 ≤ MAIL_JOB_MAX_TRADING_DAY_SPAN（默认 3）。
 # auto_import_qichat_t0_mail：IMAP 动态主题拉取上周 CSV + 入库（仅调度：每周首个交易日，见 alpha_mail_scheduler._should_skip_scheduled_job）。
 DEFAULT_MAIL_SCHEDULER_SCHEDULES: list[tuple[str, str, dict[str, Any]]] = [
+    ("08:00", "purge_position_daily_cache", {"scheduler_job_key": "position_daily_cache_purge"}),
     ("08:40", "auto_import_lhjx_position_mail", {"scheduler_job_key": "lhjx_position"}),
     ("09:00", "auto_import_htzq_ht1_capital_mail", {"scheduler_job_key": "htzq_ht1_capital"}),
     ("09:30", "update_rq_bench", {"scheduler_job_key": "rq_bench"}),
@@ -147,6 +148,10 @@ def _position_close_record_sync_enabled() -> bool:
     return _env_enabled("POSITION_CLOSE_RECORD_SCHEDULER_ENABLED")
 
 
+def _position_daily_cache_purge_enabled() -> bool:
+    return _env_enabled("POSITION_DAILY_CACHE_PURGE_SCHEDULER_ENABLED")
+
+
 def _t0_ftp_sync_enabled() -> bool:
     return _env_enabled("T0_FTP_SYNC_SCHEDULER_ENABLED")
 
@@ -208,6 +213,8 @@ def get_active_mail_scheduler_schedules() -> list[tuple[str, str, dict[str, Any]
         s = [x for x in s if x[1] != "auto_import_wz_lyh_nav_mail"]
     if not _position_close_record_sync_enabled():
         s = [x for x in s if x[1] != "sync_position_close_record"]
+    if not _position_daily_cache_purge_enabled():
+        s = [x for x in s if x[1] != "purge_position_daily_cache"]
     if not _t0_ftp_sync_enabled():
         s = [x for x in s if x[1] != "sync_t0_performance"]
     if not _t0_qichat_weekly_sync_enabled():

@@ -50,6 +50,37 @@ def _cache_valid(ctx: DailyReportContext) -> bool:
     )
 
 
+def purge_cached_reports(trade_date: str) -> dict[str, object]:
+    """删除指定快照日各 strategy_tag 下的 pkl 缓存。返回 removed / errors 摘要。"""
+    day = (trade_date or "").strip()
+    removed: list[str] = []
+    errors: list[str] = []
+    if not day:
+        return {"trade_date": "", "removed": removed, "removed_count": 0, "errors": errors}
+    if not CACHE_DIR.is_dir():
+        return {"trade_date": day, "removed": removed, "removed_count": 0, "errors": errors}
+    for tag_dir in sorted(CACHE_DIR.iterdir()):
+        if not tag_dir.is_dir():
+            continue
+        path = tag_dir / f"{day}.pkl"
+        if not path.is_file():
+            continue
+        try:
+            path.unlink()
+            removed.append(str(path))
+            logger.info("已删除缓存 date=%s path=%s", day, path)
+        except OSError as exc:
+            msg = f"{path}: {exc}"
+            errors.append(msg)
+            logger.exception("删除缓存失败 date=%s path=%s", day, path)
+    return {
+        "trade_date": day,
+        "removed": removed,
+        "removed_count": len(removed),
+        "errors": errors,
+    }
+
+
 def get_daily_report(
     trade_date: str,
     *,
