@@ -79,8 +79,14 @@ ALPHA_DAILY_SCHEMA = "alpha_daily"
 
 # 导入 alpha_sim_nav 时：Excel 产品名 -> 入库 product_name（精确匹配）
 ALPHA_DAILY_PRODUCT_NAME_IMPORT_RENAMES: dict[str, str] = {
-    "1000指增": "产品-1000指增",
-    "量化选股": "产品-量化选股",
+    "吾执一三号": "产品-吾执一三号",
+    "吾执三零号": "产品-吾执三零号",
+    "吾执二二号": "产品-吾执二二号",
+    "吾执多元一号": "产品-吾执多元一号",
+    "吾执多元量选": "产品-吾执多元量选",
+    "吾执泽鑫多维": "产品-吾执泽鑫多维",
+    "吾执量化精选一号": "产品-吾执量化精选一号",
+    "吾执量化精选二号": "产品-吾执量化精选二号",
 }
 
 # alpha 日报邮件附件（subject_date = YYYYMMDD）
@@ -115,6 +121,26 @@ def classify_alpha_daily_mail_attachment(
 
 def is_alpha_daily_new_mail_attachment(filename: str, subject_date: str) -> bool:
     return classify_alpha_daily_mail_attachment(filename, subject_date) == "new"
+
+
+_ALPHA_DAILY_NEW_SUMMARY_XLSX_FILENAME = re.compile(
+    r"^新Alpha产品表现汇总_(20\d{6})(?:_\d+)?\.xlsx$",
+    re.IGNORECASE,
+)
+
+
+def is_alpha_daily_new_summary_xlsx_filename(filename: str) -> bool:
+    """本地 xlsx 是否为「新Alpha产品表现汇总_YYYYMMDD」附件（与邮件导入一致）。"""
+    return bool(_ALPHA_DAILY_NEW_SUMMARY_XLSX_FILENAME.match(filename))
+
+
+def resolve_alpha_daily_product_name_normalizer_for_filename(
+    filename: str,
+) -> Callable[[object], str | None]:
+    """按文件名选择产品名规范化：新表全量加「产品-」，原表仅映射指定简称。"""
+    if is_alpha_daily_new_summary_xlsx_filename(filename):
+        return normalize_alpha_daily_product_name_for_new_summary_import
+    return normalize_alpha_daily_product_name_for_import
 
 
 def normalize_alpha_daily_product_name_for_import(product_name: object) -> str | None:

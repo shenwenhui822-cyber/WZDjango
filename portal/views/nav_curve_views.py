@@ -45,10 +45,16 @@ def _zxdw_nav_product_keys() -> frozenset[str]:
     return frozenset(getattr(settings, "MONGODB_ZXDW_NAV_COLLECTIONS", ()))
 
 
-# 左侧产品列表一级直出（不折叠、无二级子列表）
+# 左侧产品列表一级直出（不折叠、无二级子列表）；Excel 简称见 alpha_daily_schema.ALPHA_DAILY_PRODUCT_NAME_IMPORT_RENAMES
 _BENCH_COMPARE_FLAT_PRODUCTS: tuple[str, ...] = (
-    "产品-1000指增",
-    "产品-量化选股",
+    "产品-吾执一三号",
+    "产品-吾执三零号",
+    "产品-吾执二二号",
+    "产品-吾执多元一号",
+    "产品-吾执多元量选",
+    "产品-吾执泽鑫多维",
+    "产品-吾执量化精选一号",
+    "产品-吾执量化精选二号",
 )
 
 _BENCH_COMPARE_DEFAULT_PRODUCT = _BENCH_COMPARE_FLAT_PRODUCTS[0]

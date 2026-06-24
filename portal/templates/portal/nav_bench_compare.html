@@ -124,7 +124,7 @@
                         {% if group.flat %}
                         <label class="cmp-product-item cmp-product-flat {% if group.name == selected_product %}is-active{% endif %}" for="cmp_flat_{{ forloop.counter }}">
                             <input class="form-check-input cmp-product-radio" type="radio" name="product_name" value="{{ group.name }}" id="cmp_flat_{{ forloop.counter }}" {% if group.name == selected_product %}checked{% endif %}>
-                            <span class="cmp-product-text">{{ group.name }}</span>
+                            <span class="cmp-product-text">{{ group.display|default:group.name }}</span>
                         </label>
                         {% else %}
                         <details class="cmp-group" {% if group.open %}open{% endif %}>
@@ -160,7 +160,7 @@
                     <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
                         <div>
                             <div class="h4 mb-0">基金净值与基准对比</div>
-                            <div class="text-muted small" id="cmpSubtitle">{{ selected_product|default:"-" }} vs {{ bench_name|default:bench_code|default:"-" }}</div>
+                            <div class="text-muted small" id="cmpSubtitle">{{ selected_product_display|default:selected_product|default:"-" }} vs {{ bench_name|default:bench_code|default:"-" }}</div>
                         </div>
                         <div class="btn-group btn-group-sm" role="group" aria-label="区间选择">
                             <input type="radio" class="btn-check cmp-recent" name="recent" id="cmp_r1m" value="21" {% if recent == "21" %}checked{% endif %}>
@@ -543,7 +543,7 @@
                         ? '<div class="alert alert-danger">' + esc(data.error_msg) + '</div>'
                         : '';
                 }
-                if (subtitleEl) subtitleEl.textContent = (data.selected_product || '-') + ' vs ' + (data.bench_name || '-');
+                if (subtitleEl) subtitleEl.textContent = (data.selected_product_display || data.selected_product || '-') + ' vs ' + (data.bench_name || '-');
                 if (rowCountEl) rowCountEl.textContent = String(data.row_count || 0);
                 if (kpiMddEl) kpiMddEl.textContent = formatNum(data.metrics && data.metrics.max_drawdown_pct, 2, '%');
                 if (kpiVolEl) kpiVolEl.textContent = formatNum(data.metrics && data.metrics.annual_vol_pct, 2, '%');
