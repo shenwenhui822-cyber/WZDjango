@@ -48,6 +48,7 @@ def _cache_valid(ctx: DailyReportContext) -> bool:
         and isinstance(ctx.valuation, dict)
         and hasattr(ctx, "stock_all")
         and isinstance(getattr(ctx, "stock_all", None), list)
+        and "total_asset" in getattr(ctx, "quality", {})
     )
 
 

@@ -57,12 +57,17 @@ def analyze_style(pos_df: pd.DataFrame, trade_date: str) -> tuple[pd.DataFrame, 
     idx_df = pd.DataFrame(idx_rows)
     logger.info("rq_base_index 返回 %d 条 date=%s", len(idx_df), trade_date)
 
-    merged = pos_df.merge(idx_df, on="code_rq", how="left")
-    for _, col in BUCKET_ORDER:
-        if col not in merged.columns:
+    if idx_df.empty or "code_rq" not in idx_df.columns:
+        merged = pos_df.copy()
+        for _, col in BUCKET_ORDER:
             merged[col] = 0
-        else:
-            merged[col] = merged[col].fillna(0)
+    else:
+        merged = pos_df.merge(idx_df, on="code_rq", how="left")
+        for _, col in BUCKET_ORDER:
+            if col not in merged.columns:
+                merged[col] = 0
+            else:
+                merged[col] = merged[col].fillna(0)
     merged["bucket"] = merged.apply(_assign_bucket, axis=1)
 
     trade_dt = resolve_trade_dt("AINDEXEODPRICES", trade_date)
@@ -128,7 +133,9 @@ def analyze_style(pos_df: pd.DataFrame, trade_date: str) -> tuple[pd.DataFrame, 
                 mv_df["bucket"] = pd.Categorical(mv_df["bucket"], categories=mv_order, ordered=True)
                 mv_df = mv_df.sort_values("bucket")
 
-    unmatched = merged[merged["in_HS300"].isna()] if not idx_df.empty else merged
+    unmatched = merged
+    if not idx_df.empty and "in_HS300" in merged.columns:
+        unmatched = merged[merged["in_HS300"].isna()]
     quality["index_unmatched"] = int(unmatched["code"].nunique()) if not unmatched.empty else 0
     quality["index_unmatched_mv_pct"] = float(unmatched["weight"].sum()) if not unmatched.empty else 0.0
     return bucket_df, mv_df, quality

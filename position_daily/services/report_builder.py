@@ -9,7 +9,7 @@ import pandas as pd
 from .charts import build_industry_charts, build_wind_charts
 from .config import STRATEGY_TAG
 from .industry_analysis import analyze_industry
-from .position import get_prev_snapshot_date, load_position, load_positions_df
+from .position import get_prev_snapshot_date, load_account_meta, load_position, load_positions_df
 from .stock_contribution import (
     analyze_stock_contribution,
     build_all_stock_holdings,
@@ -25,8 +25,8 @@ from .wind_analysis import (
 
 logger = logging.getLogger("position_daily.report")
 
-PROFIT_COL_LABEL = "累计盈亏"
-DAILY_PROFIT_COL_LABEL = "当日盈亏"
+PROFIT_COL_LABEL = "当前持仓累计浮动盈亏"
+DAILY_PROFIT_COL_LABEL = "当前持仓浮动盈亏"
 INDUSTRY_PCT_COLS = ["w_chg_pct", "indus_pct_chg", "excess_pct"]
 INDUSTRY_WEIGHT_COLS = ["weight"]
 INDUSTRY_NUM_COLS = ["daily_pnl", "profit"]
@@ -217,8 +217,16 @@ def build_daily_report(trade_date: str, *, strategy_tag: str | None = None) -> D
         ctx.meta = meta
         ctx.quality = dict(ind_quality)
         ctx.quality["daily_pnl"] = float(pos_df["daily_contrib"].sum())
+        if meta.get("total_asset") is not None:
+            ctx.quality["total_asset"] = float(meta["total_asset"])
         if prev_date:
             ctx.quality["prev_snapshot_date"] = prev_date
+            prev_meta = load_account_meta(prev_date, strategy_tag=tag)
+            prev_asset = prev_meta.get("total_asset") if prev_meta else None
+            if prev_asset is not None:
+                ctx.quality["prev_total_asset"] = float(prev_asset)
+            if meta.get("total_asset") is not None and prev_asset is not None:
+                ctx.quality["total_asset_change"] = float(meta["total_asset"]) - float(prev_asset)
         ctx.industry_count = len(industry_df)
         ctx.industry_columns = [
             ("indus_code", "代码"),
@@ -434,11 +442,13 @@ def render_markdown(ctx: DailyReportContext) -> str:
         "| 指标 | 数值 |",
         "|------|------|",
         f"| 持仓只数 | {s.get('count', '—')} |",
+        f"| 当前总资产 | {_num(ctx.quality.get('total_asset') or ctx.meta.get('total_asset'))} |",
+        f"| 较前一日变化资金 | {_num(ctx.quality.get('total_asset_change'))} |",
         f"| 股票市值 | {_num(s.get('total_market_value'))} |",
         f"| 等权平均涨跌 | {_pct(s.get('avg_change_pct'))} |",
         f"| 上涨/下跌/平盘 | {s.get('up_count', '—')}/{s.get('down_count', '—')}/{s.get('flat_count', '—')} |",
-        f"| 当日浮动盈亏 | {_num(ctx.quality.get('daily_pnl'))} |",
-        f"| 累计浮动盈亏 | {_num(s.get('total_profit'))} |",
+        f"| 当前持仓浮动盈亏 | {_num(ctx.quality.get('daily_pnl'))} |",
+        f"| 当前持仓累计浮动盈亏 | {_num(s.get('total_profit'))} |",
         "",
         "## 二、申万二级行业（rq_daily_indusSWL2_price）",
         "",
@@ -470,7 +480,7 @@ def render_markdown(ctx: DailyReportContext) -> str:
         "",
         "## 八、单票贡献",
         "",
-        f"当日组合盈亏约 {_num(ctx.quality.get('daily_pnl'))}。",
+        f"当前持仓浮动盈亏合计约 {_num(ctx.quality.get('daily_pnl'))}。",
         "",
         "## 十、全部持股",
         "",

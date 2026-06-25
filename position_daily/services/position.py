@@ -48,6 +48,21 @@ def load_positions_df(trade_date: str, *, strategy_tag: str | None = None) -> pd
     return pos_df
 
 
+def load_account_meta(trade_date: str, *, strategy_tag: str | None = None) -> dict | None:
+    """账户级快照字段；无快照时返回 None。"""
+    tag = (strategy_tag or STRATEGY_TAG).strip()
+    doc = position_col(tag).find_one({"snapshot_date": trade_date})
+    if not doc:
+        return None
+    account = doc["accounts"][0]
+    return {
+        "total_asset": account.get("total_asset"),
+        "market_value": account.get("market_value"),
+        "available_cash": account.get("available_cash"),
+        "position_profit": account.get("position_profit"),
+    }
+
+
 def load_position(trade_date: str, *, strategy_tag: str | None = None) -> tuple[pd.DataFrame, dict, dict]:
     """返回 (pos_df, summary, meta)"""
     tag = (strategy_tag or STRATEGY_TAG).strip()
