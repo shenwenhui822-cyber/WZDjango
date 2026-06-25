@@ -293,7 +293,7 @@
                         </div>
                         <div class="col-6 col-lg-3">
                             <div class="stat-card">
-                                <div class="stat-label">当前持仓浮动盈亏</div>
+                                <div class="stat-label">当日持仓浮动盈亏</div>
                                 <div class="stat-value {% if ctx.quality.daily_pnl >= 0 %}positive{% else %}negative{% endif %}">
                                     {{ ctx.quality.daily_pnl|floatformat:2|default:"—" }}
                                 </div>
