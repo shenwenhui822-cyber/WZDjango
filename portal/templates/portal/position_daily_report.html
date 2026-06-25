@@ -326,6 +326,7 @@
         <li class="nav-item"><a class="nav-link" href="#sec-theme">主题</a></li>
         <li class="nav-item"><a class="nav-link" href="#sec-style">宽基风格</a></li>
         <li class="nav-item"><a class="nav-link" href="#sec-stock">单票贡献</a></li>
+        <li class="nav-item"><a class="nav-link" href="#sec-all-stocks">全部持股</a></li>
         <li class="nav-item"><a class="nav-link" href="#sec-quality">数据质量</a></li>
     </ul>
 
@@ -336,7 +337,7 @@
             <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between mb-3">
                     <h6 class="text-secondary mb-0">2.1 全部行业{% if ctx.industry_count %}（共 {{ ctx.industry_count }} 个）{% endif %}</h6>
-                    <span class="text-muted small">持仓涨跌、超额为<strong>当日</strong>；当日盈亏 = Σ(市值×涨跌幅)；累计盈亏为相对成本的历史浮动盈亏 · 点击列标题排序</span>
+                    <span class="text-muted small">持仓涨跌、超额为<strong>当日</strong>；当日盈亏 = Σ(持仓×涨跌额)，加仓按成本、减仓按昨收至现价；累计盈亏为相对成本的历史浮动盈亏 · 点击列标题排序</span>
                 </div>
                 <div class="industry-table-wrap mb-4">
                     {% if ctx.industry_all %}
@@ -503,7 +504,7 @@
             <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between mb-3">
                     <h6 class="text-secondary mb-0">5.1 全部行业{% if ctx.citics_count %}（共 {{ ctx.citics_count }} 个）{% endif %}</h6>
-                    <span class="text-muted small">持仓涨跌、超额为<strong>当日</strong>；当日盈亏 = Σ(市值×涨跌幅)；累计盈亏为相对成本的历史浮动盈亏 · 点击列标题排序</span>
+                    <span class="text-muted small">持仓涨跌、超额为<strong>当日</strong>；当日盈亏 = Σ(持仓×涨跌额)，加仓按成本、减仓按昨收至现价；累计盈亏为相对成本的历史浮动盈亏 · 点击列标题排序</span>
                 </div>
                 <div class="industry-table-wrap mb-4">
                     {% if ctx.citics_all %}
@@ -576,7 +577,7 @@
         <div class="card">
             <div class="card-header">六、主题/概念暴露（Wind ASHAREWTHEMEINDUSTRIESCLASS）</div>
             <div class="card-body">
-                <p class="text-muted small mb-3">单票可属多主题，权重为暴露加总，合计可大于 100%。持仓涨跌为<strong>当日</strong>；当日盈亏 = Σ(市值×涨跌幅)；累计盈亏为相对成本的历史浮动盈亏。{% if ctx.quality.theme_top1 %} 最大主题：{{ ctx.quality.theme_top1 }}（{{ ctx.quality.theme_top1_weight|pct }}）{% endif %}</p>
+                <p class="text-muted small mb-3">单票可属多主题，权重为暴露加总，合计可大于 100%。持仓涨跌为<strong>当日</strong>；当日盈亏 = Σ(持仓×涨跌额)，加仓按成本、减仓按昨收至现价；累计盈亏为相对成本的历史浮动盈亏。{% if ctx.quality.theme_top1 %} 最大主题：{{ ctx.quality.theme_top1 }}（{{ ctx.quality.theme_top1_weight|pct }}）{% endif %}</p>
                 <div class="industry-table-wrap mb-4">
                     {% if ctx.theme_all %}
                     <table class="table table-sm table-hover align-middle mb-0 sortable-table" data-default-sort="weight">
@@ -605,7 +606,7 @@
         <div class="card">
             <div class="card-header">七、宽基风格（rq_base_index + Wind AINDEXEODPRICES）</div>
             <div class="card-body">
-                <p class="text-muted small mb-3">持仓涨跌、超额为<strong>当日</strong>；当日盈亏 = Σ(市值×涨跌幅)；累计盈亏为相对成本的历史浮动盈亏。</p>
+                <p class="text-muted small mb-3">持仓涨跌、超额为<strong>当日</strong>；当日盈亏 = Σ(持仓×涨跌额)，加仓按成本、减仓按昨收至现价；累计盈亏为相对成本的历史浮动盈亏。</p>
                 <h6 class="text-secondary">8.1 指数成分板块</h6>
                 <div class="industry-table-wrap mb-4">
                     {% if ctx.style_buckets %}
@@ -654,7 +655,7 @@
         <div class="card">
             <div class="card-header">八、单票贡献 Top 15</div>
             <div class="card-body">
-                <p class="text-muted small">当日盈亏 = 市值 × 涨跌幅；累计盈亏来自持仓快照 profit 字段。</p>
+                <p class="text-muted small">当日盈亏 = 持仓 × 涨跌额（与上一交易日快照比较区分加仓/减仓）；累计盈亏来自持仓快照 profit 字段。</p>
                 <div class="row g-4">
                     <div class="col-lg-6">
                         <h6 class="text-cn-up">贡献最大</h6>
@@ -691,10 +692,51 @@
         </div>
     </div>
 
-    <!-- 九、数据质量 -->
+    <!-- 十、全部持股 -->
+    <div id="sec-all-stocks" class="section-anchor">
+        <div class="card">
+            <div class="card-header">十、全部持股{% if ctx.stock_all_count %}（共 {{ ctx.stock_all_count }} 只）{% endif %}</div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">
+                    当日盈亏按持仓数量 × 涨跌额计算；与上一交易日快照比较识别新进/加仓/减仓。
+                    {% if ctx.quality.prev_snapshot_date %}对比快照：{{ ctx.quality.prev_snapshot_date }}{% endif %}
+                    · 点击列标题排序
+                </p>
+                <div class="industry-table-wrap">
+                    {% if ctx.stock_all %}
+                    <table id="all-stocks-table" class="table table-sm table-hover align-middle mb-0 sortable-table" data-default-sort="weight">
+                        <thead class="table-light">
+                        <tr>
+                            {% for key, label in ctx.stock_all_columns %}
+                            <th>
+                                <div class="th-sort-wrap">
+                                    <span>{{ label }}</span>
+                                    <button type="button" class="btn btn-outline-secondary sort-btn" data-key="{{ key }}" title="按{{ label }}排序">↕</button>
+                                </div>
+                            </th>
+                            {% endfor %}
+                        </tr>
+                        </thead>
+                        <tbody id="all-stocks-tbody">
+                        {% for row in ctx.stock_all %}
+                        <tr>
+                            {% for key, label in ctx.stock_all_columns %}
+                            <td data-sort-key="{{ key }}" data-sort-val="{{ row.sort|get_item:key }}">{{ row.display|get_item:key }}</td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}<p class="text-muted mb-0">无数据</p>{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 十一、数据质量 -->
     <div id="sec-quality" class="section-anchor">
         <div class="card">
-            <div class="card-header">九、数据质量</div>
+            <div class="card-header">十一、数据质量</div>
             <div class="card-body">
                 <ul class="mb-0">
                     <li>未映射申万二级：{{ ctx.quality.indus_unmapped }} 只（市值占比 {{ ctx.quality.indus_unmapped_mv_pct|pct }}）</li>
@@ -798,7 +840,7 @@ if (sel && inp) {
     });
 }
 (function () {
-    var STRING_KEYS = ['indus_code', 'indus_name', 'theme_code', 'theme_name', 'bucket', 'code', 'name', 'bench_code'];
+    var STRING_KEYS = ['indus_code', 'indus_name', 'theme_code', 'theme_name', 'bucket', 'code', 'name', 'bench_code', 'trade_note'];
 
     function initSortableTable(table) {
         var tbody = table.querySelector('tbody');

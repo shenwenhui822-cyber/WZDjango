@@ -21,6 +21,33 @@ def snapshot_exists(trade_date: str, *, strategy_tag: str | None = None) -> bool
     return position_col(tag).find_one({"snapshot_date": trade_date}, {"_id": 1}) is not None
 
 
+def get_prev_snapshot_date(trade_date: str, *, strategy_tag: str | None = None) -> str | None:
+    """上一可用持仓快照日期（严格早于 trade_date）。"""
+    tag = (strategy_tag or STRATEGY_TAG).strip()
+    doc = position_col(tag).find_one(
+        {"snapshot_date": {"$lt": trade_date}},
+        {"snapshot_date": 1},
+        sort=[("snapshot_date", -1)],
+    )
+    return doc["snapshot_date"] if doc else None
+
+
+def load_positions_df(trade_date: str, *, strategy_tag: str | None = None) -> pd.DataFrame | None:
+    """仅返回持仓 DataFrame；无快照时返回 None。"""
+    tag = (strategy_tag or STRATEGY_TAG).strip()
+    doc = position_col(tag).find_one({"snapshot_date": trade_date})
+    if not doc:
+        return None
+    account = doc["accounts"][0]
+    pos_df = pd.DataFrame(account["positions"])
+    if pos_df.empty:
+        return None
+    pos_df["code_rq"] = pos_df["code"].map(wind_to_code_rq)
+    total_mv = pos_df["market_value"].sum()
+    pos_df["weight"] = pos_df["market_value"] / total_mv if total_mv else 0.0
+    return pos_df
+
+
 def load_position(trade_date: str, *, strategy_tag: str | None = None) -> tuple[pd.DataFrame, dict, dict]:
     """返回 (pos_df, summary, meta)"""
     tag = (strategy_tag or STRATEGY_TAG).strip()
@@ -28,15 +55,11 @@ def load_position(trade_date: str, *, strategy_tag: str | None = None) -> tuple[
     if not doc:
         raise ValueError(f"无持仓快照: {trade_date}")
 
-    account = doc["accounts"][0]
-    pos_df = pd.DataFrame(account["positions"])
-    if pos_df.empty:
+    pos_df = load_positions_df(trade_date, strategy_tag=tag)
+    if pos_df is None:
         raise ValueError(f"持仓为空: {trade_date}")
 
-    pos_df["code_rq"] = pos_df["code"].map(wind_to_code_rq)
-    total_mv = pos_df["market_value"].sum()
-    pos_df["weight"] = pos_df["market_value"] / total_mv if total_mv else 0.0
-
+    account = doc["accounts"][0]
     summary = account.get("position_summary") or {}
     meta = {
         "strategy_tag": doc.get("binding", {}).get("strategy_tag", ""),

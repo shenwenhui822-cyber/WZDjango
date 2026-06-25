@@ -9,8 +9,12 @@ import pandas as pd
 from .charts import build_industry_charts, build_wind_charts
 from .config import STRATEGY_TAG
 from .industry_analysis import analyze_industry
-from .position import load_position
-from .stock_contribution import analyze_stock_contribution, calc_daily_pnl
+from .position import get_prev_snapshot_date, load_position, load_positions_df
+from .stock_contribution import (
+    analyze_stock_contribution,
+    build_all_stock_holdings,
+    enrich_positions,
+)
 from .style_analysis import analyze_style
 from .wind_analysis import (
     analyze_citics_industry,
@@ -161,6 +165,9 @@ class DailyReportContext:
     stock_top_gain: list[dict] = field(default_factory=list)
     stock_top_loss: list[dict] = field(default_factory=list)
     stock_contrib_columns: list[tuple[str, str]] = field(default_factory=list)
+    stock_all: list[dict] = field(default_factory=list)
+    stock_all_columns: list[tuple[str, str]] = field(default_factory=list)
+    stock_all_count: int = 0
     quality: dict = field(default_factory=dict)
     chart_industry_weight: str = ""
     chart_industry_excess: str = ""
@@ -192,6 +199,11 @@ def build_daily_report(trade_date: str, *, strategy_tag: str | None = None) -> D
         _log("加载持仓...")
         t1 = time.perf_counter()
         pos_df, summary, meta = load_position(trade_date, strategy_tag=tag)
+        prev_date = get_prev_snapshot_date(trade_date, strategy_tag=tag)
+        prev_df = load_positions_df(prev_date, strategy_tag=tag) if prev_date else None
+        if prev_date:
+            _log(f"上一快照 {prev_date}（{len(prev_df) if prev_df is not None else 0} 只）")
+        pos_df = enrich_positions(pos_df, prev_df)
         _log(f"持仓 {len(pos_df)} 只 ({(time.perf_counter()-t1)*1000:.0f}ms)")
 
         _log("分析申万二级 rq_daily_indusSWL2_price...")
@@ -204,7 +216,9 @@ def build_daily_report(trade_date: str, *, strategy_tag: str | None = None) -> D
         ctx.summary = summary
         ctx.meta = meta
         ctx.quality = dict(ind_quality)
-        ctx.quality["daily_pnl"] = float(calc_daily_pnl(pos_df).sum())
+        ctx.quality["daily_pnl"] = float(pos_df["daily_contrib"].sum())
+        if prev_date:
+            ctx.quality["prev_snapshot_date"] = prev_date
         ctx.industry_count = len(industry_df)
         ctx.industry_columns = [
             ("indus_code", "代码"),
@@ -375,6 +389,7 @@ def build_daily_report(trade_date: str, *, strategy_tag: str | None = None) -> D
             pct_cols=["change_pct", "daily_contrib_pct"],
             weight_cols=["weight"],
         )
+        ctx.stock_all, ctx.stock_all_columns, ctx.stock_all_count = build_all_stock_holdings(pos_df)
         _log(f"单票 ({(time.perf_counter()-t1)*1000:.0f}ms)")
 
         _log("生成 Plotly 图表...")
@@ -422,7 +437,8 @@ def render_markdown(ctx: DailyReportContext) -> str:
         f"| 股票市值 | {_num(s.get('total_market_value'))} |",
         f"| 等权平均涨跌 | {_pct(s.get('avg_change_pct'))} |",
         f"| 上涨/下跌/平盘 | {s.get('up_count', '—')}/{s.get('down_count', '—')}/{s.get('flat_count', '—')} |",
-        f"| 浮动盈亏 | {_num(s.get('total_profit'))} |",
+        f"| 当日浮动盈亏 | {_num(ctx.quality.get('daily_pnl'))} |",
+        f"| 累计浮动盈亏 | {_num(s.get('total_profit'))} |",
         "",
         "## 二、申万二级行业（rq_daily_indusSWL2_price）",
         "",
@@ -456,7 +472,11 @@ def render_markdown(ctx: DailyReportContext) -> str:
         "",
         f"当日组合盈亏约 {_num(ctx.quality.get('daily_pnl'))}。",
         "",
-        "## 九、数据质量",
+        "## 十、全部持股",
+        "",
+        f"共 {ctx.stock_all_count} 只，详见 Web 报告。",
+        "",
+        "## 十一、数据质量",
         "",
         f"- 未映射申万二级：{ctx.quality.get('indus_unmapped', 0)} 只",
         f"- Wind 估值日期：{ctx.quality.get('wind_deriv_date', '—')}",
