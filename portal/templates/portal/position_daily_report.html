@@ -309,7 +309,7 @@
                         </div>
                         <div class="col-6 col-lg-3">
                             <div class="stat-card">
-                                <div class="stat-label">较前一日变化资金{% if ctx.quality.prev_snapshot_date %}<span class="text-muted fw-normal">（{{ ctx.quality.prev_snapshot_date }}）</span>{% endif %}</div>
+                                <div class="stat-label">总资金较前一日变化额{% if ctx.quality.prev_snapshot_date %}<span class="text-muted fw-normal">（{{ ctx.quality.prev_snapshot_date }}）</span>{% endif %}</div>
                                 <div class="stat-value {% if ctx.quality.total_asset_change is not None %}{% if ctx.quality.total_asset_change >= 0 %}positive{% else %}negative{% endif %}{% endif %}">
                                     {% if ctx.quality.total_asset_change is not None %}{{ ctx.quality.total_asset_change|floatformat:2 }}{% else %}—{% endif %}
                                 </div>
@@ -322,7 +322,7 @@
                             </div>
                         </div>
                     </div>
-                    <p class="text-muted small mb-0 mt-2">当前总资产含现金；较前一日变化资金 = 今日总资产 − 上一快照总资产（含交易、出入金等影响）。</p>
+                    <p class="text-muted small mb-0 mt-2">当前总资产含现金；总资金较前一日变化额 = 今日总资产 − 上一快照总资产（含交易、出入金等影响）。</p>
                     {% endif %}
                 </div>
             </div>
