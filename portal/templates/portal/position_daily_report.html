@@ -279,7 +279,7 @@
                         </div>
                         <div class="col-6 col-lg-3">
                             <div class="stat-card">
-                                <div class="stat-label">等权平均涨跌</div>
+                                <div class="stat-label">当日持仓平均持仓涨跌幅</div>
                                 <div class="stat-value {% if ctx.summary.avg_change_pct >= 0 %}positive{% else %}negative{% endif %}">
                                     {{ ctx.summary.avg_change_pct|floatformat:2 }}%
                                 </div>

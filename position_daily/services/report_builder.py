@@ -445,7 +445,7 @@ def render_markdown(ctx: DailyReportContext) -> str:
         f"| 当前总资产 | {_num(ctx.quality.get('total_asset') or ctx.meta.get('total_asset'))} |",
         f"| 总资金较前一日变化额 | {_num(ctx.quality.get('total_asset_change'))} |",
         f"| 股票市值 | {_num(s.get('total_market_value'))} |",
-        f"| 等权平均涨跌 | {_pct(s.get('avg_change_pct'))} |",
+        f"| 当日持仓平均持仓涨跌幅 | {_pct(s.get('avg_change_pct'))} |",
         f"| 上涨/下跌/平盘 | {s.get('up_count', '—')}/{s.get('down_count', '—')}/{s.get('flat_count', '—')} |",
         f"| 当前持仓浮动盈亏 | {_num(ctx.quality.get('daily_pnl'))} |",
         f"| 当前持仓累计浮动盈亏 | {_num(s.get('total_profit'))} |",
