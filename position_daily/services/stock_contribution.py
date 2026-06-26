@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pandas as pd
 
+from .formatters import format_money
+
 
 def _safe_float(value, default: float = 0.0) -> float:
     if value is None or (isinstance(value, float) and pd.isna(value)):
@@ -202,7 +204,7 @@ def build_all_stock_holdings(
             elif key == "change_pct" and pd.notna(v):
                 display[key] = f"{float(v):.2f}%"
             elif key in ("daily_contrib", "profit", "market_value", "last_price", "prev_close") and pd.notna(v):
-                display[key] = round(float(v), 2)
+                display[key] = format_money(v)
             elif key in ("volume", "available_volume", "prev_volume"):
                 display[key] = int(v) if pd.notna(v) else "—"
             elif pd.isna(v):

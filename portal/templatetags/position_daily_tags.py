@@ -1,5 +1,7 @@
 from django import template
 
+from position_daily.services.formatters import format_money
+
 register = template.Library()
 
 
@@ -8,6 +10,16 @@ def _normalize_wind_date(value) -> str | None:
         return None
     s = str(value).strip().replace("-", "")
     return s if len(s) == 8 and s.isdigit() else None
+
+
+@register.filter
+def money(value, arg="2"):
+    """金额千分位；可选小数位，如 {{ x|money:0 }}。"""
+    try:
+        digits = int(arg)
+    except (TypeError, ValueError):
+        digits = 2
+    return format_money(value, digits=digits)
 
 
 @register.filter

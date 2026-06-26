@@ -23,6 +23,8 @@ from .wind_analysis import (
     analyze_valuation,
 )
 
+from .formatters import format_money
+
 logger = logging.getLogger("position_daily.report")
 
 PROFIT_COL_LABEL = "当前持仓累计浮动盈亏"
@@ -55,9 +57,7 @@ def _pct(x, digits=2):
 
 
 def _num(x, digits=2):
-    if x is None or (isinstance(x, float) and pd.isna(x)):
-        return "—"
-    return f"{float(x):,.{digits}f}"
+    return format_money(x, digits=digits)
 
 
 def _df_to_records(df: pd.DataFrame, pct_cols=None, weight_cols=None) -> list[dict]:
@@ -77,7 +77,7 @@ def _df_to_records(df: pd.DataFrame, pct_cols=None, weight_cols=None) -> list[di
             elif c in pct_cols:
                 item[c] = "—"
             elif c in (INDUSTRY_NUM_COLS + STOCK_NUM_COLS) and pd.notna(v):
-                item[c] = round(float(v), 2)
+                item[c] = format_money(v)
             elif isinstance(v, float):
                 item[c] = round(v, 4) if abs(v) < 1000 else round(v, 2)
             else:

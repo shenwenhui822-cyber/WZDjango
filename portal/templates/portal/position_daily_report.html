@@ -288,14 +288,14 @@
                         <div class="col-6 col-lg-3">
                             <div class="stat-card">
                                 <div class="stat-label">股票市值</div>
-                                <div class="stat-value">{{ ctx.summary.total_market_value|floatformat:0 }}</div>
+                                <div class="stat-value">{{ ctx.summary.total_market_value|money:0 }}</div>
                             </div>
                         </div>
                         <div class="col-6 col-lg-3">
                             <div class="stat-card">
                                 <div class="stat-label">当日持仓浮动盈亏</div>
                                 <div class="stat-value {% if ctx.quality.daily_pnl >= 0 %}positive{% else %}negative{% endif %}">
-                                    {{ ctx.quality.daily_pnl|floatformat:2|default:"—" }}
+                                    {{ ctx.quality.daily_pnl|money|default:"—" }}
                                 </div>
                             </div>
                         </div>
@@ -303,7 +303,7 @@
                             <div class="stat-card">
                                 <div class="stat-label">当前持仓累计浮动盈亏</div>
                                 <div class="stat-value {% if ctx.summary.total_profit >= 0 %}positive{% else %}negative{% endif %}">
-                                    {{ ctx.summary.total_profit|floatformat:2 }}
+                                    {{ ctx.summary.total_profit|money }}
                                 </div>
                             </div>
                         </div>
@@ -311,14 +311,14 @@
                             <div class="stat-card">
                                 <div class="stat-label">总资金较前一日变化额{% if ctx.quality.prev_snapshot_date %}<span class="text-muted fw-normal">（{{ ctx.quality.prev_snapshot_date }}）</span>{% endif %}</div>
                                 <div class="stat-value {% if ctx.quality.total_asset_change is not None %}{% if ctx.quality.total_asset_change >= 0 %}positive{% else %}negative{% endif %}{% endif %}">
-                                    {% if ctx.quality.total_asset_change is not None %}{{ ctx.quality.total_asset_change|floatformat:2 }}{% else %}—{% endif %}
+                                    {% if ctx.quality.total_asset_change is not None %}{{ ctx.quality.total_asset_change|money }}{% else %}—{% endif %}
                                 </div>
                             </div>
                         </div>
                         <div class="col-6 col-lg-3">
                             <div class="stat-card">
                                 <div class="stat-label">当前总资产</div>
-                                <div class="stat-value">{{ ctx.quality.total_asset|floatformat:0|default:"—" }}</div>
+                                <div class="stat-value">{{ ctx.quality.total_asset|money:0|default:"—" }}</div>
                             </div>
                         </div>
                     </div>
@@ -446,7 +446,7 @@
                     <div class="col-6 col-md-3">
                         <div class="stat-card">
                             <div class="stat-label">加权市值（亿）</div>
-                            <div class="stat-value">{{ ctx.valuation.w_mv_yi|floatformat:2|default:"—" }}</div>
+                            <div class="stat-value">{{ ctx.valuation.w_mv_yi|money|default:"—" }}</div>
                         </div>
                     </div>
                     <div class="col-6 col-md-3">
@@ -483,7 +483,7 @@
                     <div class="col-6 col-md-3">
                         <div class="stat-card">
                             <div class="stat-label">加权预期净利润（亿）</div>
-                            <div class="stat-value">{{ ctx.consensus.w_net_profit_yi|floatformat:2|default:"—" }}</div>
+                            <div class="stat-value">{{ ctx.consensus.w_net_profit_yi|money|default:"—" }}</div>
                         </div>
                     </div>
                     <div class="col-6 col-md-3">
@@ -776,7 +776,7 @@
                         <thead class="table-light"><tr><th>代码</th><th>名称</th><th>市值</th><th>权重</th></tr></thead>
                         <tbody>
                         {% for row in ctx.unmapped_industry %}
-                        <tr><td>{{ row.code }}</td><td>{{ row.name }}</td><td>{{ row.market_value|floatformat:2 }}</td><td>{{ row.weight|pct }}</td></tr>
+                        <tr><td>{{ row.code }}</td><td>{{ row.name }}</td><td>{{ row.market_value|money }}</td><td>{{ row.weight|pct }}</td></tr>
                         {% endfor %}
                         </tbody>
                     </table>
@@ -789,7 +789,7 @@
                         <thead class="table-light"><tr><th>代码</th><th>名称</th><th>市值</th><th>权重</th></tr></thead>
                         <tbody>
                         {% for row in ctx.unmapped_citics %}
-                        <tr><td>{{ row.code }}</td><td>{{ row.name }}</td><td>{{ row.market_value|floatformat:2 }}</td><td>{{ row.weight|pct }}</td></tr>
+                        <tr><td>{{ row.code }}</td><td>{{ row.name }}</td><td>{{ row.market_value|money }}</td><td>{{ row.weight|pct }}</td></tr>
                         {% endfor %}
                         </tbody>
                     </table>
