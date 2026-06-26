@@ -174,7 +174,7 @@ ALL_STOCK_COLUMNS = [
     ("last_price", "现价"),
     ("prev_close", "昨收"),
     ("change_pct", "涨跌"),
-    ("daily_contrib", "当前持仓浮动盈亏"),
+    ("daily_contrib", "当日持仓浮动盈亏"),
     ("profit", "当前持仓累计浮动盈亏"),
     ("market_value", "市值"),
 ]

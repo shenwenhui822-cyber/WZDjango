@@ -26,7 +26,7 @@ from .wind_analysis import (
 logger = logging.getLogger("position_daily.report")
 
 PROFIT_COL_LABEL = "当前持仓累计浮动盈亏"
-DAILY_PROFIT_COL_LABEL = "当前持仓浮动盈亏"
+DAILY_PROFIT_COL_LABEL = "当日持仓浮动盈亏"
 INDUSTRY_PCT_COLS = ["w_chg_pct", "indus_pct_chg", "excess_pct"]
 INDUSTRY_WEIGHT_COLS = ["weight"]
 INDUSTRY_NUM_COLS = ["daily_pnl", "profit"]
@@ -447,7 +447,7 @@ def render_markdown(ctx: DailyReportContext) -> str:
         f"| 股票市值 | {_num(s.get('total_market_value'))} |",
         f"| 当日持仓平均持仓涨跌幅 | {_pct(s.get('avg_change_pct'))} |",
         f"| 上涨/下跌/平盘 | {s.get('up_count', '—')}/{s.get('down_count', '—')}/{s.get('flat_count', '—')} |",
-        f"| 当前持仓浮动盈亏 | {_num(ctx.quality.get('daily_pnl'))} |",
+        f"| 当日持仓浮动盈亏 | {_num(ctx.quality.get('daily_pnl'))} |",
         f"| 当前持仓累计浮动盈亏 | {_num(s.get('total_profit'))} |",
         "",
         "## 二、申万二级行业（rq_daily_indusSWL2_price）",
@@ -480,7 +480,7 @@ def render_markdown(ctx: DailyReportContext) -> str:
         "",
         "## 八、单票贡献",
         "",
-        f"当前持仓浮动盈亏合计约 {_num(ctx.quality.get('daily_pnl'))}。",
+        f"当日持仓浮动盈亏合计约 {_num(ctx.quality.get('daily_pnl'))}。",
         "",
         "## 十、全部持股",
         "",

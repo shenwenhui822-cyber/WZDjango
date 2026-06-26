@@ -352,7 +352,7 @@
             <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between mb-3">
                     <h6 class="text-secondary mb-0">2.1 全部行业{% if ctx.industry_count %}（共 {{ ctx.industry_count }} 个）{% endif %}</h6>
-                    <span class="text-muted small">持仓涨跌、超额为<strong>当日</strong>；当前持仓浮动盈亏 = Σ(持仓×涨跌额)，加仓按成本、减仓按昨收至现价；当前持仓累计浮动盈亏为相对成本、仅含快照内持仓 · 点击列标题排序</span>
+                    <span class="text-muted small">持仓涨跌、超额为<strong>当日</strong>；当日持仓浮动盈亏 = Σ(持仓×涨跌额)，加仓按成本、减仓按昨收至现价；当前持仓累计浮动盈亏为相对成本、仅含快照内持仓 · 点击列标题排序</span>
                 </div>
                 <div class="industry-table-wrap mb-4">
                     {% if ctx.industry_all %}
@@ -519,7 +519,7 @@
             <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between mb-3">
                     <h6 class="text-secondary mb-0">5.1 全部行业{% if ctx.citics_count %}（共 {{ ctx.citics_count }} 个）{% endif %}</h6>
-                    <span class="text-muted small">持仓涨跌、超额为<strong>当日</strong>；当前持仓浮动盈亏 = Σ(持仓×涨跌额)，加仓按成本、减仓按昨收至现价；当前持仓累计浮动盈亏为相对成本、仅含快照内持仓 · 点击列标题排序</span>
+                    <span class="text-muted small">持仓涨跌、超额为<strong>当日</strong>；当日持仓浮动盈亏 = Σ(持仓×涨跌额)，加仓按成本、减仓按昨收至现价；当前持仓累计浮动盈亏为相对成本、仅含快照内持仓 · 点击列标题排序</span>
                 </div>
                 <div class="industry-table-wrap mb-4">
                     {% if ctx.citics_all %}
@@ -592,7 +592,7 @@
         <div class="card">
             <div class="card-header">六、主题/概念暴露（Wind ASHAREWTHEMEINDUSTRIESCLASS）</div>
             <div class="card-body">
-                <p class="text-muted small mb-3">单票可属多主题，权重为暴露加总，合计可大于 100%。持仓涨跌为<strong>当日</strong>；当前持仓浮动盈亏 = Σ(持仓×涨跌额)，加仓按成本、减仓按昨收至现价；当前持仓累计浮动盈亏为相对成本、仅含快照内持仓。{% if ctx.quality.theme_top1 %} 最大主题：{{ ctx.quality.theme_top1 }}（{{ ctx.quality.theme_top1_weight|pct }}）{% endif %}</p>
+                <p class="text-muted small mb-3">单票可属多主题，权重为暴露加总，合计可大于 100%。持仓涨跌为<strong>当日</strong>；当日持仓浮动盈亏 = Σ(持仓×涨跌额)，加仓按成本、减仓按昨收至现价；当前持仓累计浮动盈亏为相对成本、仅含快照内持仓。{% if ctx.quality.theme_top1 %} 最大主题：{{ ctx.quality.theme_top1 }}（{{ ctx.quality.theme_top1_weight|pct }}）{% endif %}</p>
                 <div class="industry-table-wrap mb-4">
                     {% if ctx.theme_all %}
                     <table class="table table-sm table-hover align-middle mb-0 sortable-table" data-default-sort="weight">
@@ -621,7 +621,7 @@
         <div class="card">
             <div class="card-header">七、宽基风格（rq_base_index + Wind AINDEXEODPRICES）</div>
             <div class="card-body">
-                <p class="text-muted small mb-3">持仓涨跌、超额为<strong>当日</strong>；当前持仓浮动盈亏 = Σ(持仓×涨跌额)，加仓按成本、减仓按昨收至现价；当前持仓累计浮动盈亏为相对成本、仅含快照内持仓。</p>
+                <p class="text-muted small mb-3">持仓涨跌、超额为<strong>当日</strong>；当日持仓浮动盈亏 = Σ(持仓×涨跌额)，加仓按成本、减仓按昨收至现价；当前持仓累计浮动盈亏为相对成本、仅含快照内持仓。</p>
                 <h6 class="text-secondary">8.1 指数成分板块</h6>
                 <div class="industry-table-wrap mb-4">
                     {% if ctx.style_buckets %}
@@ -670,7 +670,7 @@
         <div class="card">
             <div class="card-header">八、单票贡献 Top 15</div>
             <div class="card-body">
-                <p class="text-muted small">当前持仓浮动盈亏 = 持仓 × 涨跌额（与上一交易日快照比较区分加仓/减仓）；当前持仓累计浮动盈亏来自快照 profit 字段。</p>
+                <p class="text-muted small">当日持仓浮动盈亏 = 持仓 × 涨跌额（与上一交易日快照比较区分加仓/减仓）；当前持仓累计浮动盈亏来自快照 profit 字段。</p>
                 <div class="row g-4">
                     <div class="col-lg-6">
                         <h6 class="text-cn-up">贡献最大</h6>
@@ -713,7 +713,7 @@
             <div class="card-header">十、全部持股{% if ctx.stock_all_count %}（共 {{ ctx.stock_all_count }} 只）{% endif %}</div>
             <div class="card-body">
                 <p class="text-muted small mb-3">
-                    当前持仓浮动盈亏按持仓数量 × 涨跌额计算；与上一交易日快照比较识别新进/加仓/减仓。已卖出股票不计入当前持仓累计浮动盈亏。
+                    当日持仓浮动盈亏按持仓数量 × 涨跌额计算；与上一交易日快照比较识别新进/加仓/减仓。已卖出股票不计入当前持仓累计浮动盈亏。
                     {% if ctx.quality.prev_snapshot_date %}对比快照：{{ ctx.quality.prev_snapshot_date }}{% endif %}
                     · 点击列标题排序
                 </p>
