@@ -92,7 +92,7 @@ def _allowed_product_keys() -> frozenset[str]:
             getattr(settings, "NAV_REAL_WZ_LHJXYH_MASTER", "WZ_LHJXYH_MASTER"),
             getattr(settings, "NAV_REAL_WZ_JLH_MASTER", "WZ_JLH_MASTER"),
             getattr(settings, "NAV_REAL_WZ_CTAYH_MASTER", "WZ_CTAYH_MASTER"),
-            getattr(settings, "NAV_REAL_WZ_DYCTAYH_MASTER", "WZ_DYCTAYH_MASTER"),
+            getattr(settings, "NAV_REAL_WZ_DYZXYH_MASTER", "WZ_DYZXYH_MASTER"),
         }
     )
     return bsyh | zxdw

@@ -1,9 +1,9 @@
 """
-交易日 14:10 拉取 wangkan（ALPHA_MAIL_*）邮箱中主题
-「【基金净值】SXE021(总)_吾执多元CTA一号私募证券投资基金_{YYYY-MM-DD}」
-的邮件，从附件 xlsx/xls 解析表头行净值表，写入 fund_nav_real.WZ_DYCTAYH_MASTER。
+交易日 14:10 拉取 fareport（FARPORT_MAIL_*）邮箱中主题
+「【基金净值】T06312(B级)_吾执多元尊选一号私募证券投资基金B类_{YYYY-MM-DD}」
+的邮件，从附件 xlsx/xls 解析母基金净值（忽略 T06312(B级) 份额列），写入 fund_nav_real.WZ_DYZXYH_MASTER。
 
-IMAP：`.env` 中 ALPHA_MAIL_USER / ALPHA_MAIL_PASS、ALPHA_IMAP_SERVER、ALPHA_IMAP_PORT。
+IMAP：`.env` 中 FARPORT_MAIL_USER / FARPORT_MAIL_PASS、ALPHA_IMAP_SERVER、ALPHA_IMAP_PORT。
 
 业务约定：仅运行日为交易日时执行；非交易日不执行、不通知。净值日 nav_date 默认取运行日之前
 最近一个交易日（上一交易日，与 auto_import_dylx_nav_mail / auto_import_dyyh_nav_mail 一致）。
@@ -13,7 +13,7 @@ IMAP：`.env` 中 ALPHA_MAIL_USER / ALPHA_MAIL_PASS、ALPHA_IMAP_SERVER、ALPHA_
 用法：
   python manage.py auto_import_dyctayh_nav_mail
   python manage.py auto_import_dyctayh_nav_mail --force
-  python manage.py auto_import_dyctayh_nav_mail --nav-date 2026-05-07
+  python manage.py auto_import_dyctayh_nav_mail --nav-date 2026-06-30
 """
 from __future__ import annotations
 
@@ -24,13 +24,14 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from portal.config.mail_imap import resolve_imap_credentials
+from portal.config.mail_imap import resolve_farport_imap_credentials
 from portal.services.dyctayh_nav_mail_service import (
     build_dyctayh_nav_mail_subject,
-    get_dyctayh_fund_product,
+    get_dyzxyh_fund_product,
+    parse_dyzxyh_master_nav_excel,
     pick_dyctayh_nav_excel,
 )
-from portal.services.fund_nav_real_service import parse_fund_nav_excel, upsert_fund_nav_doc
+from portal.services.fund_nav_real_service import upsert_fund_nav_doc
 from portal.services.imap_common import find_latest_mail_id_by_exact_subject
 from portal.services.mail_import_common import (
     emit_mail_job_result_line,
@@ -50,8 +51,8 @@ from portal.services.trade_calendar_service import (
 
 class Command(BaseCommand):
     help = (
-        "仅运行日为交易日时执行：抓取多元 CTA 一号 SXE021(总) 基金净值邮件并写入 "
-        "fund_nav_real.WZ_DYCTAYH_MASTER；nav_date 默认为运行日之前最近一个交易日。"
+        "仅运行日为交易日时执行：抓取多元尊选一号 SXE021(总) 基金净值邮件并写入 "
+        "fund_nav_real.WZ_DYZXYH_MASTER（附件取母基金列）；nav_date 默认为运行日之前最近一个交易日。"
     )
 
     def add_arguments(self, parser):
@@ -75,10 +76,10 @@ class Command(BaseCommand):
     ) -> None:
         status = str(report.get("status") or "UNKNOWN")
         mail_subject = (
-            f"[{status}] 吾执多元CTA一号净值邮件导入 "
+            f"[{status}] 吾执多元尊选一号净值邮件导入 "
             f"{timezone.localdate().strftime('%Y-%m-%d')}"
         )
-        title = "多元 CTA 一号 SXE021(总)（fund_nav_real / WZ_DYCTAYH_MASTER）自动导入结果"
+        title = "多元尊选一号 SXE021(总)（fund_nav_real / WZ_DYZXYH_MASTER）自动导入结果"
         data_ok = status == "SUCCESS"
         body = format_mail_job_notify_body(
             title=title,
@@ -190,12 +191,15 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.WARNING(report["message"]))
                 return
 
-            fund = get_dyctayh_fund_product()
-            email_user, email_pass, imap_server, imap_port = resolve_imap_credentials()
+            fund = get_dyzxyh_fund_product()
+            email_user, email_pass, imap_server, imap_port = resolve_farport_imap_credentials()
             self.stdout.write(f"IMAP: {email_user} @ {imap_server}:{imap_port}")
 
             ymd = nav_iso.replace("-", "")
-            save_root = Path(getattr(settings, "DYCTAYH_NAV_MAIL_ATTACH_DIR")) / ymd
+            attach_dir = getattr(
+                settings, "DYZXYH_NAV_MAIL_ATTACH_DIR", settings.DYCTAYH_NAV_MAIL_ATTACH_DIR
+            )
+            save_root = Path(attach_dir) / ymd
 
             mailbox: imaplib.IMAP4_SSL | None = None
             try:
@@ -242,7 +246,7 @@ class Command(BaseCommand):
 
                 report["source_file"] = fp.name
                 data = fp.read_bytes()
-                doc = parse_fund_nav_excel(
+                doc = parse_dyzxyh_master_nav_excel(
                     data,
                     filename=fp.name,
                     fund=fund,
@@ -255,7 +259,8 @@ class Command(BaseCommand):
                 )
                 report["status"] = "SUCCESS"
                 report["message"] = (
-                    f"已落库 nav_date={doc['nav_date']} <- {fp.name}"
+                    f"已落库 nav_date={doc['nav_date']} <- {fp.name} "
+                    f"(母基金 {doc.get('asset_code')} 单位净值 {doc.get('unit_nav')})"
                 )
                 self.stdout.write(self.style.SUCCESS(report["message"]))
             finally:

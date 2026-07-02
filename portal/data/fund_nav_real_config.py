@@ -130,10 +130,11 @@ FUND_NAV_PRODUCTS: list[FundNavProduct] = [
     },
     {
         "product_key": getattr(
-            settings, "NAV_REAL_WZ_DYCTAYH_MASTER", "WZ_DYCTAYH_MASTER"
+            settings, "NAV_REAL_WZ_DYZXYH_MASTER", "WZ_DYZXYH_MASTER"
         ),
-        "name_prefix": "吾执多元CTA一号私募证券投资基金",
+        "name_prefix": "吾执多元尊选一号私募证券投资基金",
         "asset_code": "SXE021(总)",
+        "nav_import_exact_product_name": "吾执多元尊选一号私募证券投资基金",
     },
     {
         "product_key": getattr(
@@ -209,7 +210,7 @@ def fund_nav_products_for_mail_import() -> list[FundNavProduct]:
             getattr(settings, "NAV_REAL_WZ_LHJXYH_MASTER", "WZ_LHJXYH_MASTER"),
             getattr(settings, "NAV_REAL_WZ_JLH_MASTER", "WZ_JLH_MASTER"),
             getattr(settings, "NAV_REAL_WZ_CTAYH_MASTER", "WZ_CTAYH_MASTER"),
-            getattr(settings, "NAV_REAL_WZ_DYCTAYH_MASTER", "WZ_DYCTAYH_MASTER"),
+            getattr(settings, "NAV_REAL_WZ_DYZXYH_MASTER", "WZ_DYZXYH_MASTER"),
             getattr(settings, "NAV_REAL_WZ_DWYH_MASTER", "WZ_DWYH_MASTER"),
         }
     )

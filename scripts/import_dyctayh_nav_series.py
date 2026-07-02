@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""独立入口：吾执多元 CTA 一号净值序列 Excel → fund_nav_real.WZ_DYCTAYH_MASTER（等价 manage.py import_dyctayh_nav_series）。"""
+"""独立入口：吾执多元尊选一号净值序列 Excel → fund_nav_real.WZ_DYZXYH_MASTER（等价 manage.py import_dyctayh_nav_series）。"""
 from __future__ import annotations
 
 import os

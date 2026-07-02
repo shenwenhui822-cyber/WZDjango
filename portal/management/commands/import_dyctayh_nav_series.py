@@ -1,5 +1,5 @@
 """
-将吾执多元 CTA 一号 SXE021(总)「净值序列」Excel（多行）导入 MongoDB：fund_nav_real.WZ_DYCTAYH_MASTER。
+将吾执多元尊选一号 SXE021(总)「净值序列」Excel（多行）导入 MongoDB：fund_nav_real.WZ_DYZXYH_MASTER。
 
 表头须含：日期或估值日期、产品代码、产品名称、单位净值、累计单位净值等（同 portal.services.fund_nav_real_service._HEADER_KEYS）。
 落库与 auto_import_dyctayh_nav_mail 相同（nav_date 唯一 upsert）。
@@ -20,8 +20,8 @@ from portal.services.fund_nav_real_service import import_fund_nav_excel_all_rows
 
 class Command(BaseCommand):
     help = (
-        "导入吾执多元 CTA 一号 SXE021(总) 净值序列 Excel 到 fund_nav_real，"
-        "集合为 settings.NAV_REAL_WZ_DYCTAYH_MASTER（默认 WZ_DYCTAYH_MASTER）。"
+        "导入吾执多元尊选一号 SXE021(总) 净值序列 Excel 到 fund_nav_real，"
+        "集合为 settings.NAV_REAL_WZ_DYZXYH_MASTER（默认 WZ_DYZXYH_MASTER）。"
     )
 
     def add_arguments(self, parser):
