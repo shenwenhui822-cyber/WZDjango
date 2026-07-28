@@ -157,13 +157,38 @@
                                 {% for row in brief_rows %}
                                 <tr>
                                     <td>{{ row.label }}</td>
-                                    <td class="{% if row.field != 'account_id' and row.field != 'account_type' %}tnum{% endif %}">{{ row.value }}</td>
+                                    <td class="{% if row.field != 'account_id' and row.field != 'account_type' and row.field != 'timestamp' %}tnum{% endif %}">{{ row.value }}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
                         </table>
+                        {% if brief_is_rt_future and brief_future_positions %}
+                        <h6 class="mt-3 mb-2">持仓明细</h6>
+                        <table class="table table-sm table-bordered brief-field-table mb-0">
+                            <thead>
+                                <tr>
+                                    <th>合约</th>
+                                    <th>方向</th>
+                                    <th class="tnum">手数</th>
+                                    <th class="tnum">开仓均价</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for p in brief_future_positions %}
+                                <tr>
+                                    <td>{{ p.contract }}</td>
+                                    <td>{{ p.direction }}</td>
+                                    <td class="tnum">{{ p.total_position }}</td>
+                                    <td class="tnum">{{ p.average_opening_price }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        {% endif %}
                         {% else %}
-                        <div class="alert alert-warning mb-0">该交易日暂无收盘快照.</div>
+                        <div class="alert alert-warning mb-0">
+                            {% if brief_is_rt_future %}暂无国贸期货实时数据。{% else %}该交易日暂无收盘快照.{% endif %}
+                        </div>
                         {% endif %}
                     </div>
                 </div>
@@ -262,20 +287,39 @@
         }
         if (!briefContent) return;
         if (!data.brief_has_data) {
-            briefContent.innerHTML = '<div class="alert alert-warning mb-0">该交易日暂无收盘快照.</div>';
+            var emptyMsg = data.brief_is_rt_future
+                ? "暂无国贸期货实时数据。"
+                : "该交易日暂无收盘快照.";
+            briefContent.innerHTML = '<div class="alert alert-warning mb-0">' + esc(emptyMsg) + "</div>";
             syncBriefSidebarHeight();
             return;
         }
         var rows = data.brief_rows || [];
         var tbody = rows.map(function (r) {
-            var cls = (r.field === "account_id" || r.field === "account_type") ? "" : " tnum";
+            var plain = (r.field === "account_id" || r.field === "account_type" || r.field === "timestamp");
+            var cls = plain ? "" : " tnum";
             return "<tr><td>" + esc(r.label) + '</td><td class="' + cls.trim() + '">' + esc(r.value) + "</td></tr>";
         }).join("");
-        briefContent.innerHTML = [
+        var html = [
             '<table class="table table-sm table-bordered brief-field-table mb-0">',
             "<thead><tr><th>项目</th><th class=\"tnum\">数值</th></tr></thead>",
             "<tbody>", tbody, "</tbody></table>"
-        ].join("");
+        ];
+        var positions = data.brief_future_positions || [];
+        if (data.brief_is_rt_future && positions.length) {
+            html.push('<h6 class="mt-3 mb-2">持仓明细</h6>');
+            html.push('<table class="table table-sm table-bordered brief-field-table mb-0">');
+            html.push("<thead><tr><th>合约</th><th>方向</th><th class=\"tnum\">手数</th><th class=\"tnum\">开仓均价</th></tr></thead><tbody>");
+            positions.forEach(function (p) {
+                html.push(
+                    "<tr><td>" + esc(p.contract) + "</td><td>" + esc(p.direction) +
+                    '</td><td class="tnum">' + esc(p.total_position) +
+                    '</td><td class="tnum">' + esc(p.average_opening_price) + "</td></tr>"
+                );
+            });
+            html.push("</tbody></table>");
+        }
+        briefContent.innerHTML = html.join("");
         syncBriefSidebarHeight();
     }
 

@@ -19,8 +19,12 @@ from portal.data.tradelog_account_config import (
     ACCOUNT_BRIEF_DISPLAY_ORDER,
     account_meta_for_strategy_tag,
     fund_account_from_strategy_tag,
+    is_rt_future_account,
+    rt_future_locator,
+    stock_strategy_tags,
 )
 from portal.db.mongo import (
+    get_mongo_client,
     get_position_close_record_collection,
     get_tradelog_collection,
     list_position_close_record_collection_names,
@@ -32,8 +36,8 @@ _TRADELOG_CLOSE_SNAPSHOT_AFTER = dt_time(15, 29)
 
 
 def configured_strategy_tags() -> list[str]:
-    """账户简报配置中的 strategy_tag 列表（同步默认范围）。"""
-    return [e["strategy_tag"] for e in ACCOUNT_BRIEF_DISPLAY_ORDER]
+    """证券账户 strategy_tag（同步默认范围，不含 rt_future 期货账户）。"""
+    return stock_strategy_tags()
 
 
 def _tradelog_t_iso_range_for_close_snapshot(trade_date: str) -> tuple[str, str]:
@@ -217,11 +221,83 @@ def latest_snapshot_date_for_tag(strategy_tag: str) -> str | None:
 
 def load_snapshot_doc(strategy_tag: str, snapshot_date: str | None = None) -> dict[str, Any] | None:
     tag = _validate_strategy_tag(strategy_tag)
+    if is_rt_future_account(tag):
+        return None
     coll = get_position_close_record_collection(tag)
     if snapshot_date:
         day = snapshot_date.strip()[:10]
         return coll.find_one({"snapshot_date": day})
     return coll.find_one(sort=[("snapshot_date", -1)])
+
+
+def load_rt_future_latest_doc(strategy_tag: str) -> dict[str, Any] | None:
+    """读取 rt_future 集合最新一条（按 timestamp、_id 降序）。"""
+    loc = rt_future_locator(strategy_tag)
+    if not loc:
+        return None
+    db_name, coll_name = loc
+    coll = get_mongo_client()[db_name][coll_name]
+    return coll.find_one({}, sort=[("timestamp", -1), ("_id", -1)])
+
+
+_RT_FUTURE_BRIEF_FIELD_SPEC: list[tuple[str, str]] = [
+    ("资金账号", "account_id"),
+    ("账户类型", "account_type"),
+    ("快照时间", "timestamp"),
+    ("保证金占用", "margin_used"),
+    ("可用资金", "available_funds"),
+    ("资金使用率", "funds_utilization_rate"),
+    ("风险度", "risk_level"),
+    ("持仓合约数", "position_count"),
+]
+
+
+def build_rt_future_brief_rows(
+    doc: dict[str, Any] | None,
+    *,
+    strategy_tag: str = "",
+) -> list[dict[str, str]]:
+    positions = (doc or {}).get("positions") or []
+
+    def val_for_field(field: str) -> str:
+        if not doc:
+            return "—"
+        if field == "account_id":
+            return fund_account_from_strategy_tag(strategy_tag) or "—"
+        if field == "account_type":
+            return "期货"
+        if field == "timestamp":
+            return str(doc.get("timestamp") or "—")
+        if field == "margin_used":
+            return _fmt_num(doc.get("margin_used"))
+        if field == "available_funds":
+            return _fmt_num(doc.get("available_funds"))
+        if field == "funds_utilization_rate":
+            return _fmt_pct(doc.get("funds_utilization_rate"))
+        if field == "risk_level":
+            return _fmt_pct(doc.get("risk_level"))
+        if field == "position_count":
+            return str(len(positions))
+        return "—"
+
+    return [
+        {"label": label, "field": field, "value": val_for_field(field)}
+        for label, field in _RT_FUTURE_BRIEF_FIELD_SPEC
+    ]
+
+
+def build_rt_future_position_rows(doc: dict[str, Any] | None) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for p in (doc or {}).get("positions") or []:
+        rows.append(
+            {
+                "contract": str(p.get("contract") or "—"),
+                "direction": str(p.get("direction") or "—"),
+                "total_position": str(int(p.get("total_position") or 0)),
+                "average_opening_price": _fmt_num(p.get("average_opening_price")),
+            }
+        )
+    return rows
 
 
 def _fmt_num(v: Any, *, digits: int = 2) -> str:
@@ -352,7 +428,10 @@ def _build_sidebar_items(snapshot_date: str) -> list[dict[str, Any]]:
         product = entry["product"]
         meta = account_meta_for_strategy_tag(tag)
         broker = entry.get("broker") or meta["broker"]
-        has_data = load_snapshot_doc(tag, snapshot_date) is not None
+        if is_rt_future_account(tag):
+            has_data = load_rt_future_latest_doc(tag) is not None
+        else:
+            has_data = load_snapshot_doc(tag, snapshot_date) is not None
         items.append(
             {
                 "strategy_tag": tag,
@@ -360,6 +439,7 @@ def _build_sidebar_items(snapshot_date: str) -> list[dict[str, Any]]:
                 "broker": broker,
                 "label": f"{product} - {broker}",
                 "has_data": has_data,
+                "source": entry.get("source") or "position_close",
             }
         )
     return items
@@ -380,8 +460,27 @@ def build_account_brief_page_context(
     if sel not in allowed_tags:
         sel = allowed_tags[0] if allowed_tags else ""
 
-    doc = load_snapshot_doc(sel, effective_date) if sel else None
     meta = account_meta_for_strategy_tag(sel) if sel else {"product": "", "broker": ""}
+    is_future = bool(sel) and is_rt_future_account(sel)
+
+    if is_future:
+        fut_doc = load_rt_future_latest_doc(sel) if sel else None
+        return {
+            "brief_sidebar_items": sidebar_items,
+            "selected_strategy_tag": sel,
+            "selected_product": meta.get("product", ""),
+            "selected_broker": meta.get("broker", ""),
+            "snapshot_date": effective_date,
+            "snapshot_date_user_picked": user_picked_date,
+            "trade_dates_json": trade_dates_for_calendar_json(),
+            "brief_rows": build_rt_future_brief_rows(fut_doc, strategy_tag=sel),
+            "brief_future_positions": build_rt_future_position_rows(fut_doc),
+            "brief_is_rt_future": True,
+            "brief_has_data": bool(fut_doc),
+            "brief_t_iso": str((fut_doc or {}).get("timestamp") or ""),
+        }
+
+    doc = load_snapshot_doc(sel, effective_date) if sel else None
     return {
         "brief_sidebar_items": sidebar_items,
         "selected_strategy_tag": sel,
@@ -391,6 +490,8 @@ def build_account_brief_page_context(
         "snapshot_date_user_picked": user_picked_date,
         "trade_dates_json": trade_dates_for_calendar_json(),
         "brief_rows": build_account_brief_rows(doc, strategy_tag=sel),
+        "brief_future_positions": [],
+        "brief_is_rt_future": False,
         "brief_has_data": bool(doc),
         "brief_t_iso": str(doc.get("t_iso") or "") if doc else "",
     }

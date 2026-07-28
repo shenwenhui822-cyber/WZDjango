@@ -8,8 +8,9 @@ from typing import Any
 from django.conf import settings
 
 from portal.data.tradelog_account_config import (
-    ACCOUNT_BRIEF_DISPLAY_ORDER,
     account_meta_for_strategy_tag,
+    is_rt_future_account,
+    stock_strategy_tags,
 )
 from position_daily.services.cache import get_daily_report
 from position_daily.services.config import STRATEGY_TAG
@@ -23,7 +24,8 @@ logger = logging.getLogger("position_daily.views")
 
 
 def _allowed_strategy_tags() -> list[str]:
-    return [e["strategy_tag"] for e in ACCOUNT_BRIEF_DISPLAY_ORDER]
+    """日度持仓仅展示证券账户，不含 rt_future 期货账户。"""
+    return stock_strategy_tags()
 
 
 def resolve_strategy_tag(selected: str | None) -> str:
@@ -37,10 +39,14 @@ def resolve_strategy_tag(selected: str | None) -> str:
 
 
 def _build_sidebar_items(trade_date: str) -> list[dict[str, Any]]:
-    """左侧导航：产品 - 经纪商（顺序与 ACCOUNT_BRIEF_DISPLAY_ORDER 一致）。"""
+    """左侧导航：产品 - 经纪商（仅证券账户）。"""
+    from portal.data.tradelog_account_config import ACCOUNT_BRIEF_DISPLAY_ORDER
+
     items: list[dict[str, Any]] = []
     for entry in ACCOUNT_BRIEF_DISPLAY_ORDER:
         tag = entry["strategy_tag"]
+        if is_rt_future_account(tag):
+            continue
         product = entry["product"]
         broker = entry.get("broker") or account_meta_for_strategy_tag(tag)["broker"]
         has_data = bool(trade_date) and snapshot_exists(trade_date, strategy_tag=tag)
