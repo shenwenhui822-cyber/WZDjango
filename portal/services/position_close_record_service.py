@@ -230,19 +230,61 @@ def load_snapshot_doc(strategy_tag: str, snapshot_date: str | None = None) -> di
     return coll.find_one(sort=[("snapshot_date", -1)])
 
 
-def load_rt_future_latest_doc(strategy_tag: str) -> dict[str, Any] | None:
-    """读取 rt_future 集合最新一条（按 timestamp、_id 降序）。"""
+def list_rt_future_snapshot_dates(strategy_tag: str) -> list[str]:
+    """返回 rt_future 集合中已有 snapshot_date（升序 YYYY-MM-DD）。"""
+    loc = rt_future_locator(strategy_tag)
+    if not loc:
+        return []
+    db_name, coll_name = loc
+    coll = get_mongo_client()[db_name][coll_name]
+    raw = coll.distinct("snapshot_date")
+    return sorted({str(d).strip()[:10] for d in raw if d})
+
+
+def load_rt_future_doc(
+    strategy_tag: str,
+    snapshot_date: str | None = None,
+) -> dict[str, Any] | None:
+    """读取 rt_future 文档：指定 snapshot_date 取当日最新一条，否则取全集最新。"""
     loc = rt_future_locator(strategy_tag)
     if not loc:
         return None
     db_name, coll_name = loc
     coll = get_mongo_client()[db_name][coll_name]
-    return coll.find_one({}, sort=[("timestamp", -1), ("_id", -1)])
+    sort_key = [("timestamp", -1), ("_id", -1)]
+    day = (snapshot_date or "").strip()[:10]
+    if day:
+        return coll.find_one({"snapshot_date": day}, sort=sort_key)
+    return coll.find_one({}, sort=sort_key)
+
+
+def load_rt_future_latest_doc(strategy_tag: str) -> dict[str, Any] | None:
+    """读取 rt_future 集合最新一条（按 timestamp、_id 降序）。"""
+    return load_rt_future_doc(strategy_tag)
+
+
+def resolve_rt_future_snapshot_date(
+    strategy_tag: str,
+    explicit: str | None,
+) -> tuple[str, list[str]]:
+    """
+    期货账户交易日：仅允许集合内存在的 snapshot_date。
+    返回 (effective_date, available_dates升序)。
+    未选或所选日不在集合中时，落到最新 snapshot_date。
+    """
+    dates = list_rt_future_snapshot_dates(strategy_tag)
+    day = (explicit or "").strip()[:10]
+    if day and day in set(dates):
+        return day, dates
+    if dates:
+        return dates[-1], dates
+    return day, dates
 
 
 _RT_FUTURE_BRIEF_FIELD_SPEC: list[tuple[str, str]] = [
     ("资金账号", "account_id"),
     ("账户类型", "account_type"),
+    ("快照日期", "snapshot_date"),
     ("快照时间", "timestamp"),
     ("保证金占用", "margin_used"),
     ("可用资金", "available_funds"),
@@ -266,6 +308,8 @@ def build_rt_future_brief_rows(
             return fund_account_from_strategy_tag(strategy_tag) or "—"
         if field == "account_type":
             return "期货"
+        if field == "snapshot_date":
+            return str(doc.get("snapshot_date") or "—")[:10] or "—"
         if field == "timestamp":
             return str(doc.get("timestamp") or "—")
         if field == "margin_used":
@@ -429,7 +473,7 @@ def _build_sidebar_items(snapshot_date: str) -> list[dict[str, Any]]:
         meta = account_meta_for_strategy_tag(tag)
         broker = entry.get("broker") or meta["broker"]
         if is_rt_future_account(tag):
-            has_data = load_rt_future_latest_doc(tag) is not None
+            has_data = load_rt_future_doc(tag, snapshot_date) is not None
         else:
             has_data = load_snapshot_doc(tag, snapshot_date) is not None
         items.append(
@@ -464,15 +508,23 @@ def build_account_brief_page_context(
     is_future = bool(sel) and is_rt_future_account(sel)
 
     if is_future:
-        fut_doc = load_rt_future_latest_doc(sel) if sel else None
+        # 交易日仅展示该集合已有 snapshot_date；按所选日取当日最新一条
+        fut_date, fut_dates = resolve_rt_future_snapshot_date(
+            sel,
+            effective_date if user_picked_date else None,
+        )
+        fut_doc = load_rt_future_doc(sel, fut_date) if sel and fut_date else None
+        sidebar_items = _build_sidebar_items(fut_date)
+        dates_json = json.dumps(fut_dates, ensure_ascii=False)
         return {
             "brief_sidebar_items": sidebar_items,
             "selected_strategy_tag": sel,
             "selected_product": meta.get("product", ""),
             "selected_broker": meta.get("broker", ""),
-            "snapshot_date": effective_date,
-            "snapshot_date_user_picked": user_picked_date,
-            "trade_dates_json": trade_dates_for_calendar_json(),
+            "snapshot_date": fut_date,
+            "snapshot_date_user_picked": user_picked_date and bool(fut_date),
+            "trade_dates": fut_dates,
+            "trade_dates_json": dates_json,
             "brief_rows": build_rt_future_brief_rows(fut_doc, strategy_tag=sel),
             "brief_future_positions": build_rt_future_position_rows(fut_doc),
             "brief_is_rt_future": True,
@@ -481,6 +533,7 @@ def build_account_brief_page_context(
         }
 
     doc = load_snapshot_doc(sel, effective_date) if sel else None
+    stock_dates = sorted(trading_date_iso_set())
     return {
         "brief_sidebar_items": sidebar_items,
         "selected_strategy_tag": sel,
@@ -488,7 +541,8 @@ def build_account_brief_page_context(
         "selected_broker": meta.get("broker", ""),
         "snapshot_date": effective_date,
         "snapshot_date_user_picked": user_picked_date,
-        "trade_dates_json": trade_dates_for_calendar_json(),
+        "trade_dates": stock_dates,
+        "trade_dates_json": json.dumps(stock_dates, ensure_ascii=False),
         "brief_rows": build_account_brief_rows(doc, strategy_tag=sel),
         "brief_future_positions": [],
         "brief_is_rt_future": False,

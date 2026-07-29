@@ -157,7 +157,7 @@
                                 {% for row in brief_rows %}
                                 <tr>
                                     <td>{{ row.label }}</td>
-                                    <td class="{% if row.field != 'account_id' and row.field != 'account_type' and row.field != 'timestamp' %}tnum{% endif %}">{{ row.value }}</td>
+                                    <td class="{% if row.field != 'account_id' and row.field != 'account_type' and row.field != 'timestamp' and row.field != 'snapshot_date' %}tnum{% endif %}">{{ row.value }}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -274,7 +274,20 @@
         if (h > 0) layoutRow.style.setProperty("--brief-main-h", h + "px");
     }
 
+    function applyTradeDates(data) {
+        var dates = data.trade_dates;
+        if (!Array.isArray(dates) && data.trade_dates_json) {
+            try { dates = JSON.parse(data.trade_dates_json); } catch (_e) { dates = []; }
+        }
+        tradeDates = Array.isArray(dates) ? dates : [];
+        if (snapshotDisplay && snapshotDisplay._flatpickr) {
+            // 仅允许集合/日历中存在的日期；空列表则全部禁用
+            snapshotDisplay._flatpickr.set("enable", tradeDates.length ? tradeDates : [function () { return false; }]);
+        }
+    }
+
     function renderBrief(data) {
+        applyTradeDates(data);
         if (snapshotInput) snapshotInput.value = data.snapshot_date || "";
         if (snapshotDisplay && snapshotDisplay._flatpickr && data.snapshot_date) {
             snapshotDisplay._flatpickr.setDate(data.snapshot_date, false);
@@ -296,7 +309,12 @@
         }
         var rows = data.brief_rows || [];
         var tbody = rows.map(function (r) {
-            var plain = (r.field === "account_id" || r.field === "account_type" || r.field === "timestamp");
+            var plain = (
+                r.field === "account_id" ||
+                r.field === "account_type" ||
+                r.field === "timestamp" ||
+                r.field === "snapshot_date"
+            );
             var cls = plain ? "" : " tnum";
             return "<tr><td>" + esc(r.label) + '</td><td class="' + cls.trim() + '">' + esc(r.value) + "</td></tr>";
         }).join("");
