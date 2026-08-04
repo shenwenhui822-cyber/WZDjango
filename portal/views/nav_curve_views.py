@@ -524,8 +524,10 @@ def raw_nav(request):
             request.GET, form_submitted=True
         )
     else:
-        # 首次进入：默认博士一号主份额
-        product_keys = [settings.NAV_REAL_WZ_BSYH_MASTER]
+        # 首次进入：默认吾执二二号
+        product_keys = [
+            getattr(settings, "NAV_REAL_WZ_EEH_MASTER", "WZ_EEH_MASTER")
+        ]
 
     fund_nav_selection = frozenset(product_keys)
 

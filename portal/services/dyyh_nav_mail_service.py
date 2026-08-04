@@ -16,8 +16,13 @@ def build_dyyh_nav_mail_subject(nav_iso: str) -> str:
 
 
 def get_dyyh_fund_product() -> FundNavProduct:
+    """门户侧栏已注释 FUND_NAV_PRODUCTS 中多元一号；邮件/序列导入仍用此配置。"""
     key = getattr(settings, "NAV_REAL_WZ_DYYH_MASTER", "WZ_DYYH_MASTER")
     for f in FUND_NAV_PRODUCTS:
         if f["product_key"] == key:
             return f
-    raise RuntimeError("未配置多元一号 WZ_DYYH_MASTER 产品")
+    return {
+        "product_key": key,
+        "name_prefix": "吾执多元一号私募证券投资基金",
+        "asset_code": "SAJM63(总)",
+    }

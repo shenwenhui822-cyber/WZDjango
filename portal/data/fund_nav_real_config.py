@@ -113,13 +113,13 @@ FUND_NAV_PRODUCTS: list[FundNavProduct] = [
         "name_prefix": "吾执博士一号私募证券投资基金B类",
         "asset_code": "BJP80B",
     },
-    {
-        "product_key": getattr(
-            settings, "NAV_REAL_WZ_DYYH_MASTER", "WZ_DYYH_MASTER"
-        ),
-        "name_prefix": "吾执多元一号私募证券投资基金",
-        "asset_code": "SAJM63(总)",
-    },
+    # {
+    #     "product_key": getattr(
+    #         settings, "NAV_REAL_WZ_DYYH_MASTER", "WZ_DYYH_MASTER"
+    #     ),
+    #     "name_prefix": "吾执多元一号私募证券投资基金",
+    #     "asset_code": "SAJM63(总)",
+    # },
     *_build_zxdw_fund_nav_products(),
     {
         "product_key": getattr(
