@@ -203,6 +203,10 @@ accounts[i]  (ok=true)
 |--------------|------------------|----------------|
 | `m_dBalance` | 总资产 | → `total_asset` 首选来源 |
 | `m_dAsset` | 资产 | → `total_asset` 备选 |
+| `m_dAssureAsset` | 净资产 | → 账户简报「净资产」（优先 `query_meta[].raw_credit_account_0`） |
+| `m_dTotalDebt` | 总负债 | → 账户简报「总负债」首选（信用查柜台字段） |
+| `m_dTotalDebit` | 总负债 | → 账户简报「总负债」备选 |
+| `m_dFinDebt` | 融资负债 | → 账户简报「总负债」回退 |
 | `m_dAvailable` | 可用 | → `available_cash` 首选 |
 | `m_dEnableBalance` | 可用余额 | → `available_cash` 备选 |
 | `m_dInstrumentValue` | 证券市值 | → `market_value` 首选 |
@@ -574,6 +578,8 @@ accounts[i]  (ok=false)
 | 资金账号 | `account_id` | 012000076288 |
 | 账户类型 | `account_type` | STOCK |
 | 总资产 | `total_asset` | 707,877.46 |
+| 净资产 | `query_meta[].raw_credit_account_0.m_dAssureAsset` | （两融常见；普通股票账户可能无） |
+| 总负债 | `…m_dTotalDebt` → `m_dTotalDebit` → `m_dFinDebt` | （两融常见；普通股票账户可能无） |
 | 持仓市值 | `market_value` | 670,282.35 |
 | 可用资金 | `available_cash` | 37,626.10 |
 | 持仓浮动盈亏 | `position_profit` | -30,954.39 |

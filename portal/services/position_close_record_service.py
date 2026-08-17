@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from copy import deepcopy
 from datetime import time as dt_time
@@ -364,11 +365,58 @@ def _fmt_pct(v: Any) -> str:
     return f"{n:.4f}%"
 
 
+# QMT 未赋值浮点常返回 DBL_MAX（约 1.797e308），视为无效
+_QMT_INVALID_ABS = 1e308
+
+
+def _qmt_raw_num(src: dict[str, Any] | None, key: str) -> Any:
+    """从 QMT 原始 dict 读数值；缺失或哨兵值返回 None。"""
+    if not src or key not in src:
+        return None
+    raw = src.get(key)
+    if raw is None or raw == "":
+        return None
+    try:
+        n = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(n) or abs(n) >= _QMT_INVALID_ABS:
+        return None
+    return n
+
+
+def _credit_raw_sources(doc: dict[str, Any] | None, acct: dict[str, Any]) -> list[dict[str, Any]]:
+    """两融/账户原始行查找顺序：query_meta 信用行 → 普通账户行 → accounts.row_debug。"""
+    sources: list[dict[str, Any]] = []
+    qm = (doc or {}).get("query_meta") or []
+    if isinstance(qm, list) and qm and isinstance(qm[0], dict):
+        for key in ("raw_credit_account_0", "raw_account_0"):
+            block = qm[0].get(key)
+            if isinstance(block, dict):
+                sources.append(block)
+    debug = acct.get("row_debug")
+    if isinstance(debug, dict):
+        sources.append(debug)
+    return sources
+
+
+def _credit_field_num(doc: dict[str, Any] | None, acct: dict[str, Any], *keys: str) -> Any:
+    """按 sources × keys 优先级取第一个有效数值。"""
+    for src in _credit_raw_sources(doc, acct):
+        for key in keys:
+            v = _qmt_raw_num(src, key)
+            if v is not None:
+                return v
+    return None
+
+
 # 账户简报右侧字段顺序（与业务说明 §4 一致，不可调整）
 _ACCOUNT_BRIEF_FIELD_SPEC: list[tuple[str, str]] = [
     ("资金账号", "account_id"),
     ("账户类型", "account_type"),
     ("总资产", "total_asset"),
+    ("净资产", "net_assets"),
+    ("总负债", "total_liabilities"),
     ("持仓市值", "market_value"),
     ("可用资金", "available_cash"),
     ("持仓浮动盈亏", "position_profit"),
@@ -439,6 +487,16 @@ def build_account_brief_rows(
             return str(acct_type)
         if field == "total_asset":
             return _fmt_num(acct.get("total_asset"))
+        if field == "net_assets":
+            # query_meta.raw_credit_account_0.m_dAssureAsset（净资产）
+            return _fmt_num(_credit_field_num(doc, acct, "m_dAssureAsset"))
+        if field == "total_liabilities":
+            # m_dTotalDebt（查柜台）→ m_dTotalDebit → m_dFinDebt
+            return _fmt_num(
+                _credit_field_num(
+                    doc, acct, "m_dTotalDebt", "m_dTotalDebit", "m_dFinDebt"
+                )
+            )
         if field == "market_value":
             return _fmt_num(acct.get("market_value"))
         if field == "available_cash":
