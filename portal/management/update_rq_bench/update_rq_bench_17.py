@@ -39,7 +39,7 @@ if ROOT not in sys.path:
 load_dotenv(os.path.join(ROOT, ".env"))
 
 try:
-    rq.init("18616633529", "wuzhi2020")
+    rq.init("15317321758", "WuZhi@2026")
     print("[OK] RQData 连接成功 (update_rq_bench_17)")
 except Exception as e:
     print(f"[ERR] RQData 连接失败: {e}")
