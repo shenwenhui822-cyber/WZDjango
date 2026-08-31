@@ -117,7 +117,7 @@ def analyze_industry(
                 "weight": indus_weight,
                 "w_chg_pct": w_chg_pct,
                 "indus_pct_chg": indus_pct,
-                "excess_pct": w_chg_pct - indus_pct if pd.notna(indus_pct) else None,
+                "excess_pct": (w_chg_pct - indus_pct) if pd.notna(indus_pct) else float("nan"),
                 "daily_pnl": sum_daily_pnl(g),
                 "profit": g["profit"].sum(),
             }
@@ -125,9 +125,11 @@ def analyze_industry(
     industry_df = pd.DataFrame(records)
     if not industry_df.empty:
         industry_df = industry_df.sort_values("weight", ascending=False)
+        industry_df["excess_pct"] = pd.to_numeric(industry_df["excess_pct"], errors="coerce")
 
-    top_good = industry_df.nlargest(5, "excess_pct") if not industry_df.empty else industry_df
-    top_bad = industry_df.nsmallest(5, "excess_pct") if not industry_df.empty else industry_df
+    ranked = industry_df.dropna(subset=["excess_pct"]) if not industry_df.empty else industry_df
+    top_good = ranked.nlargest(5, "excess_pct") if not ranked.empty else industry_df.head(0)
+    top_bad = ranked.nsmallest(5, "excess_pct") if not ranked.empty else industry_df.head(0)
 
     quality = {
         "indus_unmapped": int(len(unmapped_df)),

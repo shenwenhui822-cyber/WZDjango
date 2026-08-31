@@ -422,10 +422,10 @@
     <!-- 三、Wind 估值 -->
     <div id="sec-valuation" class="section-anchor">
         <div class="card">
-            <div class="card-header">三、估值暴露（Wind ASHAREEODDERIVATIVEINDICATOR）</div>
+            <div class="card-header">三、估值暴露（通联 mkt_equd_eval）</div>
             <div class="card-body">
                 <p class="pd-section-note text-muted small mb-3">
-                    按持仓<strong>市值权重</strong>汇总 Wind 日度估值指标，反映组合当前估值水平与市值风格。
+                    按持仓<strong>市值权重</strong>汇总通联日度估值指标，反映组合当前估值水平与市值风格。
                     <strong>加权 PE(TTM)/PB</strong> 为滚动市盈率、市净率；
                     <strong>加权市值分位</strong>表示持仓在全 A 市值分布中的加权位置（&gt;70% 偏大盘，&lt;30% 偏小盘）。
                     估值为静态截面，需结合行业与盈利预期综合判断；快照日无数据时回退至最近可用交易日。
@@ -464,14 +464,13 @@
     <!-- 四、Wind 盈利预期 -->
     <div id="sec-consensus" class="section-anchor">
         <div class="card">
-            <div class="card-header">四、盈利预期（Wind ASHARECONSENSUSROLLINGDATA · FY1）</div>
+            <div class="card-header">四、盈利预期（通联 mkt_equd_eval · PE_CM）</div>
             <div class="card-body">
                 <p class="pd-section-note text-muted small mb-3">
-                    采用 Wind 一致预期滚动数据 <strong>FY1</strong>（未来 12 个月），按持仓<strong>市值权重</strong>汇总分析师一致预期。
-                    <strong>加权预期 PE / 预期净利润</strong>反映市场定价；
-                    <strong>预期净利润变化</strong>为相对上一预测日的上调或下调幅度；
-                    <strong>覆盖度</strong>为有一致预期数据的持仓市值权重占比（&gt;80% 代表性强，&lt;50% 参考价值下降）。
-                    <strong>EST_DT</strong> 为 Wind 预测日，若早于快照日表示数据未更新至最新。
+                    通联库无分析师一致预期滚动表，本节以 <strong>PE_CM（预测市盈率）</strong> 按持仓<strong>市值权重</strong>汇总作为盈利预期近似。
+                    <strong>加权预期 PE</strong>反映市场定价；预期净利润及变化在通联当前表中不可用。
+                    <strong>覆盖度</strong>为有 PE_CM 的持仓市值权重占比（&gt;80% 代表性强，&lt;50% 参考价值下降）。
+                    数据日若早于快照日表示估值表未更新至最新。
                 </p>
                 <div class="row g-3">
                     <div class="col-6 col-md-3">
@@ -500,7 +499,7 @@
                     </div>
                 </div>
                 <p class="text-muted small mt-3 mb-0">
-                    EST_DT：
+                    数据日：
                     <span class="{% if ctx.quality.wind_consensus_est_dt|wind_date_before:trade_date %}pd-date-stale{% endif %}">
                         {{ ctx.quality.wind_consensus_est_dt|wind_dt_fmt|default:"—" }}
                     </span>
@@ -515,7 +514,7 @@
     <!-- 五、中信行业 -->
     <div id="sec-citics" class="section-anchor">
         <div class="card">
-            <div class="card-header">五、中信二级行业（Wind · 与申万并列）</div>
+            <div class="card-header">五、中信二级行业（通联 md_inst_type · 与申万并列）</div>
             <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between mb-3">
                     <h6 class="text-secondary mb-0">5.1 全部行业{% if ctx.citics_count %}（共 {{ ctx.citics_count }} 个）{% endif %}</h6>
@@ -590,7 +589,7 @@
     <!-- 七、主题 -->
     <div id="sec-theme" class="section-anchor">
         <div class="card">
-            <div class="card-header">六、主题/概念暴露（Wind ASHAREWTHEMEINDUSTRIESCLASS）</div>
+            <div class="card-header">六、主题/概念暴露（通联 战略性新兴产业 2018）</div>
             <div class="card-body">
                 <p class="text-muted small mb-3">单票可属多主题，权重为暴露加总，合计可大于 100%。持仓涨跌为<strong>当日</strong>；当日持仓浮动盈亏 = Σ(持仓×涨跌额)，加仓按成本、减仓按昨收至现价；当前持仓累计浮动盈亏为相对成本、仅含快照内持仓。{% if ctx.quality.theme_top1 %} 最大主题：{{ ctx.quality.theme_top1 }}（{{ ctx.quality.theme_top1_weight|pct }}）{% endif %}</p>
                 <div class="industry-table-wrap mb-4">
@@ -619,7 +618,7 @@
     <!-- 八、宽基风格 -->
     <div id="sec-style" class="section-anchor">
         <div class="card">
-            <div class="card-header">七、宽基风格（rq_base_index + Wind AINDEXEODPRICES）</div>
+            <div class="card-header">七、宽基风格（rq_base_index + 通联 mkt_idxd）</div>
             <div class="card-body">
                 <p class="text-muted small mb-3">持仓涨跌、超额为<strong>当日</strong>；当日持仓浮动盈亏 = Σ(持仓×涨跌额)，加仓按成本、减仓按昨收至现价；当前持仓累计浮动盈亏为相对成本、仅含快照内持仓。</p>
                 <h6 class="text-secondary">8.1 指数成分板块</h6>
@@ -757,8 +756,8 @@
                     <li>未映射申万二级：{{ ctx.quality.indus_unmapped }} 只（市值占比 {{ ctx.quality.indus_unmapped_mv_pct|pct }}）</li>
                     <li>未映射中信二级：{{ ctx.quality.citics_unmapped|default:"0" }} 只（{{ ctx.quality.citics_unmapped_mv_pct|pct|default:"0%" }}）</li>
                     <li>申万行业涨跌前收日期：{{ ctx.quality.prev_trade_date|default:"—" }}</li>
-                    <li>Wind 估值日期：{{ ctx.quality.wind_deriv_date|default:"—" }}</li>
-                    <li>Wind 一致预期 EST_DT：
+                    <li>通联估值日期：{{ ctx.quality.wind_deriv_date|default:"—" }}</li>
+                    <li>通联盈利预期数据日：
                         <span class="{% if ctx.quality.wind_consensus_est_dt|wind_date_before:trade_date %}pd-date-stale{% endif %}">
                             {{ ctx.quality.wind_consensus_est_dt|wind_dt_fmt|default:"—" }}
                         </span>
@@ -766,8 +765,8 @@
                         <span class="pd-date-stale">（落后）</span>
                         {% endif %}
                     </li>
-                    <li>Wind 中信指数 TRADE_DT：{{ ctx.quality.wind_citics_trade_dt|default:"—" }}</li>
-                    <li>Wind 宽基指数 TRADE_DT：{{ ctx.quality.wind_index_trade_dt|default:"—" }}</li>
+                    <li>通联中信指数 TRADE_DATE：{{ ctx.quality.wind_citics_trade_dt|default:"—" }}</li>
+                    <li>通联宽基指数 TRADE_DATE：{{ ctx.quality.wind_index_trade_dt|default:"—" }}</li>
                 </ul>
                 {% if ctx.unmapped_industry %}
                 <h6 class="mt-4 mb-3">未映射申万二级股票 Top 20</h6>

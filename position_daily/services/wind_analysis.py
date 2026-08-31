@@ -1,4 +1,4 @@
-"""Wind 维度分析：估值、资金流、一致预期、中信行业、主题"""
+"""通联（tldb）维度分析：估值、资金流、盈利预期、中信行业、主题"""
 
 from __future__ import annotations
 
@@ -11,17 +11,22 @@ from .stock_contribution import sum_daily_pnl
 from .wind_db import (
     BATCH_SIZE,
     _fetch_df,
+    attach_wind_code,
+    chg_pct_to_percent,
     citics_to_level2,
     from_trade_dt,
     load_citics_l2_index_map,
-    load_industry_name_map,
-    query_in_batches,
+    load_citics_l2_name_map,
+    load_theme_l2_name_map,
+    query_by_tickers,
     resolve_trade_dt,
-    theme_code_to_industries,
-    to_trade_dt,
+    wind_code_to_ticker,
 )
 
 logger = logging.getLogger("position_daily.wind")
+
+# 同一次报告内复用 mkt_equd_eval，避免估值/预期/市值分桶重复打库
+_EVAL_CACHE: dict[tuple[str, tuple[str, ...]], pd.DataFrame] = {}
 
 
 def _weighted_avg(values: pd.Series, weights: pd.Series) -> float | None:
@@ -33,84 +38,119 @@ def _weighted_avg(values: pd.Series, weights: pd.Series) -> float | None:
     return float((w * v).sum() / w.sum())
 
 
+def _pos_tickers(pos_df: pd.DataFrame) -> list[str]:
+    return sorted({wind_code_to_ticker(c) for c in pos_df["code"].dropna().unique().tolist() if c})
+
+
+def _ticker_to_code_map(pos_df: pd.DataFrame) -> dict[str, str]:
+    """TICKER → 持仓 Wind 代码（同代码多交易所时以后出现的为准，极少见）。"""
+    mapping: dict[str, str] = {}
+    for code in pos_df["code"].dropna().unique().tolist():
+        mapping[wind_code_to_ticker(code)] = str(code)
+    return mapping
+
+
+def _fetch_eval(pos_df: pd.DataFrame, trade_dt: str) -> pd.DataFrame:
+    """mkt_equd_eval 按 TICKER 批量取数（无 JOIN），映射回持仓 code；进程内缓存。"""
+    tickers = tuple(_pos_tickers(pos_df))
+    if not tickers or not trade_dt:
+        return pd.DataFrame()
+    cache_key = (trade_dt, tickers)
+    cached = _EVAL_CACHE.get(cache_key)
+    if cached is not None:
+        return cached.copy()
+
+    frames = []
+    for i in range(0, len(tickers), BATCH_SIZE):
+        batch = list(tickers[i : i + BATCH_SIZE])
+        ph = ",".join(["%s"] * len(batch))
+        sql = (
+            "SELECT TICKER_SYMBOL, PE_T, PB, MARKET_VALUE, PE_CM "
+            f"FROM mkt_equd_eval WHERE TRADE_DATE=%s AND TICKER_SYMBOL IN ({ph})"
+        )
+        frames.append(_fetch_df(sql, (trade_dt, *batch)))
+    if not frames:
+        return pd.DataFrame()
+    df = pd.concat(frames, ignore_index=True)
+    if df.empty:
+        _EVAL_CACHE[cache_key] = df
+        return df
+
+    code_map = _ticker_to_code_map(pos_df)
+    df["code"] = df["TICKER_SYMBOL"].astype(str).map(code_map)
+    df = df.dropna(subset=["code"]).drop_duplicates("code", keep="first")
+    _EVAL_CACHE[cache_key] = df
+    return df.copy()
+
+
+def clear_eval_cache() -> None:
+    _EVAL_CACHE.clear()
+
+
 def analyze_valuation(pos_df: pd.DataFrame, trade_date: str) -> tuple[dict, dict]:
-    """组合加权 PE/PB/市值及全市场市值分位。"""
-    codes = pos_df["code"].dropna().unique().tolist()
-    trade_dt = resolve_trade_dt("ASHAREEODDERIVATIVEINDICATOR", trade_date)
-    quality = {"wind_deriv_trade_dt": trade_dt, "wind_deriv_date": from_trade_dt(trade_dt) if trade_dt else None}
+    """组合加权 PE/PB/市值及市值分位（mkt_equd_eval）。"""
+    trade_dt = resolve_trade_dt("mkt_equd_eval", trade_date)
+    quality = {
+        "wind_deriv_trade_dt": trade_dt,
+        "wind_deriv_date": from_trade_dt(trade_dt) if trade_dt else None,
+    }
     if not trade_dt:
         return {}, quality
 
-    deriv = query_in_batches(
-        "ASHAREEODDERIVATIVEINDICATOR",
-        ["S_INFO_WINDCODE", "S_VAL_PE_TTM", "S_VAL_PB_NEW", "S_VAL_MV"],
-        codes,
-        trade_dt,
-    )
+    deriv = _fetch_eval(pos_df, trade_dt)
     if deriv.empty:
         quality["deriv_matched"] = 0
         return {}, quality
 
-    merged = pos_df.merge(deriv, left_on="code", right_on="S_INFO_WINDCODE", how="left")
-    matched = merged[merged["S_VAL_MV"].notna()]
+    merged = pos_df.merge(
+        deriv[["code", "PE_T", "PB", "MARKET_VALUE", "PE_CM"]],
+        on="code",
+        how="left",
+    )
+    matched = merged[merged["MARKET_VALUE"].notna()].copy()
     quality["deriv_matched"] = int(matched["code"].nunique())
     quality["deriv_coverage"] = float(matched["weight"].sum())
 
-    # 全 A 市值分位（截面）
-    mv_pct_map = {}
-    try:
-        mv_all = _fetch_df(
-            "SELECT S_INFO_WINDCODE, S_VAL_MV FROM ASHAREEODDERIVATIVEINDICATOR "
-            "WHERE TRADE_DT=%s AND S_VAL_MV IS NOT NULL AND S_VAL_MV > 0",
-            (trade_dt,),
-        )
-        if not mv_all.empty:
-            mv_all["pct_rank"] = mv_all["S_VAL_MV"].rank(pct=True) * 100
-            mv_pct_map = dict(zip(mv_all["S_INFO_WINDCODE"], mv_all["pct_rank"]))
-    except Exception:
-        logger.exception("全市场市值分位查询失败")
-
-    matched = matched.copy()
-    matched["mv_pct"] = matched["code"].map(mv_pct_map)
+    # 全市场截面扫描极慢；改用持仓内市值分位（秒级）
+    matched["mv_pct"] = matched["MARKET_VALUE"].rank(pct=True) * 100
+    quality["mv_pct_universe"] = "portfolio"
 
     summary = {
-        "w_pe_ttm": _weighted_avg(matched["S_VAL_PE_TTM"], matched["weight"]),
-        "w_pb": _weighted_avg(matched["S_VAL_PB_NEW"], matched["weight"]),
-        "w_mv_yi": _weighted_avg(matched["S_VAL_MV"] / 10000, matched["weight"]),
+        "w_pe_ttm": _weighted_avg(matched["PE_T"], matched["weight"]),
+        "w_pb": _weighted_avg(matched["PB"], matched["weight"]),
+        "w_mv_yi": _weighted_avg(matched["MARKET_VALUE"] / 1e8, matched["weight"]),
         "w_mv_pct": _weighted_avg(matched["mv_pct"], matched["weight"]),
-        "median_pe_ttm": float(matched["S_VAL_PE_TTM"].median()) if matched["S_VAL_PE_TTM"].notna().any() else None,
-        "median_pb": float(matched["S_VAL_PB_NEW"].median()) if matched["S_VAL_PB_NEW"].notna().any() else None,
+        "median_pe_ttm": float(matched["PE_T"].median()) if matched["PE_T"].notna().any() else None,
+        "median_pb": float(matched["PB"].median()) if matched["PB"].notna().any() else None,
     }
     return summary, quality
 
 
 def analyze_moneyflow(pos_df: pd.DataFrame, trade_date: str) -> tuple[dict, dict]:
-    trade_dt = resolve_trade_dt("ASHAREMONEYFLOW", trade_date)
+    """资金流向：mkt_equ_mf_new（超大单/大单净流入）。"""
+    trade_dt = resolve_trade_dt("mkt_equ_mf_new", trade_date)
     quality = {"wind_mf_trade_dt": trade_dt}
     if not trade_dt:
         return {}, quality
 
-    codes = pos_df["code"].dropna().unique().tolist()
-    mf = query_in_batches(
-        "ASHAREMONEYFLOW",
-        [
-            "S_INFO_WINDCODE",
-            "BUY_VALUE_EXLARGE_ORDER",
-            "SELL_VALUE_EXLARGE_ORDER",
-            "BUY_VALUE_LARGE_ORDER",
-            "SELL_VALUE_LARGE_ORDER",
-        ],
-        codes,
+    tickers = _pos_tickers(pos_df)
+    mf = query_by_tickers(
+        "mkt_equ_mf_new",
+        ["TICKER_SYMBOL", "NET_FLOW_XL", "NET_FLOW_L"],
+        tickers,
         trade_dt,
     )
     if mf.empty:
         quality["mf_matched"] = 0
         return {}, quality
 
-    mf["net_exlarge"] = mf["BUY_VALUE_EXLARGE_ORDER"].astype(float) - mf["SELL_VALUE_EXLARGE_ORDER"].astype(float)
-    mf["net_large"] = mf["BUY_VALUE_LARGE_ORDER"].astype(float) - mf["SELL_VALUE_LARGE_ORDER"].astype(float)
+    code_map = _ticker_to_code_map(pos_df)
+    mf["code"] = mf["TICKER_SYMBOL"].astype(str).map(code_map)
+    mf = mf.dropna(subset=["code"]).drop_duplicates("code", keep="first")
+    mf["net_exlarge"] = pd.to_numeric(mf["NET_FLOW_XL"], errors="coerce")
+    mf["net_large"] = pd.to_numeric(mf["NET_FLOW_L"], errors="coerce")
 
-    merged = pos_df.merge(mf, left_on="code", right_on="S_INFO_WINDCODE", how="left")
+    merged = pos_df.merge(mf[["code", "net_exlarge", "net_large"]], on="code", how="left")
     matched = merged[merged["net_exlarge"].notna()]
     quality["mf_matched"] = int(matched["code"].nunique())
     quality["mf_coverage"] = float(matched["weight"].sum())
@@ -119,7 +159,6 @@ def analyze_moneyflow(pos_df: pd.DataFrame, trade_date: str) -> tuple[dict, dict
     net_ex = float(matched["net_exlarge"].sum())
     net_lg = float(matched["net_large"].sum())
 
-    # 按权重汇总的净流入强度（占组合市值比例）
     matched = matched.copy()
     matched["net_exlarge_rate"] = np.where(
         matched["market_value"] > 0,
@@ -144,75 +183,28 @@ def analyze_moneyflow(pos_df: pd.DataFrame, trade_date: str) -> tuple[dict, dict
 
 
 def analyze_consensus(pos_df: pd.DataFrame, trade_date: str) -> tuple[dict, dict]:
-    est_dt = resolve_trade_dt("ASHARECONSENSUSROLLINGDATA", trade_date, date_col="EST_DT")
-    quality = {"wind_consensus_est_dt": est_dt}
-    if not est_dt:
+    """盈利预期：复用 mkt_equd_eval.PE_CM（与估值同一次取数缓存）。"""
+    trade_dt = resolve_trade_dt("mkt_equd_eval", trade_date)
+    quality = {"wind_consensus_est_dt": trade_dt.replace("-", "") if trade_dt else None}
+    if not trade_dt:
         return {}, quality
 
-    codes = pos_df["code"].dropna().unique().tolist()
-    cur = query_in_batches(
-        "ASHARECONSENSUSROLLINGDATA",
-        ["S_INFO_WINDCODE", "NET_PROFIT", "EST_PE", "EST_EPS"],
-        codes,
-        est_dt,
-        date_col="EST_DT",
-        extra_where="ROLLING_TYPE=%s",
-        extra_params=("FY1",),
-    )
-    quality["consensus_matched"] = int(cur["S_INFO_WINDCODE"].nunique()) if not cur.empty else 0
-    quality["consensus_coverage"] = float(
-        pos_df[pos_df["code"].isin(cur["S_INFO_WINDCODE"])]["weight"].sum()
-    ) if not cur.empty else 0.0
+    deriv = _fetch_eval(pos_df, trade_dt)
+    if deriv.empty or "PE_CM" not in deriv.columns:
+        quality["consensus_matched"] = 0
+        quality["consensus_coverage"] = 0.0
+        return {}, quality
 
-    # 前一 EST_DT：用样本股快速取最近两个预测日，避免全表 MAX 扫描
-    prev_dt = None
-    try:
-        ladder = _fetch_df(
-            "SELECT DISTINCT EST_DT FROM ASHARECONSENSUSROLLINGDATA "
-            "WHERE S_INFO_WINDCODE='600028.SH' AND ROLLING_TYPE='FY1' AND EST_DT <= %s "
-            "ORDER BY EST_DT DESC LIMIT 2",
-            (est_dt,),
-        )
-        if len(ladder) >= 2:
-            prev_dt = str(ladder.iloc[1]["EST_DT"])
-    except Exception:
-        logger.warning("一致预期前一 EST_DT 查询失败，跳过净利润变化")
-    quality["consensus_prev_est_dt"] = prev_dt
-
-    prev = pd.DataFrame()
-    if prev_dt:
-        prev = query_in_batches(
-            "ASHARECONSENSUSROLLINGDATA",
-            ["S_INFO_WINDCODE", "NET_PROFIT"],
-            codes,
-            prev_dt,
-            date_col="EST_DT",
-            extra_where="ROLLING_TYPE=%s",
-            extra_params=("FY1",),
-        )
-        if not prev.empty:
-            prev = prev.rename(columns={"NET_PROFIT": "NET_PROFIT_PREV"})
-
-    merged = pos_df.merge(cur, left_on="code", right_on="S_INFO_WINDCODE", how="left")
-    if not prev.empty:
-        merged = merged.merge(prev, left_on="code", right_on="S_INFO_WINDCODE", how="left", suffixes=("", "_p"))
-
-    matched = merged[merged["EST_PE"].notna()].copy()
-    if not matched.empty and "NET_PROFIT_PREV" in matched.columns:
-        matched["np_chg_pct"] = np.where(
-            matched["NET_PROFIT_PREV"].astype(float).abs() > 0,
-            (matched["NET_PROFIT"].astype(float) - matched["NET_PROFIT_PREV"].astype(float))
-            / matched["NET_PROFIT_PREV"].astype(float).abs()
-            * 100,
-            np.nan,
-        )
+    merged = pos_df.merge(deriv[["code", "PE_CM"]], on="code", how="left")
+    matched = merged[merged["PE_CM"].notna()].copy()
+    quality["consensus_matched"] = int(matched["code"].nunique())
+    quality["consensus_coverage"] = float(matched["weight"].sum()) if not matched.empty else 0.0
+    quality["consensus_prev_est_dt"] = None
 
     summary = {
-        "w_est_pe": _weighted_avg(matched["EST_PE"], matched["weight"]) if not matched.empty else None,
-        "w_net_profit_yi": _weighted_avg(matched["NET_PROFIT"] / 1e8, matched["weight"]) if not matched.empty else None,
-        "w_np_chg_pct": _weighted_avg(matched.get("np_chg_pct", pd.Series(dtype=float)), matched["weight"])
-        if not matched.empty and "np_chg_pct" in matched.columns
-        else None,
+        "w_est_pe": _weighted_avg(matched["PE_CM"], matched["weight"]) if not matched.empty else None,
+        "w_net_profit_yi": None,
+        "w_np_chg_pct": None,
         "coverage_count": quality["consensus_matched"],
         "coverage_pct": quality["consensus_coverage"],
     }
@@ -224,7 +216,7 @@ def _build_industry_style_df(
     stock_map: pd.DataFrame,
     index_pct: dict[str, float],
     code_name_col: str = "indus_code",
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     merged = pos_df.merge(stock_map, on="code", how="left")
     unmapped = merged[merged[code_name_col].isna()]
     mapped = merged.dropna(subset=[code_name_col]).copy()
@@ -245,60 +237,100 @@ def _build_industry_style_df(
                 "weight": indus_weight,
                 "w_chg_pct": w_chg_pct,
                 "indus_pct_chg": indus_pct,
-                "excess_pct": w_chg_pct - indus_pct if pd.notna(indus_pct) else None,
+                "excess_pct": (w_chg_pct - indus_pct) if pd.notna(indus_pct) else np.nan,
                 "daily_pnl": sum_daily_pnl(g),
                 "profit": g["profit"].sum(),
             }
         )
     df = pd.DataFrame(records)
     if not df.empty:
+        df["excess_pct"] = pd.to_numeric(df["excess_pct"], errors="coerce")
+        df["indus_pct_chg"] = pd.to_numeric(df["indus_pct_chg"], errors="coerce")
         df = df.sort_values("weight", ascending=False)
     return df, unmapped
 
 
-def analyze_citics_industry(pos_df: pd.DataFrame, trade_date: str) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
-    trade_dt = resolve_trade_dt("AINDEXINDUSTRIESEODCITICS", trade_date)
-    quality = {"wind_citics_trade_dt": trade_dt}
-    codes = pos_df["code"].dropna().unique().tolist()
-
-    # 股票 → 中信行业（当前有效）
-    ph_parts = []
-    params: list = []
-    for i in range(0, len(codes), BATCH_SIZE):
-        batch = codes[i : i + BATCH_SIZE]
+def _fetch_inst_types(
+    tickers: list[str],
+    industry: str,
+    type_prefix: str,
+) -> pd.DataFrame:
+    """md_security → PARTY_ID，再按 TYPE_ID 前缀取分类（两段查询，避免大 JOIN）。"""
+    if not tickers:
+        return pd.DataFrame()
+    sec_frames = []
+    for i in range(0, len(tickers), BATCH_SIZE):
+        batch = tickers[i : i + BATCH_SIZE]
         ph = ",".join(["%s"] * len(batch))
-        ph_parts.append(f"S_INFO_WINDCODE IN ({ph})")
-        params.extend(batch)
-    where = " OR ".join(ph_parts)
-    class_df = _fetch_df(
-        f"SELECT S_INFO_WINDCODE, CITICS_IND_CODE FROM ASHAREINDUSTRIESCLASSCITICS "
-        f"WHERE CUR_SIGN=1 AND ({where})",
-        tuple(params),
-    )
-    if class_df.empty:
-        quality["citics_unmapped"] = len(codes)
+        sec_frames.append(
+            _fetch_df(
+                "SELECT TICKER_SYMBOL, EXCHANGE_CD, PARTY_ID FROM md_security "
+                f"WHERE TICKER_SYMBOL IN ({ph}) AND EXCHANGE_CD IN ('XSHG','XSHE','BJSE')",
+                tuple(batch),
+            )
+        )
+    sec = pd.concat(sec_frames, ignore_index=True) if sec_frames else pd.DataFrame()
+    if sec.empty:
+        return pd.DataFrame()
+    sec = sec.dropna(subset=["PARTY_ID"]).drop_duplicates(["TICKER_SYMBOL", "EXCHANGE_CD"], keep="first")
+    party_ids = [int(x) for x in sec["PARTY_ID"].unique().tolist()]
+
+    type_frames = []
+    for i in range(0, len(party_ids), BATCH_SIZE):
+        batch = party_ids[i : i + BATCH_SIZE]
+        ph = ",".join(["%s"] * len(batch))
+        type_frames.append(
+            _fetch_df(
+                "SELECT i.PARTY_ID, i.TYPE_ID, t.TYPE_NAME, t.INDUSTRY_LEVEL "
+                "FROM md_inst_type i "
+                "INNER JOIN md_type t ON i.TYPE_ID = t.TYPE_ID "
+                f"WHERE i.IS_NEW=1 AND i.PARTY_ID IN ({ph}) "
+                "AND t.INDUSTRY=%s AND i.TYPE_ID LIKE %s",
+                (*batch, industry, f"{type_prefix}%"),
+            )
+        )
+    types = pd.concat(type_frames, ignore_index=True) if type_frames else pd.DataFrame()
+    if types.empty:
+        return pd.DataFrame()
+    out = sec.merge(types, on="PARTY_ID", how="inner")
+    return attach_wind_code(out)
+
+
+def analyze_citics_industry(pos_df: pd.DataFrame, trade_date: str) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+    """中信二级：md_inst_type(中信行业分类) + mkt_idxd_citic。"""
+    trade_dt = resolve_trade_dt("mkt_idxd_citic", trade_date)
+    quality = {"wind_citics_trade_dt": trade_dt.replace("-", "") if trade_dt else None}
+    tickers = _pos_tickers(pos_df)
+    if not tickers:
         return pd.DataFrame(), pos_df[["code", "name", "market_value", "weight"]].copy(), quality
 
-    name_map = load_industry_name_map()
-    idx_map = load_citics_l2_index_map()
-    class_df = class_df.drop_duplicates("S_INFO_WINDCODE", keep="first")
-    class_df["l2_code"] = class_df["CITICS_IND_CODE"].map(citics_to_level2)
-    class_df["indus_name"] = class_df["l2_code"].map(name_map)
-    class_df["index_code"] = class_df["l2_code"].map(idx_map)
-    stock_map = class_df.rename(columns={"S_INFO_WINDCODE": "code", "l2_code": "indus_code"})[
-        ["code", "indus_code", "indus_name", "index_code"]
-    ]
+    class_df = _fetch_inst_types(tickers, "中信行业分类", "010317")
+    if class_df.empty:
+        quality["citics_unmapped"] = len(pos_df)
+        return pd.DataFrame(), pos_df[["code", "name", "market_value", "weight"]].copy(), quality
 
-    index_pct = {}
+    class_df["INDUSTRY_LEVEL"] = pd.to_numeric(class_df["INDUSTRY_LEVEL"], errors="coerce").fillna(0)
+    class_df = class_df.sort_values("INDUSTRY_LEVEL", ascending=False).drop_duplicates("code", keep="first")
+    class_df["indus_code"] = class_df["TYPE_ID"].map(citics_to_level2)
+    name_map = load_citics_l2_name_map()
+    idx_map = load_citics_l2_index_map()
+    class_df["indus_name"] = class_df["indus_code"].map(name_map)
+    class_df["index_code"] = class_df["indus_code"].map(idx_map)
+    stock_map = class_df[["code", "indus_code", "indus_name", "index_code"]]
+
+    index_pct: dict[str, float] = {}
     if trade_dt and stock_map["index_code"].notna().any():
         idx_codes = stock_map["index_code"].dropna().unique().tolist()
         ph = ",".join(["%s"] * len(idx_codes))
         idx_df = _fetch_df(
-            f"SELECT S_INFO_WINDCODE, S_DQ_PCTCHANGE FROM AINDEXINDUSTRIESEODCITICS "
-            f"WHERE TRADE_DT=%s AND S_INFO_WINDCODE IN ({ph})",
+            f"SELECT TICKER_SYMBOL, CHG_PCT FROM mkt_idxd_citic "
+            f"WHERE TRADE_DATE=%s AND TICKER_SYMBOL IN ({ph})",
             (trade_dt, *idx_codes),
         )
-        index_pct = dict(zip(idx_df["S_INFO_WINDCODE"], idx_df["S_DQ_PCTCHANGE"].astype(float)))
+        if not idx_df.empty:
+            index_pct = dict(
+                zip(idx_df["TICKER_SYMBOL"].astype(str), chg_pct_to_percent(idx_df["CHG_PCT"]))
+            )
 
     industry_df, unmapped = _build_industry_style_df(pos_df, stock_map, index_pct)
     quality["citics_unmapped"] = int(unmapped["code"].nunique()) if not unmapped.empty else 0
@@ -308,34 +340,24 @@ def analyze_citics_industry(pos_df: pd.DataFrame, trade_date: str) -> tuple[pd.D
 
 
 def analyze_theme(pos_df: pd.DataFrame, trade_date: str) -> tuple[pd.DataFrame, dict]:
-    codes = pos_df["code"].dropna().unique().tolist()
-    ph_parts, params = [], []
-    for i in range(0, len(codes), BATCH_SIZE):
-        batch = codes[i : i + BATCH_SIZE]
-        ph = ",".join(["%s"] * len(batch))
-        ph_parts.append(f"S_INFO_WINDCODE IN ({ph})")
-        params.extend(batch)
-    theme_df = _fetch_df(
-        f"SELECT S_INFO_WINDCODE, IND_CODE FROM ASHAREWTHEMEINDUSTRIESCLASS "
-        f"WHERE CUR_SIGN=1 AND ({' OR '.join(ph_parts)})",
-        tuple(params),
-    )
-    quality = {"theme_stock_theme_pairs": len(theme_df)}
+    """主题：战略性新兴产业(2018) 二级（md_inst_type）。"""
+    del trade_date
+    tickers = _pos_tickers(pos_df)
+    quality: dict = {"theme_stock_theme_pairs": 0}
+    if not tickers:
+        return pd.DataFrame(), quality
+
+    theme_df = _fetch_inst_types(tickers, "战略性新兴产业(2018)", "010319")
+    quality["theme_stock_theme_pairs"] = len(theme_df)
     if theme_df.empty:
         return pd.DataFrame(), quality
 
-    name_map = load_industry_name_map()
-    theme_df["theme_code"] = theme_df["IND_CODE"]
-    theme_df["theme_name"] = theme_df["IND_CODE"].map(
-        lambda c: name_map.get(theme_code_to_industries(str(c)), str(c))
-    )
+    theme_df["theme_code"] = theme_df["TYPE_ID"].map(citics_to_level2)
+    name_map = load_theme_l2_name_map()
+    theme_df["theme_name"] = theme_df["theme_code"].map(name_map).fillna(theme_df["theme_code"])
+    theme_df = theme_df.drop_duplicates(["code", "theme_code"], keep="first")
 
-    merged = pos_df.merge(
-        theme_df.rename(columns={"S_INFO_WINDCODE": "code"}),
-        on="code",
-        how="inner",
-    )
-    # 一只股票可属多主题，权重按主题重复计入（暴露口径）
+    merged = pos_df.merge(theme_df[["code", "theme_code", "theme_name"]], on="code", how="inner")
     records = []
     for (tcode, tname), g in merged.groupby(["theme_code", "theme_name"]):
         tw = g["weight"].sum()

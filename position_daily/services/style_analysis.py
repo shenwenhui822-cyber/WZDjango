@@ -1,4 +1,4 @@
-"""宽基风格：rq_base_index 成分 + Wind AINDEXEODPRICES 基准涨跌"""
+"""宽基风格：rq_base_index 成分 + 通联 mkt_idxd 基准涨跌 + mkt_equd_eval 市值分桶"""
 
 from __future__ import annotations
 
@@ -6,12 +6,21 @@ import logging
 
 import pandas as pd
 
-from .config import BENCH_WIND_MAP, BUCKET_ORDER, MV_LARGE_WAN, MV_MID_WAN
+from .config import BENCH_INDEX_MAP, BUCKET_ORDER, MV_LARGE_YUAN, MV_MID_YUAN
 from .mongo import rq_db
 from .stock_contribution import sum_daily_pnl
-from .wind_db import _fetch_df, query_in_batches, resolve_trade_dt
+from .wind_db import (
+    chg_pct_to_percent,
+    resolve_trade_dt,
+    _fetch_df,
+)
+from .wind_analysis import _fetch_eval
+
 
 logger = logging.getLogger("position_daily.style")
+
+# 兼容旧名
+BENCH_WIND_MAP = BENCH_INDEX_MAP
 
 
 def _assign_bucket(row) -> str:
@@ -23,25 +32,28 @@ def _assign_bucket(row) -> str:
 
 
 def _mv_bucket(mv: float | None) -> str:
+    """市值单位：元。"""
     if mv is None or pd.isna(mv) or mv <= 0:
         return "未知"
-    if mv >= MV_LARGE_WAN:
+    if mv >= MV_LARGE_YUAN:
         return "大盘"
-    if mv >= MV_MID_WAN:
+    if mv >= MV_MID_YUAN:
         return "中盘"
     return "小盘"
 
 
-def _fetch_index_pct(trade_dt: str, wind_codes: list[str]) -> dict[str, float]:
-    if not wind_codes:
+def _fetch_index_pct(trade_dt: str, tickers: list[str]) -> dict[str, float]:
+    if not tickers or not trade_dt:
         return {}
-    ph = ",".join(["%s"] * len(wind_codes))
+    ph = ",".join(["%s"] * len(tickers))
     df = _fetch_df(
-        f"SELECT S_INFO_WINDCODE, S_DQ_PCTCHANGE FROM AINDEXEODPRICES "
-        f"WHERE TRADE_DT=%s AND S_INFO_WINDCODE IN ({ph})",
-        (trade_dt, *wind_codes),
+        f"SELECT TICKER_SYMBOL, CHG_PCT FROM mkt_idxd "
+        f"WHERE TRADE_DATE=%s AND TICKER_SYMBOL IN ({ph})",
+        (trade_dt, *tickers),
     )
-    return dict(zip(df["S_INFO_WINDCODE"], df["S_DQ_PCTCHANGE"].astype(float)))
+    if df.empty:
+        return {}
+    return dict(zip(df["TICKER_SYMBOL"].astype(str), chg_pct_to_percent(df["CHG_PCT"])))
 
 
 def analyze_style(pos_df: pd.DataFrame, trade_date: str) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
@@ -70,9 +82,9 @@ def analyze_style(pos_df: pd.DataFrame, trade_date: str) -> tuple[pd.DataFrame, 
                 merged[col] = merged[col].fillna(0)
     merged["bucket"] = merged.apply(_assign_bucket, axis=1)
 
-    trade_dt = resolve_trade_dt("AINDEXEODPRICES", trade_date)
-    quality["wind_index_trade_dt"] = trade_dt
-    bench_codes = list(BENCH_WIND_MAP.values())
+    trade_dt = resolve_trade_dt("mkt_idxd", trade_date)
+    quality["wind_index_trade_dt"] = trade_dt.replace("-", "") if trade_dt else None
+    bench_codes = list(BENCH_INDEX_MAP.values())
     index_pct = _fetch_index_pct(trade_dt, bench_codes) if trade_dt else {}
 
     bucket_records = []
@@ -80,7 +92,7 @@ def analyze_style(pos_df: pd.DataFrame, trade_date: str) -> tuple[pd.DataFrame, 
         bw = g["weight"].sum()
         w_chg = (g["weight"] * g["change_pct"]).sum()
         w_chg_pct = w_chg / bw if bw else 0.0
-        bench = BENCH_WIND_MAP.get(bucket)
+        bench = BENCH_INDEX_MAP.get(bucket)
         indus_pct = index_pct.get(bench) if bench else None
         bucket_records.append(
             {
@@ -89,7 +101,7 @@ def analyze_style(pos_df: pd.DataFrame, trade_date: str) -> tuple[pd.DataFrame, 
                 "weight": bw,
                 "w_chg_pct": w_chg_pct,
                 "index_pct_chg": indus_pct,
-                "excess_pct": w_chg_pct - indus_pct if pd.notna(indus_pct) else None,
+                "excess_pct": (w_chg_pct - indus_pct) if pd.notna(indus_pct) else float("nan"),
                 "daily_pnl": sum_daily_pnl(g),
                 "profit": g["profit"].sum(),
                 "bench_code": bench,
@@ -101,18 +113,13 @@ def analyze_style(pos_df: pd.DataFrame, trade_date: str) -> tuple[pd.DataFrame, 
         bucket_df["bucket"] = pd.Categorical(bucket_df["bucket"], categories=order, ordered=True)
         bucket_df = bucket_df.sort_values("bucket")
 
-    # 市值风格（Wind 衍生指标）
+    # 市值风格：复用估值阶段的 mkt_equd_eval 缓存
     mv_df = pd.DataFrame()
     if trade_dt:
-        deriv = query_in_batches(
-            "ASHAREEODDERIVATIVEINDICATOR",
-            ["S_INFO_WINDCODE", "S_VAL_MV"],
-            pos_df["code"].dropna().unique().tolist(),
-            trade_dt,
-        )
-        if not deriv.empty:
-            m2 = pos_df.merge(deriv, left_on="code", right_on="S_INFO_WINDCODE", how="left")
-            m2["mv_bucket"] = m2["S_VAL_MV"].map(_mv_bucket)
+        deriv = _fetch_eval(pos_df, trade_dt)
+        if not deriv.empty and "MARKET_VALUE" in deriv.columns:
+            m2 = pos_df.merge(deriv[["code", "MARKET_VALUE"]], on="code", how="left")
+            m2["mv_bucket"] = m2["MARKET_VALUE"].map(_mv_bucket)
             mv_records = []
             for mb, g in m2.groupby("mv_bucket"):
                 bw = g["weight"].sum()

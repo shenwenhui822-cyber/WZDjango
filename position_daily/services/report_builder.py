@@ -21,7 +21,10 @@ from .wind_analysis import (
     analyze_consensus,
     analyze_theme,
     analyze_valuation,
+    clear_eval_cache,
 )
+from .wind_db import close_tldb_session, tldb_session
+
 
 from .formatters import format_money
 
@@ -255,124 +258,135 @@ def build_daily_report(trade_date: str, *, strategy_tag: str | None = None) -> D
         if not unmapped_ind.empty:
             ctx.unmapped_industry = unmapped_ind.sort_values("market_value", ascending=False).head(20).to_dict("records")
 
-        # --- Wind 分析（各模块独立，单模块失败不阻断整份报告）---
-        def _run_wind(label, fn, *args, **kwargs):
-            try:
-                t1 = time.perf_counter()
-                result = fn(*args, **kwargs)
-                _log(f"{label} ({(time.perf_counter()-t1)*1000:.0f}ms)")
-                return result
-            except Exception as ex:
-                _log(f"{label} 失败: {ex}")
-                logger.exception("[%s] %s", trade_date, label)
-                return None
+        # --- 通联（tldb）分析：线程内复用单连接（建连约 10s）---
+        clear_eval_cache()
+        try:
+            def _run_wind(label, fn, *args, **kwargs):
+                try:
+                    t1 = time.perf_counter()
+                    result = fn(*args, **kwargs)
+                    _log(f"{label} ({(time.perf_counter()-t1)*1000:.0f}ms)")
+                    return result
+                except Exception as ex:
+                    _log(f"{label} 失败: {ex}")
+                    logger.exception("[%s] %s", trade_date, label)
+                    return None
 
-        _log("Wind 估值暴露...")
-        val_res = _run_wind("估值", analyze_valuation, pos_df, trade_date)
-        if val_res:
-            ctx.valuation, val_q = val_res
-            ctx.quality.update(val_q)
+            _log("通联 估值暴露...")
+            val_res = _run_wind("估值", analyze_valuation, pos_df, trade_date)
+            if val_res:
+                ctx.valuation, val_q = val_res
+                ctx.quality.update(val_q)
 
-        _log("Wind 盈利预期...")
-        cons_res = _run_wind("一致预期", analyze_consensus, pos_df, trade_date)
-        if cons_res:
-            ctx.consensus, cons_q = cons_res
-            ctx.quality.update(cons_q)
+            _log("通联 盈利预期...")
+            cons_res = _run_wind("一致预期", analyze_consensus, pos_df, trade_date)
+            if cons_res:
+                ctx.consensus, cons_q = cons_res
+                ctx.quality.update(cons_q)
 
-        _log("中信行业...")
-        citics_res = _run_wind("中信", analyze_citics_industry, pos_df, trade_date)
-        unmapped_citics = pd.DataFrame()
-        if citics_res:
-            citics_df, unmapped_citics, citics_q = citics_res
-            ctx.quality.update(citics_q)
-        else:
-            citics_df = pd.DataFrame()
-        ctx.citics_count = len(citics_df)
-        ctx.citics_columns = [
-            ("indus_code", "代码"),
-            ("indus_name", "行业"),
-            ("stock_count", "只数"),
-            ("weight", "权重"),
-            ("w_chg_pct", "持仓涨跌"),
-            ("indus_pct_chg", "行业涨跌"),
-            ("excess_pct", "超额"),
-            ("daily_pnl", DAILY_PROFIT_COL_LABEL),
-            ("profit", PROFIT_COL_LABEL),
-        ]
-        ctx.citics_all, _ = _build_sortable_table(
-            citics_df, ctx.citics_columns,
-            pct_cols=INDUSTRY_PCT_COLS, weight_cols=INDUSTRY_WEIGHT_COLS,
-        )
-        if not citics_df.empty:
-            ctx.citics_top_good = _df_to_records(
-                citics_df.nlargest(5, "excess_pct")[good_cols],
+            _log("中信行业...")
+            citics_res = _run_wind("中信", analyze_citics_industry, pos_df, trade_date)
+            unmapped_citics = pd.DataFrame()
+            if citics_res:
+                citics_df, unmapped_citics, citics_q = citics_res
+                ctx.quality.update(citics_q)
+            else:
+                citics_df = pd.DataFrame()
+            ctx.citics_count = len(citics_df)
+            ctx.citics_columns = [
+                ("indus_code", "代码"),
+                ("indus_name", "行业"),
+                ("stock_count", "只数"),
+                ("weight", "权重"),
+                ("w_chg_pct", "持仓涨跌"),
+                ("indus_pct_chg", "行业涨跌"),
+                ("excess_pct", "超额"),
+                ("daily_pnl", DAILY_PROFIT_COL_LABEL),
+                ("profit", PROFIT_COL_LABEL),
+            ]
+            ctx.citics_all, _ = _build_sortable_table(
+                citics_df, ctx.citics_columns,
                 pct_cols=INDUSTRY_PCT_COLS, weight_cols=INDUSTRY_WEIGHT_COLS,
             )
-            ctx.citics_top_bad = _df_to_records(
-                citics_df.nsmallest(5, "excess_pct")[good_cols],
-                pct_cols=INDUSTRY_PCT_COLS, weight_cols=INDUSTRY_WEIGHT_COLS,
+            if not citics_df.empty:
+                citics_df = citics_df.copy()
+                citics_df["excess_pct"] = pd.to_numeric(citics_df["excess_pct"], errors="coerce")
+                ranked = citics_df.dropna(subset=["excess_pct"])
+                if not ranked.empty:
+                    ctx.citics_top_good = _df_to_records(
+                        ranked.nlargest(5, "excess_pct")[good_cols],
+                        pct_cols=INDUSTRY_PCT_COLS, weight_cols=INDUSTRY_WEIGHT_COLS,
+                    )
+                    ctx.citics_top_bad = _df_to_records(
+                        ranked.nsmallest(5, "excess_pct")[good_cols],
+                        pct_cols=INDUSTRY_PCT_COLS, weight_cols=INDUSTRY_WEIGHT_COLS,
+                    )
+                else:
+                    ctx.citics_top_good = []
+                    ctx.citics_top_bad = []
+            if not unmapped_citics.empty:
+                ctx.unmapped_citics = unmapped_citics.sort_values("market_value", ascending=False).head(20).to_dict("records")
+
+            _log("主题/概念暴露...")
+            theme_res = _run_wind("主题", analyze_theme, pos_df, trade_date)
+            if theme_res:
+                theme_df, theme_q = theme_res
+                ctx.quality.update(theme_q)
+            else:
+                theme_df = pd.DataFrame()
+            ctx.theme_count = len(theme_df)
+            ctx.theme_columns = [
+                ("theme_code", "代码"),
+                ("theme_name", "主题"),
+                ("stock_count", "只数"),
+                ("weight", "权重"),
+                ("w_chg_pct", "持仓涨跌"),
+                ("daily_pnl", DAILY_PROFIT_COL_LABEL),
+                ("profit", PROFIT_COL_LABEL),
+            ]
+            ctx.theme_all, _ = _build_sortable_table(
+                theme_df, ctx.theme_columns,
+                pct_cols=THEME_PCT_COLS, weight_cols=INDUSTRY_WEIGHT_COLS,
             )
-        if not unmapped_citics.empty:
-            ctx.unmapped_citics = unmapped_citics.sort_values("market_value", ascending=False).head(20).to_dict("records")
 
-        _log("主题/概念暴露...")
-        theme_res = _run_wind("主题", analyze_theme, pos_df, trade_date)
-        if theme_res:
-            theme_df, theme_q = theme_res
-            ctx.quality.update(theme_q)
-        else:
-            theme_df = pd.DataFrame()
-        ctx.theme_count = len(theme_df)
-        ctx.theme_columns = [
-            ("theme_code", "代码"),
-            ("theme_name", "主题"),
-            ("stock_count", "只数"),
-            ("weight", "权重"),
-            ("w_chg_pct", "持仓涨跌"),
-            ("daily_pnl", DAILY_PROFIT_COL_LABEL),
-            ("profit", PROFIT_COL_LABEL),
-        ]
-        ctx.theme_all, _ = _build_sortable_table(
-            theme_df, ctx.theme_columns,
-            pct_cols=THEME_PCT_COLS, weight_cols=INDUSTRY_WEIGHT_COLS,
-        )
-
-        _log("宽基风格 rq_base_index + Wind 指数...")
-        style_res = _run_wind("风格", analyze_style, pos_df, trade_date)
-        if style_res:
-            style_df, mv_df, style_q = style_res
-            ctx.quality.update(style_q)
-        else:
-            style_df, mv_df = pd.DataFrame(), pd.DataFrame()
-        ctx.style_columns = [
-            ("bucket", "板块"),
-            ("stock_count", "只数"),
-            ("weight", "权重"),
-            ("w_chg_pct", "持仓涨跌"),
-            ("index_pct_chg", "指数涨跌"),
-            ("excess_pct", "超额"),
-            ("bench_code", "基准代码"),
-            ("daily_pnl", DAILY_PROFIT_COL_LABEL),
-            ("profit", PROFIT_COL_LABEL),
-        ]
-        ctx.style_buckets, _ = _build_sortable_table(
-            style_df, ctx.style_columns,
-            pct_cols=STYLE_PCT_COLS, weight_cols=INDUSTRY_WEIGHT_COLS,
-            default_sort="bucket",
-        )
-        ctx.mv_style_columns = [
-            ("bucket", "风格"),
-            ("stock_count", "只数"),
-            ("weight", "权重"),
-            ("w_chg_pct", "持仓涨跌"),
-            ("daily_pnl", DAILY_PROFIT_COL_LABEL),
-            ("profit", PROFIT_COL_LABEL),
-        ]
-        ctx.mv_style, _ = _build_sortable_table(
-            mv_df, ctx.mv_style_columns,
-            pct_cols=["w_chg_pct"], weight_cols=INDUSTRY_WEIGHT_COLS,
-            default_sort="bucket",
-        )
+            _log("宽基风格 rq_base_index + 通联指数...")
+            style_res = _run_wind("风格", analyze_style, pos_df, trade_date)
+            if style_res:
+                style_df, mv_df, style_q = style_res
+                ctx.quality.update(style_q)
+            else:
+                style_df, mv_df = pd.DataFrame(), pd.DataFrame()
+            ctx.style_columns = [
+                ("bucket", "板块"),
+                ("stock_count", "只数"),
+                ("weight", "权重"),
+                ("w_chg_pct", "持仓涨跌"),
+                ("index_pct_chg", "指数涨跌"),
+                ("excess_pct", "超额"),
+                ("bench_code", "基准代码"),
+                ("daily_pnl", DAILY_PROFIT_COL_LABEL),
+                ("profit", PROFIT_COL_LABEL),
+            ]
+            ctx.style_buckets, _ = _build_sortable_table(
+                style_df, ctx.style_columns,
+                pct_cols=STYLE_PCT_COLS, weight_cols=INDUSTRY_WEIGHT_COLS,
+                default_sort="bucket",
+            )
+            ctx.mv_style_columns = [
+                ("bucket", "风格"),
+                ("stock_count", "只数"),
+                ("weight", "权重"),
+                ("w_chg_pct", "持仓涨跌"),
+                ("daily_pnl", DAILY_PROFIT_COL_LABEL),
+                ("profit", PROFIT_COL_LABEL),
+            ]
+            ctx.mv_style, _ = _build_sortable_table(
+                mv_df, ctx.mv_style_columns,
+                pct_cols=["w_chg_pct"], weight_cols=INDUSTRY_WEIGHT_COLS,
+                default_sort="bucket",
+            )
+        finally:
+            close_tldb_session()
 
         _log("单票贡献...")
         t1 = time.perf_counter()
@@ -454,14 +468,14 @@ def render_markdown(ctx: DailyReportContext) -> str:
         "",
         f"共 {ctx.industry_count} 个行业，详见 Web 报告。",
         "",
-        "## 三、Wind 估值暴露",
+        "## 三、通联估值暴露（mkt_equd_eval）",
         "",
         f"| 加权 PE(TTM) | {_num(v.get('w_pe_ttm'))} |",
         f"| 加权 PB | {_num(v.get('w_pb'))} |",
         f"| 加权市值(亿) | {_num(v.get('w_mv_yi'))} |",
         f"| 加权市值分位 | {_pct(v.get('w_mv_pct'))} |",
         "",
-        "## 四、Wind 盈利预期（FY1）",
+        "## 四、通联盈利预期（mkt_equd_eval.PE_CM）",
         "",
         f"| 加权预期 PE | {_num(cs.get('w_est_pe'))} |",
         f"| 覆盖度 | {_pct(cs.get('coverage_pct', 0) * 100 if cs.get('coverage_pct') else None)} |",
@@ -470,13 +484,13 @@ def render_markdown(ctx: DailyReportContext) -> str:
         "",
         f"共 {ctx.citics_count} 个二级行业。",
         "",
-        "## 六、主题/概念",
+        "## 六、主题/概念（战略性新兴产业）",
         "",
         f"共 {ctx.theme_count} 个主题暴露。",
         "",
         "## 七、宽基风格",
         "",
-        "rq_base_index 成分 + Wind AINDEXEODPRICES 基准。",
+        "rq_base_index 成分 + 通联 mkt_idxd 基准。",
         "",
         "## 八、单票贡献",
         "",
@@ -489,6 +503,6 @@ def render_markdown(ctx: DailyReportContext) -> str:
         "## 十一、数据质量",
         "",
         f"- 未映射申万二级：{ctx.quality.get('indus_unmapped', 0)} 只",
-        f"- Wind 估值日期：{ctx.quality.get('wind_deriv_date', '—')}",
+        f"- 通联估值日期：{ctx.quality.get('wind_deriv_date', '—')}",
     ]
     return "\n".join(lines)
